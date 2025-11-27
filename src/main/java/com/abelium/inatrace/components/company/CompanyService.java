@@ -387,7 +387,7 @@ public class CompanyService extends BaseService {
 		zipOutputStream.closeEntry();
 
 		// Prepare the Geo-data JSON and add it to zip
-		zipOutputStream.putNextEntry(new ZipEntry("geodata.json"));
+		zipOutputStream.putNextEntry(new ZipEntry("geodata.geojson"));
 		zipOutputStream.write(prepareFarmersGeoDataFile(farmers));
 		zipOutputStream.closeEntry();
 
