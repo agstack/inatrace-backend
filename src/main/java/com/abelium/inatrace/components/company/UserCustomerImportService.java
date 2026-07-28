@@ -23,6 +23,11 @@ import com.abelium.inatrace.types.Gender;
 import com.abelium.inatrace.types.Language;
 import com.abelium.inatrace.types.UserCustomerType;
 import com.abelium.inatrace.types.UserRole;
+import com.mapbox.geojson.Feature;
+import com.mapbox.geojson.FeatureCollection;
+import com.mapbox.geojson.Point;
+import com.mapbox.geojson.Polygon;
+import com.mapbox.turf.TurfMeasurement;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.Row;
@@ -31,15 +36,14 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.CollectionUtils;
 import org.torpedoquery.jakarta.jpa.Torpedo;
-import jakarta.transaction.Transactional;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Lazy
@@ -54,6 +58,14 @@ public class UserCustomerImportService extends BaseService {
 
     @Autowired
     private StorageService storageService;
+
+    /**
+     * Column index of the "Geo Data" cell, which accepts any of the formats
+     * {@link GeoDataParser} recognises.
+     */
+    static final int GEO_DATA_COLUMN = 33;
+
+    private static final String PLOT_NAME_PREFIX = "Plot ";
 
     @Transactional
     public ApiUserCustomerImportResponse importFarmersSpreadsheet(Long companyId, Long documentId, CustomUserDetails authUser, Language language) throws ApiException {
@@ -194,6 +206,10 @@ public class UserCustomerImportService extends BaseService {
                 apiUserCustomer.getBank().setBankName(getStringOrNumeric(row.getCell(31)));
                 apiUserCustomer.getBank().setAdditionalInformation(getStringOrNumeric(row.getCell(32)));
 
+                // GeoData - plots from the Geo Data cell
+                apiUserCustomer.setPlots(createUserGeoData(row, companyProductTypes.get(0).getId()));
+                nameFarmerPlots(apiUserCustomer);
+
                 if (companyService.existsUserCustomer(apiUserCustomer)) {
                     duplicates.add(apiUserCustomer);
                 } else {
@@ -267,7 +283,9 @@ public class UserCustomerImportService extends BaseService {
         if (row == null) {
             return true;
         }
-        for (int i = 0; i < 33; i++) {
+        // Every column counts, geo data included: a row that carries only a plot boundary is real
+        // data, and stopping at it would silently discard the rest of the file.
+        for (int i = 0; i <= GEO_DATA_COLUMN; i++) {
             if (!emptyCell(row.getCell(i))) {
                 return false;
             }
@@ -474,7 +492,29 @@ public class UserCustomerImportService extends BaseService {
             rowValidation.getColumnValidationErrors().add(new ApiUserCustomerImportColumnValidationError(getCellAddress(row.getCell(32)), UserCustomerImportCellErrorType.INCORRECT_TYPE));
         }
 
+        validateGeoCells(row, rowValidation);
+
         return rowValidation;
+    }
+
+    /**
+     * Validates the Geo Data cell. It is optional; when present, it must parse as one of the
+     * formats {@link GeoDataParser} supports.
+     */
+    private void validateGeoCells(Row row, ApiUserCustomerImportRowValidationError rowValidation) {
+
+        Cell geoCell = row.getCell(GEO_DATA_COLUMN);
+        if (!emptyCell(geoCell)) {
+            if (invalidCell(geoCell, List.of(CellType.STRING))) {
+                rowValidation.getColumnValidationErrors().add(new ApiUserCustomerImportColumnValidationError(getCellAddress(geoCell), UserCustomerImportCellErrorType.INCORRECT_TYPE));
+            } else {
+                try {
+                    GeoDataParser.parse(geoCell.getStringCellValue().trim(), getString(row.getCell(15)));
+                } catch (IllegalArgumentException e) {
+                    rowValidation.getColumnValidationErrors().add(new ApiUserCustomerImportColumnValidationError(getCellAddress(geoCell), UserCustomerImportCellErrorType.INVALID_GEODATA));
+                }
+            }
+        }
     }
 
     private boolean invalidCell(Cell cell, List<CellType> cellTypeList) {
@@ -553,4 +593,105 @@ public class UserCustomerImportService extends BaseService {
         List<Country> countries = Torpedo.select(country).list(em);
         return countries.size() == 1 ? countries.get(0) : null;
     }
+
+
+    /**
+     * Builds the plots for one spreadsheet row from its Geo Data cell.
+     */
+    private List<ApiPlot> createUserGeoData(Row row, Long productTypeId) {
+
+        String countryCode = getString(row.getCell(15));
+        String geoData = emptyCell(row.getCell(GEO_DATA_COLUMN)) ? null : row.getCell(GEO_DATA_COLUMN).getStringCellValue().trim();
+
+        return buildPlots(geoData, countryCode, productTypeId);
+    }
+
+    /**
+     * Parses a geo data value in any supported format into plots. Row validation has already
+     * rejected malformed values, so a failure here means an internal inconsistency rather than bad
+     * user input, and is logged instead of thrown.
+     */
+    private List<ApiPlot> buildPlots(String geoData, String countryCode, Long productTypeId) {
+
+        List<GeoDataParser.ParsedPlot> parsedPlots;
+        try {
+            parsedPlots = GeoDataParser.parse(geoData, countryCode);
+        } catch (IllegalArgumentException e) {
+            logger.error("Unexpected invalid geodata reached createUserGeoData: " + geoData, e);
+            return new ArrayList<>();
+        }
+
+        ApiProductType productType = new ApiProductType();
+        productType.setId(productTypeId);
+
+        List<ApiPlot> plots = new ArrayList<>();
+
+        for (GeoDataParser.ParsedPlot parsed : parsedPlots) {
+
+            ApiPlot plot = new ApiPlot();
+            plot.setPlotName(parsed.getLabel());
+            plot.setCrop(productType);
+
+            plot.setCoordinates(parsed.getPoints().stream().map(point -> {
+                ApiPlotCoordinate coordinate = new ApiPlotCoordinate();
+                coordinate.setLatitude(point[0]);
+                coordinate.setLongitude(point[1]);
+                return coordinate;
+            }).collect(Collectors.toList()));
+
+            if (parsed.getType() == GeoDataParser.GeoDataType.POLYGON) {
+                plot.setSize(areaInHectares(parsed.getPoints()));
+                plot.setUnit("ha");
+            }
+
+            plots.add(plot);
+        }
+
+        return plots;
+    }
+
+    /** Area of a plot boundary in hectares, rounded down to two decimals. */
+    private double areaInHectares(List<double[]> latLonPoints) {
+
+        List<Point> ring = latLonPoints.stream()
+                .map(point -> Point.fromLngLat(point[1], point[0]))
+                .collect(Collectors.toCollection(ArrayList::new));
+
+        // Turf measures a closed ring; a hand-written boundary is often left open.
+        Point first = ring.get(0);
+        Point last = ring.get(ring.size() - 1);
+        if (first.latitude() != last.latitude() || first.longitude() != last.longitude()) {
+            ring.add(first);
+        }
+
+        Polygon polygon = Polygon.fromLngLats(Collections.singletonList(ring));
+        double areaM2 = TurfMeasurement.area(Feature.fromGeometry(polygon));
+
+        // One hectare is 10 000 m².
+        return Math.floor((areaM2 / 10000) * 100) / 100.0;
+    }
+
+    /**
+     * Gives every plot of a farmer a distinct name, keeping any label the source provided (for
+     * example the {@code P1} / {@code P3} labels of a multi-plot cell) and numbering the rest.
+     */
+    private void nameFarmerPlots(ApiUserCustomer farmer) {
+
+        if (CollectionUtils.isEmpty(farmer.getPlots())) {
+            return;
+        }
+
+        int index = 0;
+        for (ApiPlot plot : farmer.getPlots()) {
+            index++;
+            String label = plot.getPlotName();
+            // Plots named by an earlier pass keep their name; the counter still advances so the
+            // names stay distinct as more plots are appended to this farmer.
+            if (label != null && label.startsWith(PLOT_NAME_PREFIX)) {
+                continue;
+            }
+            plot.setPlotName(PLOT_NAME_PREFIX + (label == null || label.isBlank() ? String.valueOf(index) : label.trim()));
+        }
+    }
+
 }
