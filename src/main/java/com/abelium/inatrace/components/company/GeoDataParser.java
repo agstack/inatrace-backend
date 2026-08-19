@@ -2,6 +2,9 @@ package com.abelium.inatrace.components.company;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Parses the "Geo Data" cell of the farmer import spreadsheet into plot geometries.
@@ -10,6 +13,8 @@ import java.util.List;
  * formats are recognised and auto-detected (first match wins):</p>
  *
  * <ol>
+ *     <li><b>WKT</b> - {@code POLYGON((...))}, {@code POINT(...)} or {@code MULTIPOLYGON(((...)))},
+ *         in the {@code lat lon} order the import template documents.</li>
  *     <li><b>ODK / KoboToolbox geoshape, geotrace and geopoint</b> - {@code lat lon alt accuracy}
  *         per point, points separated by {@code ;}. Altitude and accuracy are validated then
  *         discarded.</li>
@@ -58,12 +63,15 @@ public final class GeoDataParser {
 
 	// ---------------------------------------------------------------- entry point
 
+	private static final Pattern WKT_PREFIX = Pattern.compile(
+			"^(POLYGON|POINT|MULTIPOLYGON)\\s*\\(", Pattern.CASE_INSENSITIVE);
+
 	/**
 	 * Parses a Geo Data cell value into one plot per geometry it contains.
 	 *
 	 * @param raw the raw cell value; blank means "no geo data", which is not an error
-	 * @param countryCode the row's ISO 3166-1 alpha-2 country code; reserved for formats whose
-	 *                    axis order is ambiguous, may be {@code null}
+	 * @param countryCode the row's ISO 3166-1 alpha-2 country code, used only to disambiguate WKT
+	 *                    axis order; may be {@code null}
 	 * @return the plots found, in source order; empty when {@code raw} is blank
 	 * @throws IllegalArgumentException if {@code raw} is non-blank but not recognisable geo data
 	 */
@@ -75,10 +83,162 @@ public final class GeoDataParser {
 
 		String trimmed = raw.trim();
 
+		if (WKT_PREFIX.matcher(trimmed).find()) {
+			return parseWkt(trimmed, countryCode);
+		}
+
 		return parseOdk(trimmed);
 	}
 
-	// ---------------------------------------------------------------- ODK / Kobo (rule 1)
+	// ---------------------------------------------------------------- WKT (rule 1)
+
+	private static List<ParsedPlot> parseWkt(String raw, String countryCode) {
+
+		Matcher matcher = WKT_PREFIX.matcher(raw);
+		if (!matcher.find()) {
+			throw new IllegalArgumentException("Not a WKT geometry: " + raw);
+		}
+
+		String keyword = matcher.group(1).toUpperCase(Locale.ROOT);
+		String body = balancedGroup(raw, matcher.end() - 1);
+
+		switch (keyword) {
+			case "POINT": {
+				List<double[]> points = orientPoints(coordinatePairs(body), countryCode);
+				if (points.size() != 1) {
+					throw new IllegalArgumentException("POINT must have exactly one coordinate pair");
+				}
+				return List.of(new ParsedPlot(null, GeoDataType.POINT, points));
+			}
+			case "POLYGON": {
+				List<String> rings = topLevelGroups(body);
+				if (rings.isEmpty()) {
+					throw new IllegalArgumentException("POLYGON must contain a ring");
+				}
+				// Interior rings (holes) are dropped - a plot is stored as a single boundary.
+				return List.of(polygonPlot(null, orientPoints(coordinatePairs(rings.get(0)), countryCode)));
+			}
+			case "MULTIPOLYGON": {
+				List<String> polygons = topLevelGroups(body);
+				if (polygons.isEmpty()) {
+					throw new IllegalArgumentException("MULTIPOLYGON must contain a polygon");
+				}
+				List<ParsedPlot> plots = new ArrayList<>();
+				for (int i = 0; i < polygons.size(); i++) {
+					List<String> rings = topLevelGroups(polygons.get(i));
+					if (rings.isEmpty()) {
+						throw new IllegalArgumentException("MULTIPOLYGON member must contain a ring");
+					}
+					plots.add(polygonPlot(labelIndexed(null, i, polygons.size()),
+							orientPoints(coordinatePairs(rings.get(0)), countryCode)));
+				}
+				return plots;
+			}
+			default:
+				throw new IllegalArgumentException("Unsupported WKT geometry: " + keyword);
+		}
+	}
+
+	/**
+	 * Splits a comma-separated WKT coordinate list into raw {@code {first, second}} pairs, without
+	 * yet deciding which of the two is the latitude - see {@link #orientPoints}.
+	 */
+	private static List<double[]> coordinatePairs(String coordinateList) {
+
+		if (coordinateList.indexOf('(') >= 0) {
+			throw new IllegalArgumentException("Unexpected nested parentheses in coordinate list");
+		}
+
+		List<double[]> pairs = new ArrayList<>();
+		for (String rawPoint : coordinateList.split(",")) {
+			String[] tokens = rawPoint.trim().split("\\s+");
+			if (tokens.length != 2) {
+				throw new IllegalArgumentException("Expected exactly 2 numbers per point: " + rawPoint);
+			}
+			pairs.add(new double[] { parseNumber(tokens[0]), parseNumber(tokens[1]) });
+		}
+		if (pairs.isEmpty()) {
+			throw new IllegalArgumentException("Empty coordinate list");
+		}
+		return pairs;
+	}
+
+	/**
+	 * Reads a WKT coordinate list as {@code lat lon}, the order this import template has always
+	 * documented, and validates it strictly. The country code is accepted so that a later
+	 * disambiguation of the {@code lon lat} order real OGC WKT uses can slot in here.
+	 */
+	private static List<double[]> orientPoints(List<double[]> pairs, String countryCode) {
+
+		return validated(copy(pairs));
+	}
+
+	private static List<double[]> copy(List<double[]> pairs) {
+		List<double[]> result = new ArrayList<>(pairs.size());
+		for (double[] pair : pairs) {
+			result.add(new double[] { pair[0], pair[1] });
+		}
+		return result;
+	}
+
+	/** Extracts the contents of the balanced parenthesis group that opens at {@code openIndex}. */
+	private static String balancedGroup(String value, int openIndex) {
+
+		if (openIndex < 0 || openIndex >= value.length() || value.charAt(openIndex) != '(') {
+			throw new IllegalArgumentException("Expected '(' in: " + value);
+		}
+
+		int depth = 0;
+		for (int i = openIndex; i < value.length(); i++) {
+			char c = value.charAt(i);
+			if (c == '(') {
+				depth++;
+			} else if (c == ')') {
+				depth--;
+				if (depth == 0) {
+					if (!value.substring(i + 1).isBlank()) {
+						throw new IllegalArgumentException("Trailing characters after geometry: " + value);
+					}
+					return value.substring(openIndex + 1, i);
+				}
+			}
+		}
+		throw new IllegalArgumentException("Unbalanced parentheses in: " + value);
+	}
+
+	/** Splits {@code "(a),(b)"} into the contents of each top-level group: {@code ["a", "b"]}. */
+	private static List<String> topLevelGroups(String value) {
+
+		List<String> groups = new ArrayList<>();
+		int depth = 0;
+		int start = -1;
+
+		for (int i = 0; i < value.length(); i++) {
+			char c = value.charAt(i);
+			if (c == '(') {
+				if (depth == 0) {
+					start = i + 1;
+				}
+				depth++;
+			} else if (c == ')') {
+				depth--;
+				if (depth == 0) {
+					groups.add(value.substring(start, i));
+				} else if (depth < 0) {
+					throw new IllegalArgumentException("Unbalanced parentheses in: " + value);
+				}
+			} else if (depth == 0 && c != ',' && !Character.isWhitespace(c)) {
+				throw new IllegalArgumentException("Unexpected character '" + c + "' in: " + value);
+			}
+		}
+
+		if (depth != 0) {
+			throw new IllegalArgumentException("Unbalanced parentheses in: " + value);
+		}
+		return groups;
+	}
+
+	// ---------------------------------------------------------------- ODK / Kobo (rule 2)
 
 	/**
 	 * Parses the ODK / KoboToolbox geoshape, geotrace and geopoint syntax:
@@ -173,5 +333,12 @@ public final class GeoDataParser {
 			throw new IllegalArgumentException("No geometry found");
 		}
 		return plots;
+	}
+
+	private static String labelIndexed(String label, int index, int total) {
+		if (total <= 1) {
+			return label;
+		}
+		return label == null ? String.valueOf(index + 1) : label + "-" + (index + 1);
 	}
 }
