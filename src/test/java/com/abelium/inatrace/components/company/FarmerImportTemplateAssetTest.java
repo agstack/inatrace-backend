@@ -63,6 +63,26 @@ class FarmerImportTemplateAssetTest {
             "Plantilla_listado_de_agricultores_otros_paises_es.xlsx",
             "Plantilla_listado_de_agricultores_Honduras_es.xlsx"
     })
+    void geoIdColumn_isAtIndex34_afterTheGeoDataColumn(String fileName) throws Exception {
+        try (InputStream in = new FileInputStream(RESOURCES + fileName);
+             XSSFWorkbook workbook = new XSSFWorkbook(in)) {
+
+            Row headerRow = workbook.getSheetAt(0).getRow(4);
+
+            Cell geoIdHeader = headerRow.getCell(34);
+            assertEquals(CellType.STRING, geoIdHeader.getCellType(), fileName + ": column 34 header is missing");
+            assertTrue(geoIdHeader.getStringCellValue().contains("GeoID"),
+                    fileName + ": column 34 should be the GeoID column, was: " + geoIdHeader.getStringCellValue());
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "Template_list_of_farmers_other_countries_en.xlsx",
+            "Template_list_of_farmers_Rwanda_en.xlsx",
+            "Plantilla_listado_de_agricultores_otros_paises_es.xlsx",
+            "Plantilla_listado_de_agricultores_Honduras_es.xlsx"
+    })
     void geoDataHeader_documentsEveryAcceptedFormat(String fileName) throws Exception {
         try (InputStream in = new FileInputStream(RESOURCES + fileName);
              XSSFWorkbook workbook = new XSSFWorkbook(in)) {
