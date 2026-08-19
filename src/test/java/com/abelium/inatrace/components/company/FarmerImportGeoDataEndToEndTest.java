@@ -325,6 +325,70 @@ class FarmerImportGeoDataEndToEndTest extends AbstractMySqlIntegrationTest {
         });
     }
 
+    /**
+     * The hand-filled UCCAO template, uploaded byte-for-byte as the user has it (with personal
+     * data anonymised and the plots translated): no internal
+     * ids anywhere, ODK geoshape in every geo cell, and a trailing row that carries nothing but
+     * three more plots written as {@code P1(...)P2 (...)P3(...)}.
+     *
+     * <p>Every plot of the collection survives the hand copy, but three of them ended up against
+     * the wrong farmer - which the importer cannot detect and faithfully reproduces.</p>
+     */
+    @Test
+    void realFilledTemplate_importsEveryFarmerAndEveryPlot() throws Exception {
+        byte[] xlsx = java.nio.file.Files.readAllBytes(
+                Paths.get("src/test/resources/farmer-import/UCCAO_filled_template.xlsx"));
+
+        JsonNode response = callImportEndpoint(uploadDocument(xlsx));
+
+        assertTrue(response.get("validationErrors").isEmpty(), "expected no validation errors: " + response);
+        // 7 named rows, each its own farmer despite every internal-id cell being empty.
+        assertEquals(7, response.get("successful").asInt(), "farmers imported: " + response);
+
+        new TransactionTemplate(txManager).executeWithoutResult(status -> {
+            List<UserCustomer> farmers = farmersOfTestCompany();
+
+            assertEquals(7, farmers.size(), "one farmer per named row, not one farmer for the whole file");
+            assertEquals(10, totalPlots(farmers),
+                    "7 rows with one plot each, plus the 3 plots of the trailing geo-only row: "
+                            + plotDistribution(farmers));
+
+            UserCustomer kamga = farmer(farmers, "Kamga");
+            // 1 of its own + the 3 of the geo-only row that follows it.
+            assertEquals(4, kamga.getPlots().size(), "the P1(...)P2 (...)P3(...) row attaches to the farmer above");
+            assertEquals(4, kamga.getPlots().stream().map(p -> p.getPlotName()).distinct().count(),
+                    "plots of one farmer get distinct names");
+
+            Double size = farmer(farmers, "Bekono").getPlots().iterator().next().getSize();
+            // ~6685 m². In hectares that is 0.66 - the pre-fix code stored 6.68.
+            assertTrue(size > 0.6 && size < 0.7, "plot size should be in hectares, was " + size);
+        });
+    }
+
+    private List<UserCustomer> farmersOfTestCompany() {
+        return em.createQuery(
+                        "SELECT uc FROM UserCustomer uc WHERE uc.company.id = :companyId", UserCustomer.class)
+                .setParameter("companyId", companyId)
+                .getResultList();
+    }
+
+    private static int totalPlots(List<UserCustomer> farmers) {
+        return farmers.stream().mapToInt(f -> f.getPlots().size()).sum();
+    }
+
+    private static String plotDistribution(List<UserCustomer> farmers) {
+        return farmers.stream()
+                .map(f -> f.getSurname() + "=" + f.getPlots().size())
+                .collect(java.util.stream.Collectors.joining(", "));
+    }
+
+    private static UserCustomer farmer(List<UserCustomer> farmers, String surname) {
+        return farmers.stream()
+                .filter(f -> surname.equals(f.getSurname() == null ? null : f.getSurname().trim()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("no farmer " + surname + " in " + plotDistribution(farmers)));
+    }
+
     /** Builds a single-data-row copy of the real shipped template, matching a realistic full farmer entry. */
     private byte[] buildWorkbook(String internalId, String geoData) throws Exception {
         try (var in = new FileInputStream(TEMPLATE_PATH);
