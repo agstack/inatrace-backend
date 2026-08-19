@@ -203,4 +203,59 @@ class GeoDataParserTest {
 		assertThrows(IllegalArgumentException.class,
 				() -> GeoDataParser.parse("95.17 10.23 100 1.4;96.18 10.24 100 1.4;97.19 10.25 100 1.4", null));
 	}
+
+	// ------------------------------------------------------------------ GeoJSON
+
+	@Test
+	void geoJsonPolygon_isParsedInLonLatOrder() {
+		List<GeoDataParser.ParsedPlot> plots = GeoDataParser.parse(
+				"{\"type\":\"Polygon\",\"coordinates\":"
+						+ "[[[10.2852433,5.2217367],[10.285235,5.2218067],[10.2852027,5.2219302],[10.2852433,5.2217367]]]}",
+				null);
+
+		assertEquals(1, plots.size());
+		assertEquals(GeoDataParser.GeoDataType.POLYGON, plots.get(0).getType());
+		assertEquals(5.2217367, plots.get(0).getPoints().get(0)[0], 1e-9, "latitude");
+		assertEquals(10.2852433, plots.get(0).getPoints().get(0)[1], 1e-9, "longitude");
+	}
+
+	@Test
+	void geoJsonFeature_isParsed() {
+		List<GeoDataParser.ParsedPlot> plots = GeoDataParser.parse(
+				"{\"type\":\"Feature\",\"properties\":{},\"geometry\":{\"type\":\"Polygon\",\"coordinates\":"
+						+ "[[[10.23,5.17],[10.24,5.18],[10.25,5.19],[10.23,5.17]]]}}", null);
+
+		assertEquals(1, plots.size());
+		assertEquals(5.17, plots.get(0).getPoints().get(0)[0], 1e-9);
+	}
+
+	@Test
+	void geoJsonFeatureCollection_becomesOnePlotPerFeature() {
+		List<GeoDataParser.ParsedPlot> plots = GeoDataParser.parse(
+				"{\"type\":\"FeatureCollection\",\"features\":["
+						+ "{\"type\":\"Feature\",\"properties\":{},\"geometry\":{\"type\":\"Polygon\",\"coordinates\":"
+						+ "[[[10.23,5.17],[10.24,5.18],[10.25,5.19],[10.23,5.17]]]}},"
+						+ "{\"type\":\"Feature\",\"properties\":{},\"geometry\":{\"type\":\"Point\",\"coordinates\":[11.23,6.17]}}]}",
+				null);
+
+		assertEquals(2, plots.size());
+		assertEquals(GeoDataParser.GeoDataType.POLYGON, plots.get(0).getType());
+		assertEquals(GeoDataParser.GeoDataType.POINT, plots.get(1).getType());
+		assertEquals(6.17, plots.get(1).getPoints().get(0)[0], 1e-9);
+	}
+
+	@Test
+	void bareGeoJsonCoordinatesArray_isParsed() {
+		List<GeoDataParser.ParsedPlot> plots = GeoDataParser.parse(
+				"[[[10.23,5.17],[10.24,5.18],[10.25,5.19],[10.23,5.17]]]", null);
+
+		assertEquals(1, plots.size());
+		assertEquals(5.17, plots.get(0).getPoints().get(0)[0], 1e-9);
+	}
+
+	@Test
+	void malformedGeoJson_isRejected() {
+		assertThrows(IllegalArgumentException.class, () -> GeoDataParser.parse("{\"type\":", null));
+		assertThrows(IllegalArgumentException.class, () -> GeoDataParser.parse("{\"coordinates\":[]}", null));
+	}
 }
