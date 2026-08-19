@@ -107,6 +107,12 @@ public class UserCustomerImportService extends BaseService {
 
         XSSFSheet mainSheet = mainWorkbook.getSheetAt(0);
 
+        // A KoboToolbox / ODK export is read directly rather than making the user re-key it into
+        // the template - re-keying is where plots get attached to the wrong farmer or dropped.
+        if (KoboExportReader.isKoboExport(mainWorkbook)) {
+            return importKoboExport(mainWorkbook, companyId, authUser, language);
+        }
+
         // boolean means that the second product is also present in the Excel
         boolean hasSecondProductType = checkSecondProductType(mainSheet);
 
@@ -337,6 +343,152 @@ public class UserCustomerImportService extends BaseService {
         }
 
         response.setSuccessful(successful);
+    }
+
+    /**
+     * Imports a KoboToolbox / ODK export directly. The export already links every plot of a repeat
+     * group to its submission, so multi-plot farmers come through intact - which is exactly what
+     * gets lost when the same data is copied into the template by hand.
+     */
+    private ApiUserCustomerImportResponse importKoboExport(XSSFWorkbook workbook,
+                                                           Long companyId,
+                                                           CustomUserDetails authUser,
+                                                           Language language) throws ApiException {
+
+        List<ApiProductType> companyProductTypes = readCompanyProductTypes(companyId, language);
+        if (companyProductTypes.isEmpty()) {
+            throw new ApiException(ApiStatus.ERROR,
+                    "Company has no product types configured. Please add a value chain to the company first.");
+        }
+        ApiProductType firstProductType = companyProductTypes.get(0);
+
+        KoboExportReader.KoboExport export = KoboExportReader.read(workbook);
+
+        if (!export.getMissingConcepts().isEmpty()) {
+            throw new ApiException(ApiStatus.INVALID_REQUEST, String.format(
+                    "This looks like a KoboToolbox export, but no column could be matched to: %s. "
+                            + "Rename the matching question(s) in the export, or add the wording to "
+                            + "geo/kobo-header-synonyms.csv. Columns found: %s",
+                    export.getMissingConcepts(), export.getHeaders()));
+        }
+
+        ApiUserCustomerImportResponse response = new ApiUserCustomerImportResponse();
+        List<ApiUserCustomer> farmers = new ArrayList<>();
+
+        for (KoboExportReader.KoboFarmer koboFarmer : export.getFarmers()) {
+
+            Country country = getCountryByNameOrCode(koboFarmer.get(KoboExportReader.Concept.COUNTRY));
+            Gender gender = toGender(koboFarmer.get(KoboExportReader.Concept.GENDER));
+
+            if (country == null || gender == null) {
+                ApiUserCustomerImportRowValidationError rowValidation =
+                        new ApiUserCustomerImportRowValidationError(koboFarmer.getRowNum());
+                rowValidation.getColumnValidationErrors().add(new ApiUserCustomerImportColumnValidationError(
+                        "row " + (koboFarmer.getRowNum() + 1),
+                        UserCustomerImportCellErrorType.INVALID_VALUE));
+                response.getValidationErrors().add(rowValidation);
+                continue;
+            }
+
+            ApiUserCustomer apiUserCustomer = new ApiUserCustomer();
+            apiUserCustomer.setCompanyId(companyId);
+            apiUserCustomer.setType(UserCustomerType.FARMER);
+            apiUserCustomer.setProductTypes(List.of(firstProductType));
+
+            apiUserCustomer.setFarmerCompanyInternalId(koboFarmer.get(KoboExportReader.Concept.INTERNAL_ID));
+            apiUserCustomer.setSurname(koboFarmer.get(KoboExportReader.Concept.LAST_NAME));
+            apiUserCustomer.setName(koboFarmer.get(KoboExportReader.Concept.FIRST_NAME));
+            apiUserCustomer.setGender(gender);
+            apiUserCustomer.setPhone(koboFarmer.get(KoboExportReader.Concept.PHONE));
+            apiUserCustomer.setEmail(koboFarmer.get(KoboExportReader.Concept.EMAIL));
+            apiUserCustomer.setHasSmartphone(toBoolean(koboFarmer.get(KoboExportReader.Concept.SMARTPHONE)));
+
+            apiUserCustomer.setLocation(new ApiUserCustomerLocation());
+            apiUserCustomer.getLocation().setAddress(new ApiAddress());
+            apiUserCustomer.getLocation().getAddress().setCity(koboFarmer.get(KoboExportReader.Concept.CITY));
+            apiUserCustomer.getLocation().getAddress().setState(koboFarmer.get(KoboExportReader.Concept.STATE));
+            apiUserCustomer.getLocation().getAddress().setCountry(CommonApiTools.toApiCountry(country));
+
+            apiUserCustomer.setFarm(new ApiFarmInformation());
+            apiUserCustomer.getFarm().setFarmPlantInformationList(new ArrayList<>());
+            apiUserCustomer.getFarm().setOrganic(false);
+
+            apiUserCustomer.setPlots(koboPlots(koboFarmer, firstProductType.getId()));
+            nameFarmerPlots(apiUserCustomer);
+
+            farmers.add(apiUserCustomer);
+        }
+
+        persistFarmers(farmers, companyId, authUser, language, response);
+
+        return response;
+    }
+
+    /** Converts the plots of one Kobo submission, preferring the surveyed size over the computed area. */
+    private List<ApiPlot> koboPlots(KoboExportReader.KoboFarmer koboFarmer, Long productTypeId) {
+
+        List<ApiPlot> plots = new ArrayList<>();
+
+        for (KoboExportReader.KoboPlot koboPlot : koboFarmer.getPlots()) {
+            List<ApiPlot> built = buildPlots(koboPlot.getGeoData(), null, productTypeId);
+            for (ApiPlot plot : built) {
+                if (koboPlot.getSize() != null && koboPlot.getSize() > 0) {
+                    plot.setSize(koboPlot.getSize());
+                    plot.setUnit("ha");
+                }
+                plot.setNumberOfPlants(koboPlot.getNumberOfPlants());
+            }
+            plots.addAll(built);
+        }
+
+        return plots;
+    }
+
+    private Country getCountryByNameOrCode(String value) {
+
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String trimmed = value.trim();
+
+        Country byCode = getCountryByCode(trimmed);
+        if (byCode != null) {
+            return byCode;
+        }
+
+        // Exports written with "labels" rather than "values" carry the country name, not its code.
+        Country country = Torpedo.from(Country.class);
+        Torpedo.where(country.getName()).eq(trimmed);
+        List<Country> countries = Torpedo.select(country).list(em);
+        return countries.size() == 1 ? countries.get(0) : null;
+    }
+
+    /** Accepts the gender wordings the supported form languages produce. */
+    private Gender toGender(String value) {
+
+        if (value == null) {
+            return null;
+        }
+        return switch (value.trim().toLowerCase(Locale.ROOT)) {
+            case "m", "male", "masculin", "homme", "hombre", "masculino" -> Gender.MALE;
+            case "f", "female", "feminin", "féminin", "femme", "mujer", "femenino" -> Gender.FEMALE;
+            case "n/a", "na" -> Gender.N_A;
+            case "diverse", "divers", "diverso" -> Gender.DIVERSE;
+            default -> null;
+        };
+    }
+
+    /** Accepts the yes/no wordings the supported form languages produce. */
+    private Boolean toBoolean(String value) {
+
+        if (value == null) {
+            return null;
+        }
+        return switch (value.trim().toLowerCase(Locale.ROOT)) {
+            case "y", "yes", "oui", "si", "sí", "true", "1" -> Boolean.TRUE;
+            case "n", "no", "non", "false", "0" -> Boolean.FALSE;
+            default -> null;
+        };
     }
 
     /**

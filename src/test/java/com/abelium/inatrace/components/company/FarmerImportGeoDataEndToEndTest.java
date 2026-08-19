@@ -332,7 +332,8 @@ class FarmerImportGeoDataEndToEndTest extends AbstractMySqlIntegrationTest {
      * three more plots written as {@code P1(...)P2 (...)P3(...)}.
      *
      * <p>Every plot of the collection survives the hand copy, but three of them ended up against
-     * the wrong farmer - which the importer cannot detect and faithfully reproduces.</p>
+     * the wrong farmer - which the importer cannot detect and faithfully reproduces. That
+     * misattribution is what {@link #realKoboExport_attributesEveryPlotToTheRightFarmer()} avoids.</p>
      */
     @Test
     void realFilledTemplate_importsEveryFarmerAndEveryPlot() throws Exception {
@@ -362,6 +363,39 @@ class FarmerImportGeoDataEndToEndTest extends AbstractMySqlIntegrationTest {
             Double size = farmer(farmers, "Bekono").getPlots().iterator().next().getSize();
             // ~6685 m². In hectares that is 0.66 - the pre-fix code stored 6.68.
             assertTrue(size > 0.6 && size < 0.7, "plot size should be in hectares, was " + size);
+        });
+    }
+
+    /**
+     * The same collection read straight from its KoboToolbox export, with no re-keying at all.
+     *
+     * <p>The export links each plot to its submission, so the two plots that the hand copy filed
+     * against the wrong farmer land where they belong.</p>
+     */
+    @Test
+    void realKoboExport_attributesEveryPlotToTheRightFarmer() throws Exception {
+        byte[] xlsx = java.nio.file.Files.readAllBytes(
+                Paths.get("src/test/resources/farmer-import/UCCAO_kobo_export.xlsx"));
+
+        JsonNode response = callImportEndpoint(uploadDocument(xlsx));
+
+        assertTrue(response.get("validationErrors").isEmpty(), "expected no validation errors: " + response);
+        assertEquals(7, response.get("successful").asInt(), "farmers imported: " + response);
+
+        new TransactionTemplate(txManager).executeWithoutResult(status -> {
+            List<UserCustomer> farmers = farmersOfTestCompany();
+
+            assertEquals(7, farmers.size());
+            assertEquals(10, totalPlots(farmers), "every plot of every repeat group: " + plotDistribution(farmers));
+
+            // The hand-copied template gives these 1 / 1 / 4; the export gives the true 2 / 1 / 3.
+            assertEquals(2, farmer(farmers, "Kevine").getPlots().size());
+            assertEquals(1, farmer(farmers, "Wamba").getPlots().size());
+            assertEquals(3, farmer(farmers, "Essomba").getPlots().size());
+
+            assertEquals("Cameroon",
+                    farmer(farmers, "Clarisse").getUserCustomerLocation().getAddress().getCountry().getName(),
+                    "the export names the country instead of using its ISO code");
         });
     }
 
