@@ -17,6 +17,7 @@ import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -29,12 +30,13 @@ import java.util.Set;
  *
  * <p>Re-keying is what this avoids: in the collection that motivated this reader, the hand-copied
  * template had the plots of three farmers shifted onto the wrong rows and lost one plot entirely.
- * The export is the source of truth.</p>
+ * The export is the source of truth and already links every plot to its farmer.</p>
  *
- * <p>The first sheet of an export holds one row per submission. Kobo adds its own
+ * <p>An export has one sheet per form, plus one extra sheet per repeat group. Kobo adds its own
  * {@code _}-prefixed system columns, which are stable across forms and languages and are what this
  * reader keys on; the question columns are named by whoever built the form, so they are matched
- * against {@code /geo/kobo-header-synonyms.csv}.</p>
+ * against {@code /geo/kobo-header-synonyms.csv}. The geo column is found by the shape of its
+ * values rather than by its header, which makes it immune to the form's wording entirely.</p>
  */
 public final class KoboExportReader {
 
@@ -57,11 +59,38 @@ public final class KoboExportReader {
 		PLOT_PLANTS
 	}
 
-	/** One submission: the farmer's recognised fields. */
+	/** One plot of a repeat group. */
+	public static final class KoboPlot {
+
+		private final String geoData;
+		private final Double size;
+		private final Integer numberOfPlants;
+
+		KoboPlot(String geoData, Double size, Integer numberOfPlants) {
+			this.geoData = geoData;
+			this.size = size;
+			this.numberOfPlants = numberOfPlants;
+		}
+
+		public String getGeoData() {
+			return geoData;
+		}
+
+		public Double getSize() {
+			return size;
+		}
+
+		public Integer getNumberOfPlants() {
+			return numberOfPlants;
+		}
+	}
+
+	/** One submission: the farmer's recognised fields plus every plot of its repeat groups. */
 	public static final class KoboFarmer {
 
 		private final int rowNum;
 		private final Map<Concept, String> fields;
+		private final List<KoboPlot> plots = new ArrayList<>();
 
 		KoboFarmer(int rowNum, Map<Concept, String> fields) {
 			this.rowNum = rowNum;
@@ -75,6 +104,10 @@ public final class KoboExportReader {
 
 		public String get(Concept concept) {
 			return fields.get(concept);
+		}
+
+		public List<KoboPlot> getPlots() {
+			return plots;
 		}
 	}
 
@@ -114,6 +147,10 @@ public final class KoboExportReader {
 	/** Kobo system columns on a submission sheet. Present in every export, in every language. */
 	private static final List<String> SUBMISSION_MARKERS = List.of("_uuid", "_submission_time", "_index", "_id");
 
+	/** Kobo system columns that link a repeat-group row back to its submission. */
+	private static final String PARENT_INDEX = "_parent_index";
+	private static final String SUBMISSION_ID = "_submission__id";
+
 	/** Concepts a farmer cannot be created without. */
 	private static final Set<Concept> REQUIRED_CONCEPTS =
 			Set.of(Concept.LAST_NAME, Concept.CITY, Concept.STATE, Concept.COUNTRY, Concept.GENDER);
@@ -152,7 +189,10 @@ public final class KoboExportReader {
 			return new KoboExport(List.of(), missing, headers);
 		}
 
+		int indexColumn = headers.indexOf("_index");
+
 		List<KoboFarmer> farmers = new ArrayList<>();
+		Map<String, KoboFarmer> byIndex = new LinkedHashMap<>();
 
 		for (int r = 1; r <= submissions.getLastRowNum(); r++) {
 			Row row = submissions.getRow(r);
@@ -172,10 +212,113 @@ public final class KoboExportReader {
 				continue; // not a submission row
 			}
 
-			farmers.add(new KoboFarmer(r, fields));
+			KoboFarmer farmer = new KoboFarmer(r, fields);
+			farmers.add(farmer);
+
+			if (indexColumn >= 0) {
+				String index = stringValue(row.getCell(indexColumn));
+				if (index != null && !index.isBlank()) {
+					byIndex.put(index.trim(), farmer);
+				}
+			}
+		}
+
+		for (int s = 1; s < workbook.getNumberOfSheets(); s++) {
+			readRepeatSheet(workbook.getSheetAt(s), farmers, byIndex);
 		}
 
 		return new KoboExport(farmers, Set.of(), headers);
+	}
+
+	/** Attaches the plots of one repeat-group sheet to the submissions they belong to. */
+	private static void readRepeatSheet(Sheet sheet, List<KoboFarmer> farmers, Map<String, KoboFarmer> byIndex) {
+
+		List<String> headers = rawHeaders(sheet);
+
+		int parentColumn = headers.indexOf(PARENT_INDEX);
+		if (parentColumn < 0 && !headers.contains(SUBMISSION_ID)) {
+			return; // not a repeat group of the submission sheet
+		}
+
+		int geoColumn = findGeoColumn(sheet, headers.size());
+		if (geoColumn < 0) {
+			logger.debug("Repeat sheet \"{}\" carries no geo data column; skipped", sheet.getSheetName());
+			return;
+		}
+
+		Map<Concept, Integer> columns = matchColumns(headers);
+		Integer sizeColumn = columns.get(Concept.PLOT_SIZE);
+		Integer plantsColumn = columns.get(Concept.PLOT_PLANTS);
+
+		for (int r = 1; r <= sheet.getLastRowNum(); r++) {
+			Row row = sheet.getRow(r);
+			if (row == null) {
+				continue;
+			}
+
+			String geoData = stringValue(row.getCell(geoColumn));
+			if (geoData == null || geoData.isBlank()) {
+				continue;
+			}
+
+			KoboFarmer farmer = null;
+			if (parentColumn >= 0) {
+				String parentIndex = stringValue(row.getCell(parentColumn));
+				if (parentIndex != null) {
+					farmer = byIndex.get(parentIndex.trim());
+				}
+			}
+			if (farmer == null) {
+				logger.warn("Plot on row {} of sheet \"{}\" references an unknown submission; skipped",
+						r + 1, sheet.getSheetName());
+				continue;
+			}
+
+			farmer.getPlots().add(new KoboPlot(
+					geoData.trim(),
+					sizeColumn == null ? null : doubleValue(row.getCell(sizeColumn)),
+					plantsColumn == null ? null : integerValue(row.getCell(plantsColumn))));
+		}
+
+		if (farmers.isEmpty()) {
+			logger.warn("Repeat sheet \"{}\" has plots but there are no submissions to attach them to",
+					sheet.getSheetName());
+		}
+	}
+
+	/**
+	 * Finds the geo data column by the shape of its values rather than its header: the first column
+	 * whose non-blank values all parse as geo data. Form authors name this question anything from
+	 * "Prise du polygone de la parcelle" to "GPS", so the header is no help.
+	 */
+	private static int findGeoColumn(Sheet sheet, int columnCount) {
+
+		for (int c = 0; c < columnCount; c++) {
+
+			int parsed = 0;
+			boolean allParsed = true;
+
+			for (int r = 1; r <= sheet.getLastRowNum() && parsed < 3; r++) {
+				Row row = sheet.getRow(r);
+				String value = row == null ? null : stringValue(row.getCell(c));
+				if (value == null || value.isBlank()) {
+					continue;
+				}
+				try {
+					GeoDataParser.parse(value.trim(), null);
+					parsed++;
+				} catch (IllegalArgumentException e) {
+					allParsed = false;
+					break;
+				}
+			}
+
+			if (allParsed && parsed > 0) {
+				return c;
+			}
+		}
+
+		return -1;
 	}
 
 	// ---------------------------------------------------------------- header matching
