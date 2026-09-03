@@ -17,6 +17,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import javax.sql.DataSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -75,6 +76,21 @@ class ContextBootSmokeTest {
 		assertTrue(context.containsBean("entityManagerFactory"), "JPA should be wired up");
 		assertTrue(context.getBeanNamesForType(org.flywaydb.core.Flyway.class).length > 0,
 				"MigrationsConfiguration injects the Flyway bean, so it must exist");
+	}
+
+	@Test
+	@DisplayName("Swagger UI is reachable at the address springdoc documents")
+	void swaggerUiIsServed() {
+		// /swagger-ui.html is the address springdoc documents and the one people type. It is a
+		// redirect to /swagger-ui/index.html, so it has to be permitted in its own right: when it
+		// is not, it answers 401, the redirect never happens, and the UI looks like it was never
+		// shipped. Both ends of that redirect are checked, because permitting only one of them is
+		// exactly the state this guards against.
+		assertEquals(HttpStatus.OK, rest.getForEntity("/swagger-ui/index.html", String.class).getStatusCode(),
+				"the Swagger UI page should be served");
+		assertNotEquals(HttpStatus.UNAUTHORIZED,
+				rest.getForEntity("/swagger-ui.html", String.class).getStatusCode(),
+				"/swagger-ui.html must not be refused: it is the documented entry point");
 	}
 
 	@Test

@@ -31,9 +31,19 @@ public class SpringSecurityConfig {
         return new TokenAuthenticationFilter();
     }
 
+	/**
+	 * Springdoc serves these at the root, not under the /api prefix that
+	 * {@link com.abelium.inatrace.configuration.PrefixedApiRequestHandler} adds, because that
+	 * handler only decorates mappings in the com.abelium packages.
+	 *
+	 * <p>/swagger-ui.html is the address springdoc documents and the one people type; it is a
+	 * redirect to /swagger-ui/index.html. Without it permitted the redirect never happens and
+	 * the UI looks absent, so both the entry point and the assets below it are listed.
+	 */
 	private static final String[] SWAGGER_EXCEPTIONS = new String[] {
         "/v3/api-docs",
         "/v3/api-docs/swagger-config",
+        "/swagger-ui.html",
         "/swagger-ui/**"
 	};
 

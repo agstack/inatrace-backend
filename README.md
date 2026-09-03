@@ -141,14 +141,16 @@ The values of these properties are provided by Beyco. If integration with Byeco 
 
 ### OpenAPI
 
-Resources are annotated with Swagger annotations. After the application is started, the Swagger service definition JSON is served at `http://localhost:8080/v3/api-docs`.
+Resources are annotated with Swagger annotations. After the application is started, the Swagger service definition JSON is served at `http://localhost:8080/v3/api-docs`, and Swagger UI is served at [http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html).
+
+Both live at the root of the server rather than under `/api`. Every endpoint the application itself defines is published under `/api` — `PrefixedApiRequestHandler` adds that prefix to the mappings in the `com.abelium` packages — but springdoc's own endpoints are not touched by it. `http://localhost:8080/api/swagger-ui.html` does not exist.
 
 #### Postman
 
 Using Postman, you can create a collection from the Swagger definition.
 
 - Select `Import > Link`
-- Enter [http://localhost:8080/v3/api-docs](http://localhost:8080/v2/api-docs)
+- Enter [http://localhost:8080/v3/api-docs](http://localhost:8080/v3/api-docs)
 - Click `Continue`
 - Review configuration
 - Click `Import`
