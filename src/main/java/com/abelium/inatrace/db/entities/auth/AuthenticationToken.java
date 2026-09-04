@@ -78,9 +78,14 @@ public class AuthenticationToken extends BaseEntity {
     }
 
     public boolean isValid() {
-        return getExpiration().isAfter(Instant.now()) && 
-                getStatus() == Status.ACTIVE && 
-                getUser().getStatus() == UserStatus.ACTIVE || getUser().getStatus() == UserStatus.CONFIRMED_EMAIL;
+        // Only an ACTIVE account holds a session, the same rule login and password reset apply
+        // before issuing cookies. This used to read `a && b && c || d` with d being "the user is
+        // CONFIRMED_EMAIL"; && binds tighter than ||, so for such a user the row's expiry and
+        // disabled flag were never consulted. No path issues a token to a CONFIRMED_EMAIL user
+        // any more, so the clause is gone rather than bracketed.
+        return getExpiration().isAfter(Instant.now())
+                && getStatus() == Status.ACTIVE
+                && getUser().getStatus() == UserStatus.ACTIVE;
     }
 
     private Instant calculateExpiryDate(long expiryTimeInSeconds) {

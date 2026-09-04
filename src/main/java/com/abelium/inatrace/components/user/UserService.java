@@ -112,17 +112,38 @@ public class UserService extends BaseService {
 		if (user == null) {
 			throw new ApiException(ApiStatus.AUTH_ERROR, "Invalid credentials");
 		}
-		if (user.getStatus() == UserStatus.DEACTIVATED || user.getStatus() == UserStatus.UNCONFIRMED || user.getStatus() == UserStatus.CONFIRMED_EMAIL) {
-			throw new ApiException(ApiStatus.UNAUTHORIZED, "Not confirmed or disabled");
-		}
+		checkUserMayStartSession(user);
 		if (!new BCryptPasswordEncoder().matches(loginRequest.password, user.getPassword())) {
 			throw new ApiException(ApiStatus.AUTH_ERROR, "Invalid credentials");
 		}
 		return loginUser(user);
 	}
 
+	/**
+	 * Whether an account is allowed to hold a session: only an ACTIVE one.
+	 *
+	 * <p>Administrator approval is the only admission control in a system that lets anyone
+	 * register. Stated positively so that a status added later fails closed; a deny-list would
+	 * let it through by default. {@link AuthenticationToken#isValid()} applies the same rule to
+	 * refresh tokens.
+	 */
+	private boolean mayStartSession(User user) {
+		return user.getStatus() == UserStatus.ACTIVE;
+	}
+
+	private void checkUserMayStartSession(User user) throws ApiException {
+		if (!mayStartSession(user)) {
+			throw new ApiException(ApiStatus.UNAUTHORIZED, "Not confirmed or disabled");
+		}
+	}
+
 	// Call from @Transactional method with fetched user
 	private ResponseEntity<ApiDefaultResponse> loginUser(User user) throws ApiException {
+		// Every path that mints cookies ends here, so the gate lives here too. Password reset
+		// used to reach this method with a CONFIRMED_EMAIL user and walk past the check that
+		// login applied one layer up; a future caller must not be able to repeat that.
+		checkUserMayStartSession(user);
+
 		AuthenticationToken authenticationToken = Queries.getUniqueBy(em, AuthenticationToken.class, 
 				AuthenticationToken::getUser, user);
 		String accessToken = tokenEngine.createAccessToken(user);
@@ -435,6 +456,14 @@ public class UserService extends BaseService {
         }
         confirmationToken.setStatus(Status.DISABLED);
         confirmationToken.getUser().setPassword(new BCryptPasswordEncoder().encode(request.password));
+
+        // The password is changed either way; the session is only granted to an account that could
+        // have logged in with it. An account still awaiting approval gets a plain success and has
+        // to come back through login once an administrator activates it. The frontend sends the
+        // user to /home straight after a reset, so approved users keep that flow.
+        if (!mayStartSession(confirmationToken.getUser())) {
+            return ResponseEntity.ok().body(new ApiDefaultResponse());
+        }
 		return loginUser(confirmationToken.getUser());
 	}
     
