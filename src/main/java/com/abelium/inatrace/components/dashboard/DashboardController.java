@@ -4,6 +4,7 @@ import com.abelium.inatrace.api.ApiResponse;
 import com.abelium.inatrace.api.ApiStatus;
 import com.abelium.inatrace.api.errors.ApiException;
 import com.abelium.inatrace.components.dashboard.api.*;
+import com.abelium.inatrace.security.service.CustomUserDetails;
 import com.abelium.inatrace.types.Language;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -13,6 +14,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.validation.Valid;
@@ -43,8 +45,9 @@ public class DashboardController {
             @Valid @Parameter(description = "Price determined later") @RequestParam(value = "priceDeterminedLater", required = false) Boolean priceDeterminedLater,
             @Valid @Parameter(description = "Production date range start") @RequestParam(value = "productionDateStart", required = false) LocalDate productionDateStart,
             @Valid @Parameter(description = "Production date range end") @RequestParam(value = "productionDateEnd", required = false) LocalDate productionDateEnd,
-            @Valid @Parameter(description = "Aggregation type", required = true) @RequestParam(value = "aggregationType") ApiAggregationTimeUnit aggregationType
-    ) {
+            @Valid @Parameter(description = "Aggregation type", required = true) @RequestParam(value = "aggregationType") ApiAggregationTimeUnit aggregationType,
+            @AuthenticationPrincipal CustomUserDetails authUser
+    ) throws ApiException {
         return new ApiResponse<>(dashboardService.getDeliveriesAggregatedData(
                 aggregationType,
                 new ApiDeliveriesQueryRequest(
@@ -58,7 +61,7 @@ public class DashboardController {
                         priceDeterminedLater,
                         productionDateStart,
                         productionDateEnd
-                )));
+                ), authUser));
     }
 
     @GetMapping(value = "deliveries-aggregated-data/export", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
@@ -80,7 +83,8 @@ public class DashboardController {
             @Valid @Parameter(description = "Production date range end") @RequestParam(value = "productionDateEnd", required = false) LocalDate productionDateEnd,
             @Valid @Parameter(description = "Aggregation type", required = true) @RequestParam(value = "aggregationType") ApiAggregationTimeUnit aggregationType,
             @Valid @Parameter(description = "Export type", required = true) @RequestParam(value = "exportType") ApiExportType exportType,
-            @RequestHeader(value = "language", defaultValue = "EN", required = false) Language language
+            @RequestHeader(value = "language", defaultValue = "EN", required = false) Language language,
+            @AuthenticationPrincipal CustomUserDetails authUser
     ) throws ApiException {
 
         byte[] response = null;
@@ -98,7 +102,7 @@ public class DashboardController {
                 productionDateEnd
         );
 
-        ApiDeliveriesTotal total = dashboardService.getDeliveriesAggregatedData(aggregationType, request);
+        ApiDeliveriesTotal total = dashboardService.getDeliveriesAggregatedData(aggregationType, request, authUser);
 
         try {
             switch (exportType) {
@@ -126,9 +130,10 @@ public class DashboardController {
     @PostMapping(value = "processing-performance-data")
     @Operation(summary ="Calculates processing performance data")
     public ApiResponse<ApiProcessingPerformanceTotal> calculateProcessingPerformanceData(
-            @Valid @RequestBody ApiProcessingPerformanceRequest processingPerformanceRequest
+            @Valid @RequestBody ApiProcessingPerformanceRequest processingPerformanceRequest,
+            @AuthenticationPrincipal CustomUserDetails authUser
     ) throws ApiException {
-        return new ApiResponse<>(dashboardService.calculateProcessingPerformanceData(processingPerformanceRequest));
+        return new ApiResponse<>(dashboardService.calculateProcessingPerformanceData(processingPerformanceRequest, authUser));
     }
 
     @PostMapping(value = "processing-performance-data/export", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
@@ -140,13 +145,14 @@ public class DashboardController {
     })
     public ResponseEntity<byte[]> exportProcessingPerformanceData(
             @Valid @RequestBody ApiProcessingPerformanceRequest processingPerformanceRequest,
-            @RequestHeader(value = "language", defaultValue = "EN", required = false) Language language
+            @RequestHeader(value = "language", defaultValue = "EN", required = false) Language language,
+            @AuthenticationPrincipal CustomUserDetails authUser
     ) throws ApiException {
 
         byte[] response = null;
 
         ApiProcessingPerformanceTotal total = dashboardService.calculateProcessingPerformanceData(
-                processingPerformanceRequest);
+                processingPerformanceRequest, authUser);
 
         try {
             switch (processingPerformanceRequest.getExportType()) {

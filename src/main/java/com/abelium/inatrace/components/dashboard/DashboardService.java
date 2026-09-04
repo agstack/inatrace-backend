@@ -25,6 +25,7 @@ import com.abelium.inatrace.db.entities.stockorder.Transaction;
 import com.abelium.inatrace.db.entities.stockorder.enums.OrderType;
 import com.abelium.inatrace.tools.Queries;
 import com.abelium.inatrace.tools.TranslateTools;
+import com.abelium.inatrace.security.service.CustomUserDetails;
 import com.abelium.inatrace.types.Language;
 import com.abelium.inatrace.types.ProcessingActionType;
 import com.lowagie.text.Document;
@@ -73,8 +74,38 @@ public class DashboardService extends BaseService {
         this.processingActionService = processingActionService;
     }
 
+    /**
+     * Refuses a caller asking for a company they are not enrolled in.
+     *
+     * <p>The dashboard takes the company id straight from the request, so without this check any
+     * authenticated user could read any tenant's figures by changing one number. The rule is the
+     * one the other company-scoped reads apply (stock orders, facilities, payments, transactions):
+     * enrolment in that company, with no exemption for system administrators.
+     *
+     * <p>One membership query rather than loading the company and every one of its users, and one
+     * answer -- 403 -- whether the company is foreign or does not exist, so the endpoint cannot be
+     * used to enumerate tenant ids. A missing id is a malformed request, reported as such.
+     */
+    private void checkCompanyAccess(Long companyId, CustomUserDetails authUser) throws ApiException {
+        if (companyId == null) {
+            throw new ApiException(ApiStatus.VALIDATION_ERROR, "Company id needs to be provided!");
+        }
+        Long memberships = em.createQuery(
+                        "select count(cu) from CompanyUser cu where cu.company.id = :companyId and cu.user.id = :userId",
+                        Long.class)
+                .setParameter("companyId", companyId)
+                .setParameter("userId", authUser.getUserId())
+                .getSingleResult();
+        if (memberships == 0) {
+            throw new ApiException(ApiStatus.UNAUTHORIZED, "Unknown user company!");
+        }
+    }
+
     public ApiDeliveriesTotal getDeliveriesAggregatedData(ApiAggregationTimeUnit aggregationType,
-                                                          ApiDeliveriesQueryRequest apiDeliveriesQueryRequest) {
+                                                          ApiDeliveriesQueryRequest apiDeliveriesQueryRequest,
+                                                          CustomUserDetails authUser) throws ApiException {
+
+        checkCompanyAccess(apiDeliveriesQueryRequest.companyId, authUser);
 
         CriteriaBuilder cb = em.getCriteriaBuilder();
         CriteriaQuery<Object[]> cq = cb.createQuery(Object[].class);
@@ -176,7 +207,9 @@ public class DashboardService extends BaseService {
 
 
     public ApiProcessingPerformanceTotal calculateProcessingPerformanceData(
-            ApiProcessingPerformanceRequest apiProcessingPerformanceRequest) throws ApiException {
+            ApiProcessingPerformanceRequest apiProcessingPerformanceRequest,
+            CustomUserDetails authUser) throws ApiException {
+        checkCompanyAccess(apiProcessingPerformanceRequest.getCompanyId(), authUser);
 
         CriteriaBuilder cb = em.getCriteriaBuilder();
         CriteriaQuery<Object[]> transactionQuery = cb.createQuery(Object[].class);
