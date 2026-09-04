@@ -26,7 +26,7 @@ jobs:
           cache: maven
 
       - name: Build and run tests
-        # The smoke test starts a mysql:8.4 container through Testcontainers, using
+        # The smoke test starts a mysql:8.4.11 container through Testcontainers, using
         # the Docker daemon already running on the hosted runner. No service
         # container is declared: Testcontainers owns the lifecycle.
         run: mvn -B --no-transfer-progress clean verify

@@ -50,7 +50,7 @@ class ContextBootSmokeTest {
 	 */
 	@Container
 	@ServiceConnection
-	static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4");
+	static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4.11");
 
 	@Autowired
 	private ApplicationContext context;

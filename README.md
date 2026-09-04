@@ -43,7 +43,7 @@ For detailed technical documentation, please refer to [TECHNICAL_DOCUMENTATION.m
 ### Requirements
 * Java `17` or higher
 * Maven `3.8.5`
-* MySQL `8.4.6`
+* MySQL `8.4.11`
 
 ### Optional
 * Docker
@@ -66,7 +66,7 @@ For detailed technical documentation, please refer to [TECHNICAL_DOCUMENTATION.m
 Spin up a container:
 
 ```
-docker run --name inatrace-mysql -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=inatrace -e MYSQL_USER=inatrace -e MYSQL_PASSWORD=inatrace -p 3306:3306 -d mysql:8.4.6
+docker run --name inatrace-mysql -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=inatrace -e MYSQL_USER=inatrace -e MYSQL_PASSWORD=inatrace -p 3306:3306 -d mysql:8.4.11
 ```
 
 Tables will be created and prefilled with starter data on application startup.
@@ -347,7 +347,7 @@ The service exposes methods `convert` and `convertAtDate` to convert between any
 ## Database
 
 ### Version
-MySQL `8.4.6`
+MySQL `8.4.11`
 
 ### Connection
 
