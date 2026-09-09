@@ -277,8 +277,8 @@ public class CompanyService extends BaseService {
 				throw new ApiException(ApiStatus.UNAUTHORIZED, "Regional admin not authorized!");
 			}
 
-		} else if (authUser.getUserRole() != UserRole.SYSTEM_ADMIN) {
-			isCompanyAdmin(authUser, c.getId());
+		} else if (authUser.getUserRole() != UserRole.SYSTEM_ADMIN && !isCompanyAdmin(authUser, c.getId())) {
+			throw new ApiException(ApiStatus.UNAUTHORIZED, "User doesn't have required permission!");
 		}
 
 		switch (action) {
