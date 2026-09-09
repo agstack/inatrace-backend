@@ -59,7 +59,7 @@ spring.flyway.validate-on-migrate = false
 spring.flyway.check-location = false
 spring.flyway.table = schema_version
 spring.flyway.ignore-missing-migrations = true
-spring.flyway.locations = com.abelium.inatrace.db.migrations,classpath:/db/migrations
+spring.flyway.locations = classpath:com/abelium/inatrace/db/migrations,classpath:/db/migrations
 
 spring.jackson.serialization.write-dates-as-timestamps = false
 spring.jackson.serialization.write-date-timestamps-as-nanoseconds = false

@@ -21,6 +21,7 @@ import org.springframework.core.env.Environment;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 
@@ -58,29 +59,26 @@ public class JpaMigrationResolver implements MigrationResolver {
     public Collection<ResolvedMigration> resolveMigrations(Context context) {
         List<ResolvedMigration> migrations = new ArrayList<>();
 
-        for (Location location : locations) {
-            if (!location.isClassPath()) {
-                continue;
+        try {
+
+            // NOTE: the Scanner resolves classpath package locations against the Configuration it is given,
+            // not against the `locations` array above - it must be passed in explicitly here, otherwise it
+            // silently falls back to Flyway's default location ("classpath:db/migration") and finds nothing.
+            Collection<Class<? extends JpaMigration>> classes = new Scanner<>(
+                    JpaMigration.class,
+                    true,
+                    new ResourceNameCache(),
+                    new LocationScannerCache(),
+                    new FluentConfiguration(classLoader).locations(locations).encoding(StandardCharsets.UTF_8)
+            ).getClasses();
+
+            for (Class<?> clazz : classes) {
+                JpaMigration migration = ClassUtils.instantiate(clazz.getName(), classLoader);
+                ResolvedMigrationImpl migrationInfo = extractMigrationInfo(migration, clazz);
+                migrations.add(migrationInfo);
             }
-
-            try {
-
-                Collection<Class<? extends JpaMigration>> classes = new Scanner<>(
-                        JpaMigration.class,
-                        true,
-                        new ResourceNameCache(),
-                        new LocationScannerCache(),
-                        new FluentConfiguration(classLoader).encoding(StandardCharsets.UTF_8)
-                ).getClasses();
-
-                for (Class<?> clazz : classes) {
-                    JpaMigration migration = ClassUtils.instantiate(clazz.getName(), classLoader);
-                    ResolvedMigrationImpl migrationInfo = extractMigrationInfo(migration, clazz);
-                    migrations.add(migrationInfo);
-                }
-            } catch (Exception e) {
-                throw new FlywayException("Unable to resolve Custom JPA migrations in location: " + location, e);
-            }
+        } catch (Exception e) {
+            throw new FlywayException("Unable to resolve Custom JPA migrations in locations: " + Arrays.toString(locations), e);
         }
 
         migrations.sort(new ResolvedMigrationComparator());
