@@ -54,6 +54,8 @@ import org.torpedoquery.jakarta.jpa.Torpedo;
 import org.torpedoquery.jakarta.jpa.Function;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
@@ -80,6 +82,13 @@ public class CompanyService extends BaseService {
 
 	@Autowired
 	private MessageSource messageSource;
+
+	/**
+	 * Number of decimal places stored coordinates are rounded to. Six decimals is ~0.1 m at the
+	 * equator, well past GPS accuracy, and keeps the values stable across the export/import round
+	 * trip instead of drifting in the last digits.
+	 */
+	private static final int COORDINATE_DECIMAL_PLACES = 6;
 
 	private Company companyListQueryObject(ApiListCompaniesRequest request) {
 		Company cProxy = Torpedo.from(Company.class);
@@ -879,8 +888,8 @@ public class CompanyService extends BaseService {
 
 		UserCustomerLocation userCustomerLocation = new UserCustomerLocation();
 		if (apiUserCustomer.getLocation() != null) {
-			userCustomerLocation.setLatitude(apiUserCustomer.getLocation().getLatitude());
-			userCustomerLocation.setLongitude(apiUserCustomer.getLocation().getLongitude());
+			userCustomerLocation.setLatitude(roundCoordinate(apiUserCustomer.getLocation().getLatitude()));
+			userCustomerLocation.setLongitude(roundCoordinate(apiUserCustomer.getLocation().getLongitude()));
 			userCustomerLocation.setPubliclyVisible(apiUserCustomer.getLocation().getPubliclyVisible());
 			if (apiUserCustomer.getLocation().getAddress() != null) {
 				userCustomerLocation.setAddress(new Address());
@@ -978,8 +987,8 @@ public class CompanyService extends BaseService {
 
 				for (ApiPlotCoordinate apiPlotCoordinate : apiPlot.getCoordinates()) {
 					PlotCoordinate plotCoordinate = new PlotCoordinate();
-					plotCoordinate.setLatitude(apiPlotCoordinate.getLatitude());
-					plotCoordinate.setLongitude(apiPlotCoordinate.getLongitude());
+					plotCoordinate.setLatitude(roundCoordinate(apiPlotCoordinate.getLatitude()));
+					plotCoordinate.setLongitude(roundCoordinate(apiPlotCoordinate.getLongitude()));
 					plotCoordinate.setPlot(plot);
 					plot.getCoordinates().add(plotCoordinate);
 
@@ -1059,8 +1068,8 @@ public class CompanyService extends BaseService {
 		Country country = getCountry(apiUserCustomer.getLocation().getAddress().getCountry().getId());
 		userCustomer.getUserCustomerLocation().getAddress().setCountry(country);
 
-		userCustomer.getUserCustomerLocation().setLatitude(apiUserCustomer.getLocation().getLatitude());
-		userCustomer.getUserCustomerLocation().setLongitude(apiUserCustomer.getLocation().getLongitude());
+		userCustomer.getUserCustomerLocation().setLatitude(roundCoordinate(apiUserCustomer.getLocation().getLatitude()));
+		userCustomer.getUserCustomerLocation().setLongitude(roundCoordinate(apiUserCustomer.getLocation().getLongitude()));
 		userCustomer.getUserCustomerLocation().setPubliclyVisible(apiUserCustomer.getLocation().getPubliclyVisible());
 
 		// Set product types
@@ -1125,8 +1134,8 @@ public class CompanyService extends BaseService {
 						.findFirst()
 						.orElse(new PlotCoordinate());
 
-				plotCoordinate.setLatitude(apiPlotCoordinate.getLatitude());
-				plotCoordinate.setLongitude(apiPlotCoordinate.getLongitude());
+				plotCoordinate.setLatitude(roundCoordinate(apiPlotCoordinate.getLatitude()));
+				plotCoordinate.setLongitude(roundCoordinate(apiPlotCoordinate.getLongitude()));
 
 				if (plotCoordinate.getId() == null) {
 					plotCoordinate.setPlot(plot);
@@ -1348,8 +1357,8 @@ public class CompanyService extends BaseService {
 
 		for (ApiPlotCoordinate apiPlotCoordinate : request.getCoordinates()) {
 			PlotCoordinate plotCoordinate = new PlotCoordinate();
-			plotCoordinate.setLatitude(apiPlotCoordinate.getLatitude());
-			plotCoordinate.setLongitude(apiPlotCoordinate.getLongitude());
+			plotCoordinate.setLatitude(roundCoordinate(apiPlotCoordinate.getLatitude()));
+			plotCoordinate.setLongitude(roundCoordinate(apiPlotCoordinate.getLongitude()));
 			plotCoordinate.setPlot(plot);
 			plot.getCoordinates().add(plotCoordinate);
 		}
@@ -1382,6 +1391,21 @@ public class CompanyService extends BaseService {
 		}
 
 		return PlotMapper.toApiPlot(plot, language);
+	}
+
+	/**
+	 * Rounds a stored coordinate to {@link #COORDINATE_DECIMAL_PLACES} decimal places. Applied to
+	 * every coordinate before it is persisted, so that the plot GeoID - which is generated from the
+	 * persisted coordinates - matches the ring that is actually stored.
+	 *
+	 * @param value coordinate to round, may be null
+	 * @return the rounded value, or null if the input was null
+	 */
+	private static Double roundCoordinate(Double value) {
+		if (value == null) {
+			return null;
+		}
+		return BigDecimal.valueOf(value).setScale(COORDINATE_DECIMAL_PLACES, RoundingMode.HALF_UP).doubleValue();
 	}
 
 	private String generatePlotGeoID(List<PlotCoordinate> coordinatesSet) {
