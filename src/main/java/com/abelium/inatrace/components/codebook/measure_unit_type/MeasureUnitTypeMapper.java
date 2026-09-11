@@ -3,6 +3,9 @@ package com.abelium.inatrace.components.codebook.measure_unit_type;
 import com.abelium.inatrace.components.codebook.measure_unit_type.api.ApiMeasureUnitType;
 import com.abelium.inatrace.db.entities.codebook.MeasureUnitType;
 
+import java.util.HashSet;
+import java.util.Set;
+
 /**
  * Mapper for MeasureUnitType entity.
  *
@@ -37,10 +40,29 @@ public final class MeasureUnitTypeMapper {
 	 * @return API model entity.
 	 */
 	public static ApiMeasureUnitType toApiMeasureUnitType(MeasureUnitType entity) {
+		return toApiMeasureUnitType(entity, new HashSet<>());
+	}
 
+	/**
+	 * Internal method with visited tracking to prevent infinite recursion.
+	 *
+	 * @param entity DB entity.
+	 * @param visited Set of already processed entity IDs to prevent cycles.
+	 * @return API model entity.
+	 */
+	private static ApiMeasureUnitType toApiMeasureUnitType(MeasureUnitType entity, Set<Long> visited) {
 		if (entity == null) {
 			return null;
 		}
+
+		// Prevent infinite recursion by checking if we've already processed this entity
+		if (visited.contains(entity.getId())) {
+			// Return a minimal version without the recursive relationship
+			return toApiMeasureUnitTypeBase(entity);
+		}
+
+		// Mark this entity as being processed
+		visited.add(entity.getId());
 
 		ApiMeasureUnitType apiMeasureUnitType = MeasureUnitTypeMapper.toApiMeasureUnitTypeBase(entity);
 
@@ -48,7 +70,7 @@ public final class MeasureUnitTypeMapper {
 
 		if (entity.getUnderlyingMeasurementUnitType() != null) {
 			apiMeasureUnitType.setUnderlyingMeasurementUnitType(
-					MeasureUnitTypeMapper.toApiMeasureUnitType(entity.getUnderlyingMeasurementUnitType()));
+					MeasureUnitTypeMapper.toApiMeasureUnitType(entity.getUnderlyingMeasurementUnitType(), visited));
 		}
 
 		return apiMeasureUnitType;
