@@ -313,13 +313,33 @@ public class CompanyService extends BaseService {
 		return companyApiTools.toApiUserCustomer(userCustomer, user.getUserId(), language);
 	}
 
+	/**
+	 * Whether the farmer being imported already exists in the same company.
+	 *
+	 * <p>A farmer matches on the company's own internal id when one is supplied, and otherwise on
+	 * name, surname and city. City replaces village because village is very often left blank in
+	 * submitted spreadsheets, which made every such row look new and duplicated the farmer on each
+	 * import. Both queries are scoped to the company, so an unrelated tenant's farmer of the same
+	 * name is not treated as a duplicate.
+	 */
 	public boolean existsUserCustomer(ApiUserCustomer apiUserCustomer) {
-		List<UserCustomer> userCustomerList = em.createNamedQuery("UserCustomer.getUserCustomerByNameSurnameAndVillage", UserCustomer.class)
+
+		if (StringUtils.isNotBlank(apiUserCustomer.getFarmerCompanyInternalId())
+				&& !em.createNamedQuery("UserCustomer.getUserCustomerByCompanyAndInternalId", UserCustomer.class)
+						.setParameter("companyId", apiUserCustomer.getCompanyId())
+						.setParameter("internalId", apiUserCustomer.getFarmerCompanyInternalId())
+						.getResultList()
+						.isEmpty()) {
+			return true;
+		}
+
+		return !em.createNamedQuery("UserCustomer.getUserCustomerByNameSurnameAndCity", UserCustomer.class)
+				.setParameter("companyId", apiUserCustomer.getCompanyId())
 				.setParameter("name", apiUserCustomer.getName())
 				.setParameter("surname", apiUserCustomer.getSurname())
-				.setParameter("village", apiUserCustomer.getLocation().getAddress().getVillage())
-				.getResultList();
-		return !userCustomerList.isEmpty();
+				.setParameter("city", apiUserCustomer.getLocation().getAddress().getCity())
+				.getResultList()
+				.isEmpty();
 	}
 
 	public ApiPaginatedList<ApiUserCustomer> getUserCustomersForCompanyAndType(Long companyId,
