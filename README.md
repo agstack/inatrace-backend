@@ -1,37 +1,13 @@
 # INATrace
 
-Open-source blockchain-based track and trace system for an agricultural commodities (such as coffee) supply
-chain run. It provides transparency and creation of trust through
-digitalization of supply chains, connects every actor along the supply chain, assures quality and fair pricing.
+INATrace is a digital open-source solution designed to enhance the economic conditions of smallholder farmers by improving the traceability of global supply chains. Funded by the German Federal Ministry for Economic Cooperation and Development (BMZ) and implemented by GIZ, INATrace provides an efficient internal management system for cooperatives, digitally stores supply chain data, and supports compliance with regulations like the EU Deforestation Regulation (EUDR).
 
-Project is composed of 4 parts:
+Project is composed of 4 parts, coordinated from the [INATrace project hub](https://github.com/agstack/inatrace) (project-wide documentation and governance):
 
-* [Frontend application](https://github.com/INATrace/fe/tree/main)
-* [Mobile app](https://github.com/INATrace/mobile/tree/main)
-* [Java backend](https://github.com/INATrace/backend/tree/main)
-* [Coffee network](https://github.com/INATrace/coffee-network/tree/main)
-
-# INATrace 2
-This new major release includes new functionalities, refactorings, optimizations and bugfixes. The most important additions and changes are:
-* Added support for generic value chains. Different value chains with their specific settings can now be configured in the system.
-* Multi-tenant system support.
-* Reorganized the content in the Product section. This section now includes only the content that is related to a product.
-* Introduced a new section "Company". This section includes all the content that is related to the company's work process within the value chain.
-* The configuration of farmers and collectors is decoupled from the product, and it's part of the Company section.
-* Added support for importing farmers from a provided Excel file.
-* The company customers are now decoupled from the Stakeholders in the product section and are configured as part of the Company section.
-* The configuration of facilities and processing actions is now part of the company's profile.
-* The semi-products configuration is now part of the system settings instead of the product section.
-* Reorganized the content of the Value chain tab inside the Stakeholders section. The Value chain now includes new company roles. Added is also a section for product admin companies.
-* Added support for defining Processing evidence fields in the system settings.
-* Translation for facilities, processing actions, semi-products and processing evidence types and fields can be provided in the system as part of its definition.
-* Added support for currencies in the system. The enabled currencies can be selected in the system settings. These currencies then appear as select options in various parts of the system where the user is expected to select a currency.
-* Added exchange rates for the enabled currencies that are synced daily. The currencies data is provided by the https://exchangeratesapi.io/ API.
-* The product section now includes Final products. Final products represent the output of final processing. The final products can be configured by the product admin company.
-* When placing a customer order, now we select a final product instead of a sellable semi-product.
-* Added support for new types of processing actions.
-* Added support for bulk purchases for semi-products.
-* Various changes and addition of new functionalities for purchases, processing and payments.
+* [Frontend application](https://github.com/agstack/inatrace-frontend)
+* [Mobile app](https://github.com/agstack/inatrace-mobile)
+* [Java backend](https://github.com/agstack/inatrace-backend)
+* [Coffee network](https://github.com/agstack/inatrace-coffee-network)
 
 # Technical Documentation
 For detailed technical documentation, please refer to [TECHNICAL_DOCUMENTATION.md](TECHNICAL_DOCUMENTATION.md).
@@ -177,7 +153,7 @@ When accessing secured endpoints, the token has to be provided in the `Cookie` r
 
 ### Endpoints
 
-A complete list of endpoints is available [here](https://github.com/INATrace/backend/tree/main/src/main/java/com/abelium/inatrace/components).
+A complete list of endpoints is available [here](https://github.com/agstack/inatrace-backend/tree/main/src/main/java/com/abelium/inatrace/components).
 
 ### Common requests
 
@@ -299,7 +275,7 @@ Response:
 ```
 
 Response is structured in the following way:
-It always contains attribute [`status`](https://github.com/INATrace/backend/blob/main/src/main/java/com/abelium/INATrace/api/ApiStatus.java).
+It always contains attribute [`status`](https://github.com/agstack/inatrace-backend/blob/main/src/main/java/com/abelium/inatrace/api/ApiStatus.java).
 If response is successful, then `status` is equal to 'OK' and appropriate response can be found under `data` attribute.
 If response is unsuccessful (see the above link for other statuses), then `errorMessage` attribute is returned.
 
@@ -364,7 +340,7 @@ If you are using a database management tool, use the following parameters to cre
 
 ### Entities
 
-A complete list of entities is available [here](https://github.com/INATrace/backend/tree/main/src/main/java/com/abelium/inatrace/db).
+A complete list of entities is available [here](https://github.com/agstack/inatrace-backend/tree/main/src/main/java/com/abelium/inatrace/db).
 
 Below is the entity graph for an initialized INATrace database. The full-sized vector image can be found [here](docs/images/inatrace_db.svg).
 
@@ -448,6 +424,7 @@ To build and tag a Docker image run `docker-build.sh` in the project root direct
 ## Contribution
 
 Project INATrace welcomes contribution from everyone. See CONTRIBUTING.md for help getting started.
+Questions and discussion go to the [INATrace mailing list](https://lists.agstack.org/g/inatrace).
 
 ## License 
 
