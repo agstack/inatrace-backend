@@ -1,8 +1,19 @@
 package com.abelium.inatrace.components.company;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -13,8 +24,9 @@ import java.util.regex.Pattern;
  * formats are recognised and auto-detected (first match wins):</p>
  *
  * <ol>
- *     <li><b>WKT</b> - {@code POLYGON((...))}, {@code POINT(...)} or {@code MULTIPOLYGON(((...)))},
- *         in the {@code lat lon} order the import template documents.</li>
+ *     <li><b>WKT</b> - {@code POLYGON((...))}, {@code POINT(...)} or {@code MULTIPOLYGON(((...)))}.
+ *         The import template documents {@code lat lon}, but real OGC WKT from QGIS/PostGIS is
+ *         {@code lon lat}; see {@link #orientPoints}.</li>
  *     <li><b>ODK / KoboToolbox geoshape, geotrace and geopoint</b> - {@code lat lon alt accuracy}
  *         per point, points separated by {@code ;}. Altitude and accuracy are validated then
  *         discarded.</li>
@@ -24,6 +36,8 @@ import java.util.regex.Pattern;
  * import path and {@code ApiPlotCoordinate} use.</p>
  */
 public final class GeoDataParser {
+
+	private static final Logger logger = LoggerFactory.getLogger(GeoDataParser.class);
 
 	public enum GeoDataType {
 		POLYGON,
@@ -164,13 +178,41 @@ public final class GeoDataParser {
 	}
 
 	/**
-	 * Reads a WKT coordinate list as {@code lat lon}, the order this import template has always
-	 * documented, and validates it strictly. The country code is accepted so that a later
-	 * disambiguation of the {@code lon lat} order real OGC WKT uses can slot in here.
+	 * Decides whether a WKT coordinate list is {@code lat lon} - the order this import template has
+	 * always documented - or {@code lon lat}, the order real OGC WKT uses.
+	 *
+	 * <p>Around the equator both readings are usually inside the valid global ranges, so ranges
+	 * alone cannot decide. The order is only flipped on positive evidence: the row's declared
+	 * country is known, {@code lat lon} puts the plot outside that country, and {@code lon lat}
+	 * puts it inside. Otherwise the documented {@code lat lon} reading is kept and validated
+	 * strictly, so no file that imports today changes meaning or starts being rejected.</p>
 	 */
 	private static List<double[]> orientPoints(List<double[]> pairs, String countryCode) {
 
+		double[] bbox = countryBoundingBox(countryCode);
+		if (bbox != null) {
+			boolean latLonFits = allInside(pairs, bbox, false);
+			boolean lonLatFits = allInside(pairs, bbox, true);
+
+			if (lonLatFits && !latLonFits) {
+				logger.debug("Reading WKT coordinates as lon/lat: lat/lat order falls outside country {}",
+						countryCode);
+				return validated(swap(pairs));
+			}
+			if (latLonFits && !lonLatFits) {
+				return validated(copy(pairs));
+			}
+		}
+
 		return validated(copy(pairs));
+	}
+
+	private static List<double[]> swap(List<double[]> pairs) {
+		List<double[]> swapped = new ArrayList<>(pairs.size());
+		for (double[] pair : pairs) {
+			swapped.add(new double[] { pair[1], pair[0] });
+		}
+		return swapped;
 	}
 
 	private static List<double[]> copy(List<double[]> pairs) {
@@ -340,5 +382,70 @@ public final class GeoDataParser {
 			return label;
 		}
 		return label == null ? String.valueOf(index + 1) : label + "-" + (index + 1);
+	}
+
+	// ---------------------------------------------------------------- country bounding boxes
+
+	private static final String COUNTRY_BBOX_RESOURCE = "/geo/country-bboxes.csv";
+
+	/** Margin in degrees allowed around a country's bounding box before a point counts as outside. */
+	private static final double BBOX_MARGIN_DEGREES = 0.5;
+
+	private static final Map<String, double[]> COUNTRY_BBOXES = loadCountryBoundingBoxes();
+
+	private static Map<String, double[]> loadCountryBoundingBoxes() {
+
+		Map<String, double[]> boxes = new HashMap<>();
+
+		try (InputStream in = GeoDataParser.class.getResourceAsStream(COUNTRY_BBOX_RESOURCE)) {
+			if (in == null) {
+				logger.warn("{} not found; WKT axis order will not be disambiguated by country",
+						COUNTRY_BBOX_RESOURCE);
+				return Collections.emptyMap();
+			}
+			BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
+			String line;
+			while ((line = reader.readLine()) != null) {
+				if (line.isBlank() || line.startsWith("#") || line.startsWith("iso2")) {
+					continue;
+				}
+				String[] fields = line.split(",");
+				if (fields.length != 5) {
+					continue;
+				}
+				boxes.put(fields[0].trim().toUpperCase(Locale.ROOT), new double[] {
+						Double.parseDouble(fields[1].trim()),
+						Double.parseDouble(fields[2].trim()),
+						Double.parseDouble(fields[3].trim()),
+						Double.parseDouble(fields[4].trim())
+				});
+			}
+		} catch (IOException | RuntimeException e) {
+			logger.warn("Could not read {}; WKT axis order will not be disambiguated by country",
+					COUNTRY_BBOX_RESOURCE, e);
+			return Collections.emptyMap();
+		}
+
+		return boxes;
+	}
+
+	/** @return {@code {minLat, minLon, maxLat, maxLon}}, or {@code null} when the country is unknown */
+	private static double[] countryBoundingBox(String countryCode) {
+		if (countryCode == null || countryCode.isBlank()) {
+			return null;
+		}
+		return COUNTRY_BBOXES.get(countryCode.trim().toUpperCase(Locale.ROOT));
+	}
+
+	private static boolean allInside(List<double[]> pairs, double[] bbox, boolean swapped) {
+		for (double[] pair : pairs) {
+			double lat = swapped ? pair[1] : pair[0];
+			double lon = swapped ? pair[0] : pair[1];
+			if (lat < bbox[0] - BBOX_MARGIN_DEGREES || lat > bbox[2] + BBOX_MARGIN_DEGREES
+					|| lon < bbox[1] - BBOX_MARGIN_DEGREES || lon > bbox[3] + BBOX_MARGIN_DEGREES) {
+				return false;
+			}
+		}
+		return true;
 	}
 }

@@ -104,6 +104,36 @@ class GeoDataParserTest {
 		assertThrows(IllegalArgumentException.class, () -> GeoDataParser.parse("POINT(1 2, 3 4)", null));
 	}
 
+	// ------------------------------------------------------------------ WKT axis order
+
+	@Test
+	void standardLonLatWkt_isDetectedFromTheDeclaredCountry() {
+		// QGIS/PostGIS order: longitude first. Read as lat/lon this plot would sit west of Cameroon.
+		List<GeoDataParser.ParsedPlot> plots = GeoDataParser.parse(
+				"POLYGON((10.2352433 5.1717367, 10.235235 5.1718067, 10.2352027 5.1719302))", "CM");
+
+		assertEquals(5.1717367, plots.get(0).getPoints().get(0)[0], 1e-9, "latitude");
+		assertEquals(10.2352433, plots.get(0).getPoints().get(0)[1], 1e-9, "longitude");
+	}
+
+	@Test
+	void documentedLatLonWkt_isKeptWhenItFitsTheCountry() {
+		List<GeoDataParser.ParsedPlot> plots = GeoDataParser.parse(
+				"POLYGON((5.1717367 10.2352433, 5.1718067 10.235235, 5.1719302 10.2352027))", "CM");
+
+		assertEquals(5.1717367, plots.get(0).getPoints().get(0)[0], 1e-9, "latitude");
+		assertEquals(10.2352433, plots.get(0).getPoints().get(0)[1], 1e-9, "longitude");
+	}
+
+	@Test
+	void withoutAKnownCountry_theDocumentedLatLonOrderIsKept() {
+		// No country, so no evidence to flip on: 10.23 stays the latitude.
+		List<GeoDataParser.ParsedPlot> plots = GeoDataParser.parse(
+				"POLYGON((10.2352433 5.1717367, 10.235235 5.1718067, 10.2352027 5.1719302))", "ZZ");
+
+		assertEquals(10.2352433, plots.get(0).getPoints().get(0)[0], 1e-9, "latitude");
+	}
+
 	// ------------------------------------------------------------------ ODK / Kobo geoshape
 
 	@Test
