@@ -1,5 +1,16 @@
 package com.abelium.inatrace.components.company;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mapbox.geojson.Feature;
+import com.mapbox.geojson.FeatureCollection;
+import com.mapbox.geojson.Geometry;
+import com.mapbox.geojson.GeometryCollection;
+import com.mapbox.geojson.LineString;
+import com.mapbox.geojson.MultiPolygon;
+import com.mapbox.geojson.Point;
+import com.mapbox.geojson.Polygon;
+import com.mapbox.geojson.gson.GeometryGeoJson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,6 +35,9 @@ import java.util.regex.Pattern;
  * formats are recognised and auto-detected (first match wins):</p>
  *
  * <ol>
+ *     <li><b>GeoJSON</b> - a {@code Geometry}, {@code Feature} or {@code FeatureCollection}
+ *         object, or a bare {@code coordinates} array. RFC 7946 fixes the axis order at
+ *         {@code [longitude, latitude]}.</li>
  *     <li><b>WKT</b> - {@code POLYGON((...))}, {@code POINT(...)} or {@code MULTIPOLYGON(((...)))}.
  *         The import template documents {@code lat lon}, but real OGC WKT from QGIS/PostGIS is
  *         {@code lon lat}; see {@link #orientPoints}.</li>
@@ -97,6 +111,10 @@ public final class GeoDataParser {
 
 		String trimmed = raw.trim();
 
+		if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+			return parseGeoJson(trimmed);
+		}
+
 		if (WKT_PREFIX.matcher(trimmed).find()) {
 			return parseWkt(trimmed, countryCode);
 		}
@@ -104,7 +122,143 @@ public final class GeoDataParser {
 		return parseOdk(trimmed);
 	}
 
-	// ---------------------------------------------------------------- WKT (rule 1)
+	// ---------------------------------------------------------------- GeoJSON (rule 1)
+
+	private static final ObjectMapper JSON = new ObjectMapper();
+
+	private static List<ParsedPlot> parseGeoJson(String raw) {
+
+		JsonNode root;
+		try {
+			root = JSON.readTree(raw);
+		} catch (IOException e) {
+			throw new IllegalArgumentException("Not valid JSON: " + e.getMessage(), e);
+		}
+
+		// A bare coordinates array, as pasted out of a GeoJSON "coordinates" member.
+		if (root.isArray()) {
+			return List.of(new ParsedPlot(null, GeoDataType.POLYGON, ringFromCoordinatesArray(root)));
+		}
+
+		JsonNode typeNode = root.get("type");
+		if (typeNode == null || !typeNode.isTextual()) {
+			throw new IllegalArgumentException("GeoJSON object has no \"type\" member");
+		}
+		String type = typeNode.asText();
+
+		try {
+			switch (type) {
+				case "Feature":
+					return requireNonEmpty(plotsFromGeometry(Feature.fromJson(raw).geometry(), null));
+				case "FeatureCollection": {
+					List<ParsedPlot> plots = new ArrayList<>();
+					List<Feature> features = FeatureCollection.fromJson(raw).features();
+					if (features != null) {
+						for (Feature feature : features) {
+							plots.addAll(plotsFromGeometry(feature.geometry(), null));
+						}
+					}
+					return requireNonEmpty(plots);
+				}
+				default:
+					return requireNonEmpty(plotsFromGeometry(GeometryGeoJson.fromJson(raw), null));
+			}
+		} catch (IllegalArgumentException e) {
+			throw e;
+		} catch (RuntimeException e) {
+			throw new IllegalArgumentException("Unreadable GeoJSON " + type + ": " + e.getMessage(), e);
+		}
+	}
+
+	private static List<ParsedPlot> plotsFromGeometry(Geometry geometry, String label) {
+
+		if (geometry == null) {
+			return List.of();
+		}
+
+		if (geometry instanceof Point point) {
+			return List.of(new ParsedPlot(label, GeoDataType.POINT,
+					validated(List.of(latLon(point)))));
+		}
+		if (geometry instanceof Polygon polygon) {
+			return List.of(polygonPlot(label, outerRing(polygon)));
+		}
+		if (geometry instanceof LineString lineString) {
+			// A traced boundary that was never closed into a polygon.
+			return List.of(polygonPlot(label, pointsOf(lineString.coordinates())));
+		}
+		if (geometry instanceof MultiPolygon multiPolygon) {
+			List<ParsedPlot> plots = new ArrayList<>();
+			List<Polygon> polygons = multiPolygon.polygons();
+			if (polygons != null) {
+				for (int i = 0; i < polygons.size(); i++) {
+					plots.add(polygonPlot(labelIndexed(label, i, polygons.size()), outerRing(polygons.get(i))));
+				}
+			}
+			return plots;
+		}
+		if (geometry instanceof GeometryCollection collection) {
+			List<ParsedPlot> plots = new ArrayList<>();
+			List<Geometry> geometries = collection.geometries();
+			if (geometries != null) {
+				for (Geometry inner : geometries) {
+					plots.addAll(plotsFromGeometry(inner, label));
+				}
+			}
+			return plots;
+		}
+
+		throw new IllegalArgumentException("Unsupported GeoJSON geometry type: " + geometry.type());
+	}
+
+	private static List<double[]> outerRing(Polygon polygon) {
+		List<List<Point>> rings = polygon.coordinates();
+		if (rings == null || rings.isEmpty()) {
+			throw new IllegalArgumentException("GeoJSON Polygon has no ring");
+		}
+		// Interior rings (holes) are dropped - a plot is stored as a single boundary.
+		return pointsOf(rings.get(0));
+	}
+
+	private static List<double[]> pointsOf(List<Point> points) {
+		List<double[]> result = new ArrayList<>();
+		if (points != null) {
+			for (Point point : points) {
+				result.add(latLon(point));
+			}
+		}
+		return result;
+	}
+
+	private static double[] latLon(Point point) {
+		return new double[] { point.latitude(), point.longitude() };
+	}
+
+	/** Reads {@code [[lon,lat],...]} or {@code [[[lon,lat],...]]} into a single ring. */
+	private static List<double[]> ringFromCoordinatesArray(JsonNode array) {
+
+		if (array.isEmpty()) {
+			throw new IllegalArgumentException("Empty coordinates array");
+		}
+
+		JsonNode first = array.get(0);
+		if (first.isArray() && !first.isEmpty() && first.get(0).isArray()) {
+			// Nested one level deeper: a list of rings, of which we keep the outer one.
+			return ringFromCoordinatesArray(first);
+		}
+
+		List<double[]> points = new ArrayList<>();
+		for (JsonNode node : array) {
+			if (!node.isArray() || node.size() < 2 || !node.get(0).isNumber() || !node.get(1).isNumber()) {
+				throw new IllegalArgumentException("Expected [longitude, latitude] pairs in coordinates array");
+			}
+			// RFC 7946: coordinates are [longitude, latitude].
+			points.add(new double[] { node.get(1).asDouble(), node.get(0).asDouble() });
+		}
+		return validated(points);
+	}
+
+	// ---------------------------------------------------------------- WKT (rule 2)
 
 	private static List<ParsedPlot> parseWkt(String raw, String countryCode) {
 
@@ -280,7 +434,7 @@ public final class GeoDataParser {
 		return groups;
 	}
 
-	// ---------------------------------------------------------------- ODK / Kobo (rule 2)
+	// ---------------------------------------------------------------- ODK / Kobo (rule 3)
 
 	/**
 	 * Parses the ODK / KoboToolbox geoshape, geotrace and geopoint syntax:
