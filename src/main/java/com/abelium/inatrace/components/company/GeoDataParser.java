@@ -41,6 +41,8 @@ import java.util.regex.Pattern;
  *     <li><b>WKT</b> - {@code POLYGON((...))}, {@code POINT(...)} or {@code MULTIPOLYGON(((...)))}.
  *         The import template documents {@code lat lon}, but real OGC WKT from QGIS/PostGIS is
  *         {@code lon lat}; see {@link #orientPoints}.</li>
+ *     <li><b>Labelled multi-plot</b> - {@code P1(<geometry>)P2(<geometry>)}, one plot per label,
+ *         where each body is itself any of the other formats.</li>
  *     <li><b>ODK / KoboToolbox geoshape, geotrace and geopoint</b> - {@code lat lon alt accuracy}
  *         per point, points separated by {@code ;}. Altitude and accuracy are validated then
  *         discarded.</li>
@@ -94,6 +96,9 @@ public final class GeoDataParser {
 	private static final Pattern WKT_PREFIX = Pattern.compile(
 			"^(POLYGON|POINT|MULTIPOLYGON)\\s*\\(", Pattern.CASE_INSENSITIVE);
 
+	private static final Pattern LABELLED_PLOT_START = Pattern.compile(
+			"P(\\d+)\\s*\\(", Pattern.CASE_INSENSITIVE);
+
 	/**
 	 * Parses a Geo Data cell value into one plot per geometry it contains.
 	 *
@@ -115,8 +120,14 @@ public final class GeoDataParser {
 			return parseGeoJson(trimmed);
 		}
 
+		// Checked before the labelled form so that POINT( and POLYGON( can never be mistaken for a
+		// P<n>( plot label.
 		if (WKT_PREFIX.matcher(trimmed).find()) {
 			return parseWkt(trimmed, countryCode);
+		}
+
+		if (LABELLED_PLOT_START.matcher(trimmed).lookingAt()) {
+			return parseLabelled(trimmed, countryCode);
 		}
 
 		return parseOdk(trimmed);
@@ -434,7 +445,60 @@ public final class GeoDataParser {
 		return groups;
 	}
 
-	// ---------------------------------------------------------------- ODK / Kobo (rule 3)
+	// ---------------------------------------------------------------- labelled multi-plot (rule 3)
+
+	private static List<ParsedPlot> parseLabelled(String raw, String countryCode) {
+
+		List<ParsedPlot> plots = new ArrayList<>();
+		Matcher matcher = LABELLED_PLOT_START.matcher(raw);
+		int index = 0;
+
+		while (index < raw.length()) {
+			if (Character.isWhitespace(raw.charAt(index))) {
+				index++;
+				continue;
+			}
+
+			matcher.region(index, raw.length());
+			if (!matcher.lookingAt()) {
+				throw new IllegalArgumentException("Expected a P<n>(...) plot at: " + raw.substring(index));
+			}
+
+			String label = "P" + matcher.group(1);
+			int open = matcher.end() - 1;
+			int close = matchingClose(raw, open);
+			String body = raw.substring(open + 1, close).trim();
+
+			if (body.isEmpty()) {
+				throw new IllegalArgumentException("Plot " + label + " has no geo data");
+			}
+			for (ParsedPlot plot : parse(body, countryCode)) {
+				plots.add(new ParsedPlot(label, plot.getType(), plot.getPoints()));
+			}
+
+			index = close + 1;
+		}
+
+		return requireNonEmpty(plots);
+	}
+
+	private static int matchingClose(String value, int openIndex) {
+		int depth = 0;
+		for (int i = openIndex; i < value.length(); i++) {
+			char c = value.charAt(i);
+			if (c == '(') {
+				depth++;
+			} else if (c == ')') {
+				depth--;
+				if (depth == 0) {
+					return i;
+				}
+			}
+		}
+		throw new IllegalArgumentException("Unbalanced parentheses in: " + value);
+	}
+
+	// ---------------------------------------------------------------- ODK / Kobo (rule 4)
 
 	/**
 	 * Parses the ODK / KoboToolbox geoshape, geotrace and geopoint syntax:

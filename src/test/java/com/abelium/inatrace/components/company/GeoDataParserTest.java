@@ -205,6 +205,38 @@ class GeoDataParserTest {
 		assertThrows(IllegalArgumentException.class, () -> GeoDataParser.parse("not geodata at all", null));
 	}
 
+	// ------------------------------------------------------------------ labelled multi-plot
+
+	@Test
+	void labelledMultiPlotCell_becomesOnePlotPerLabel() {
+		String cell = "P1(" + REAL_GEOSHAPE + ")P3(5.17 10.23;5.18 10.24;5.19 10.25;5.17 10.23)";
+
+		List<GeoDataParser.ParsedPlot> plots = GeoDataParser.parse(cell, "CM");
+
+		assertEquals(2, plots.size());
+		assertEquals("P1", plots.get(0).getLabel());
+		assertEquals(5, plots.get(0).getPoints().size());
+		assertEquals("P3", plots.get(1).getLabel());
+		assertEquals(4, plots.get(1).getPoints().size());
+	}
+
+	@Test
+	void labelledMultiPlotCell_acceptsAnyInnerFormat() {
+		List<GeoDataParser.ParsedPlot> plots = GeoDataParser.parse(
+				"P1(POLYGON((5.17 10.23, 5.18 10.24, 5.19 10.25)))"
+						+ "P2(5.20 10.30;5.21 10.31;5.22 10.32;5.20 10.30)", "CM");
+
+		assertEquals(2, plots.size());
+		assertEquals("P1", plots.get(0).getLabel());
+		assertEquals("P2", plots.get(1).getLabel());
+	}
+
+	@Test
+	void labelledPlotWithGarbageInside_isRejected() {
+		assertThrows(IllegalArgumentException.class, () -> GeoDataParser.parse("P1(nonsense)", null));
+		assertThrows(IllegalArgumentException.class, () -> GeoDataParser.parse("P1()", null));
+	}
+
 	// ------------------------------------------------------------------ GeoJSON
 
 	@Test
