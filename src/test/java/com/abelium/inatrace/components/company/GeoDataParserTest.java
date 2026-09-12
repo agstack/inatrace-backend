@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -30,6 +31,77 @@ class GeoDataParserTest {
 		assertTrue(GeoDataParser.parse(null, null).isEmpty());
 		assertTrue(GeoDataParser.parse("", null).isEmpty());
 		assertTrue(GeoDataParser.parse("   ", null).isEmpty());
+	}
+
+	// ------------------------------------------------------------------ WKT
+
+	@Test
+	void validPolygon_isParsed() {
+		List<GeoDataParser.ParsedPlot> plots =
+				GeoDataParser.parse("POLYGON((5.17 10.23, 5.18 10.24, 5.19 10.25))", null);
+
+		assertEquals(1, plots.size());
+		GeoDataParser.ParsedPlot plot = plots.get(0);
+		assertEquals(GeoDataParser.GeoDataType.POLYGON, plot.getType());
+		assertEquals(3, plot.getPoints().size());
+		assertEquals(5.17, plot.getPoints().get(0)[0]);
+		assertEquals(10.23, plot.getPoints().get(0)[1]);
+		assertNull(plot.getLabel());
+	}
+
+	@Test
+	void validPoint_isParsed() {
+		List<GeoDataParser.ParsedPlot> plots = GeoDataParser.parse("POINT(5.17 10.23)", null);
+
+		assertEquals(1, plots.size());
+		assertEquals(GeoDataParser.GeoDataType.POINT, plots.get(0).getType());
+		assertEquals(1, plots.get(0).getPoints().size());
+		assertEquals(5.17, plots.get(0).getPoints().get(0)[0]);
+		assertEquals(10.23, plots.get(0).getPoints().get(0)[1]);
+	}
+
+	@Test
+	void multiPolygon_becomesOnePlotPerPolygon() {
+		List<GeoDataParser.ParsedPlot> plots = GeoDataParser.parse(
+				"MULTIPOLYGON(((5.17 10.23, 5.18 10.24, 5.19 10.25)),((6.17 11.23, 6.18 11.24, 6.19 11.25)))",
+				null);
+
+		assertEquals(2, plots.size());
+		assertEquals(5.17, plots.get(0).getPoints().get(0)[0]);
+		assertEquals(6.17, plots.get(1).getPoints().get(0)[0]);
+	}
+
+	@Test
+	void polygonHoles_areDropped() {
+		List<GeoDataParser.ParsedPlot> plots = GeoDataParser.parse(
+				"POLYGON((5.10 10.10, 5.90 10.10, 5.90 10.90, 5.10 10.90),(5.40 10.40, 5.60 10.40, 5.60 10.60))",
+				null);
+
+		assertEquals(1, plots.size());
+		assertEquals(4, plots.get(0).getPoints().size());
+	}
+
+	@Test
+	void malformedShape_isRejected() {
+		// Missing closing parenthesis
+		assertThrows(IllegalArgumentException.class, () -> GeoDataParser.parse("POLYGON((1 2, 3 4, 5 6)", null));
+		// Non-numeric token
+		assertThrows(IllegalArgumentException.class, () -> GeoDataParser.parse("POLYGON((1 2, a b, 5 6))", null));
+		// Three numbers in one pair
+		assertThrows(IllegalArgumentException.class, () -> GeoDataParser.parse("POLYGON((1 2 3, 4 5, 6 7))", null));
+	}
+
+	@Test
+	void outOfRangeCoordinates_areRejected() {
+		assertThrows(IllegalArgumentException.class, () -> GeoDataParser.parse("POINT(95 10.23)", null));
+		assertThrows(IllegalArgumentException.class, () -> GeoDataParser.parse("POINT(5.17 190)", null));
+		assertThrows(IllegalArgumentException.class,
+				() -> GeoDataParser.parse("POLYGON((95 10, 5 11, 6 12))", null));
+	}
+
+	@Test
+	void pointWithMoreThanOneCoordinatePair_isRejected() {
+		assertThrows(IllegalArgumentException.class, () -> GeoDataParser.parse("POINT(1 2, 3 4)", null));
 	}
 
 	// ------------------------------------------------------------------ ODK / Kobo geoshape
@@ -89,12 +161,17 @@ class GeoDataParserTest {
 	@Test
 	void polygonWithFewerThanThreeDistinctVertices_isRejected() {
 		assertThrows(IllegalArgumentException.class, () -> GeoDataParser.parse("1 2;3 4", null));
+		assertThrows(IllegalArgumentException.class, () -> GeoDataParser.parse("POLYGON((1 2, 3 4))", null));
 		// Duplicated point does not count towards the minimum of 3 distinct vertices
 		assertThrows(IllegalArgumentException.class, () -> GeoDataParser.parse("1 2;3 4;1 2", null));
+		assertThrows(IllegalArgumentException.class, () -> GeoDataParser.parse("POLYGON((1 2, 3 4, 1 2))", null));
 	}
 
 	@Test
 	void unrecognizedPrefix_isRejected() {
+		// MULTIPOLYGON needs one more level of brackets than this
+		assertThrows(IllegalArgumentException.class,
+				() -> GeoDataParser.parse("MULTIPOLYGON((1 2, 3 4, 5 6))", null));
 		assertThrows(IllegalArgumentException.class, () -> GeoDataParser.parse("not geodata at all", null));
 	}
 }
