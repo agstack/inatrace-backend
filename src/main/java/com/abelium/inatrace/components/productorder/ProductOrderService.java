@@ -15,6 +15,7 @@ import com.abelium.inatrace.db.entities.facility.Facility;
 import com.abelium.inatrace.db.entities.productorder.ProductOrder;
 import com.abelium.inatrace.db.entities.stockorder.enums.OrderType;
 import com.abelium.inatrace.security.service.CustomUserDetails;
+import com.abelium.inatrace.security.utils.PermissionsUtil;
 import com.abelium.inatrace.types.Language;
 import com.abelium.inatrace.types.UserRole;
 import org.apache.commons.lang3.StringUtils;
@@ -50,8 +51,16 @@ public class ProductOrderService extends BaseService {
 		this.companyService = companyService;
 	}
 
-	public ApiProductOrder getProductOrder(Long id, Language language) throws ApiException {
-		return ProductOrderMapper.toApiProductOrder(fetchProductOrder(id), language);
+	public ApiProductOrder getProductOrder(Long id, CustomUserDetails user, Language language) throws ApiException {
+
+		ProductOrder productOrder = fetchProductOrder(id);
+
+		// The order is readable by the company that owns the facility it was placed at - the same
+		// company createProductOrder checks enrolment against before it will accept the order.
+		PermissionsUtil.checkUserIfCompanyEnrolledOrSystemAdmin(
+				productOrder.getFacility().getCompany().getUsers().stream().toList(), user);
+
+		return ProductOrderMapper.toApiProductOrder(productOrder, language);
 	}
 
 	@Transactional
