@@ -138,6 +138,20 @@
             <version>5.3.0</version>
         </dependency>
 
+        <!--
+            Commons IO is pulled in transitively by both Tika and POI, which disagree on the
+            version: tika-core 2.9.2 asks for 2.15.1 and poi 5.3.0 for 2.16.1. Maven resolves
+            the conflict by declaration order and Tika is declared first, so POI would get
+            2.15.1 - which lacks BoundedInputStream.builder() and fails every spreadsheet read
+            with NoSuchMethodError. Pin the higher version explicitly; it is backwards
+            compatible for Tika.
+        -->
+        <dependency>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
+            <version>2.16.1</version>
+        </dependency>
+
         <!-- PDF Creation and manipulation -->
         <dependency>
             <groupId>fr.opensagres.xdocreport</groupId>
