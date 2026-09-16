@@ -10,7 +10,6 @@ import org.apache.commons.lang3.ClassUtils;
 import com.abelium.inatrace.api.ApiStatus;
 import com.abelium.inatrace.api.errors.ApiException;
 import com.abelium.inatrace.components.product.api.ApiProduct;
-import com.abelium.inatrace.components.product.api.ApiProductLabelContent;
 
 public class FieldTools {
 	
@@ -48,14 +47,6 @@ public class FieldTools {
 			} catch (Exception e) {
 				throw new ApiException(ApiStatus.ERROR, "Error setting field '" + fieldNames.get(i) + "'");
 			}
-		}
-	}
-	
-	public static void updateField(ApiProductLabelContent ap, String fieldName, Object fieldObject) throws ApiException {
-		try {
-			setPropertyRecursive(ap, fieldName, fieldObject);
-		} catch (Exception e) {
-			throw new ApiException(ApiStatus.ERROR, "Error setting field '" + fieldName + "'");
 		}
 	}
 	

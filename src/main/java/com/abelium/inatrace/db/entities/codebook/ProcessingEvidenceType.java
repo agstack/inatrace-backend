@@ -15,10 +15,6 @@ import java.util.Set;
  */
 @Entity
 @NamedQueries({
-		@NamedQuery(name = "ProcessingEvidenceType.listProcessingEvidenceTypesByValueChain",
-		            query = "SELECT vcpet.processingEvidenceType FROM ValueChainProcEvidenceType vcpet WHERE vcpet.valueChain.id = :valueChainId"),
-		@NamedQuery(name = "ProcessingEvidenceType.countProcessingEvidenceTypesByValueChain",
-		            query = "SELECT COUNT(vcpet.processingEvidenceType) FROM ValueChainProcEvidenceType vcpet WHERE vcpet.valueChain.id = :valueChainId"),
 		@NamedQuery(name = "ProcessingEvidenceType.getProcessingEvidenceTypesForValueChainIds",
 		            query = "SELECT DISTINCT vcpet.processingEvidenceType FROM ValueChainProcEvidenceType vcpet WHERE vcpet.valueChain.id IN :valueChainIds"),
 		@NamedQuery(name = "ProcessingEvidenceType.countProcessingEvidenceTypesForValueChainIds",

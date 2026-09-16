@@ -192,12 +192,6 @@ public class ProductService extends BaseService {
 	}
 
     @Transactional
-	public ApiProductLabelValues getProductLabelValues(CustomUserDetails authUser, Long id) throws ApiException {
-		ProductLabel pl = productQueries.fetchProductLabelAssoc(authUser, id);
-		return productApiTools.toApiProductLabelValues(authUser.getUserId(), pl);
-	}
-    
-    @Transactional
 	public ApiProductLabelContent getProductLabelContent(CustomUserDetails authUser, Long id) throws ApiException {
 		ProductLabel pl = productQueries.fetchProductLabelAssoc(authUser, id);
 		return productApiTools.toApiProductLabelContent(authUser.getUserId(), pl.getContent());
@@ -346,13 +340,6 @@ public class ProductService extends BaseService {
 		return new ApiDefaultResponse();
 	}    
 
-    @Transactional
-	public ApiDefaultResponse updateProductLabelValues(CustomUserDetails authUser, ApiProductLabelUpdateValues request) throws ApiException {
-		ProductLabel pl = productQueries.fetchProductLabelAssoc(authUser, request.id);
-		productApiTools.updateProductLabelFields(authUser.getUserId(), pl, request);
-		return new ApiDefaultResponse();
-	}
-    
     @Transactional
 	public ApiDefaultResponse updateProductLabelContent(CustomUserDetails authUser, ApiProductLabelContent request) throws ApiException {
 		ProductLabel pl = productQueries.fetchProductLabelAssoc(authUser, request.labelId);

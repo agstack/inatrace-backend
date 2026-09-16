@@ -40,17 +40,6 @@ public class ProcessingEvidenceTypeController {
 		return new ApiPaginatedResponse<>(processingEvidenceTypeService.getProcEvidenceTypeList(request, language));
 	}
 
-	@Deprecated
-	@GetMapping("list/value-chain/{id}")
-	@Operation(summary ="Get a list of processing evidence types by value chain ID.")
-	public ApiPaginatedResponse<ApiProcessingEvidenceType> listProcessingEvidenceTypesByValueChain(
-			@Valid @Parameter(description = "Value chain ID", required = true) @PathVariable("id") Long valueChainId,
-			@Valid ApiPaginatedRequest request,
-			@RequestHeader(value = "language", defaultValue = "EN", required = false) Language language) {
-
-		return new ApiPaginatedResponse<>(processingEvidenceTypeService.listProcessingEvidenceTypesByValueChain(valueChainId, request, language));
-	}
-
 	@GetMapping("list/by-value-chains")
 	@Operation(summary ="Get a list of processing evidence types by value chain ID list.")
 	public ApiPaginatedResponse<ApiProcessingEvidenceType> listProcessingEvidenceTypesByValueChains(

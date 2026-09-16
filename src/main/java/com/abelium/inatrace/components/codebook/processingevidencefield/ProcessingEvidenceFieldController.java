@@ -40,17 +40,6 @@ public class ProcessingEvidenceFieldController {
 		return new ApiPaginatedResponse<>(processingEvidenceFieldService.getProcessingEvidenceFieldList(request, language));
 	}
 
-	@Deprecated
-	@GetMapping("list/value-chain/{id}")
-	@Operation(summary ="Get a list of processing evidence fields by value chain ID.")
-	public ApiPaginatedResponse<ApiProcessingEvidenceField> listProcessingEvidenceFieldsByValueChain(
-		@Valid @Parameter(description = "Value chain ID", required = true) @PathVariable("id") Long valueChainId,
-		@Valid ApiPaginatedRequest request,
-		@RequestHeader(value = "language", defaultValue = "EN", required = false) Language language) {
-
-		return new ApiPaginatedResponse<>(processingEvidenceFieldService.listProcessingEvidenceFieldsByValueChain(valueChainId, request, language));
-	}
-
 	@GetMapping("list/by-value-chains")
 	@Operation(summary ="Get a list of processing evidence fields by value chain ID list.")
 	public ApiPaginatedResponse<ApiProcessingEvidenceField> listProcessingEvidenceFieldsByValueChains(
