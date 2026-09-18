@@ -132,29 +132,6 @@ public class ProcessingEvidenceTypeService extends BaseService {
 		return processingEvidenceType;
 	}
 
-	public ApiPaginatedList<ApiProcessingEvidenceType> listProcessingEvidenceTypesByValueChain(Long valueChainId,
-	                                                                                           ApiPaginatedRequest request,
-																							   Language language) {
-
-		TypedQuery<ProcessingEvidenceType> processingEvidenceTypesQuery =
-				em.createNamedQuery("ProcessingEvidenceType.listProcessingEvidenceTypesByValueChain", ProcessingEvidenceType.class)
-				.setParameter("valueChainId", valueChainId)
-				.setFirstResult(request.getOffset())
-				.setMaxResults(request.getLimit());
-
-		List<ProcessingEvidenceType> processingEvidenceTypes = processingEvidenceTypesQuery.getResultList();
-
-		Long count = em.createNamedQuery("ProcessingEvidenceType.countProcessingEvidenceTypesByValueChain", Long.class)
-				.setParameter("valueChainId", valueChainId)
-				.getSingleResult();
-
-		return new ApiPaginatedList<>(
-				processingEvidenceTypes
-						.stream()
-						.map(processingEvidenceType -> ProcessingEvidenceTypeMapper.toApiProcessingEvidenceTypeBase(processingEvidenceType, language))
-						.collect(Collectors.toList()), count);
-	}
-
 	public ApiPaginatedList<ApiProcessingEvidenceType> listProcessingEvidenceTypesByValueChainList(
 			List<Long> valueChainIds, ApiPaginatedRequest request, Language language) {
 

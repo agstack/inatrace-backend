@@ -578,18 +578,6 @@ public class ProductApiTools {
 		if (apl.fields != null) pl.setFields(apl.fields.stream().map(ProductApiTools::toProductLabelField).collect(Collectors.toList()));
 	}
 
-	public void updateProductLabelFields(Long userId, ProductLabel pl, ApiProductLabelUpdateValues aplf) throws ApiException {
-		updateProductLabelBase(pl, aplf);
-		
-		if (aplf.fields == null) return;
-		
-		ApiProductLabelContent ap = toApiProductLabelContent(userId, pl.getContent());
-		for (ApiProductLabelFieldValue afv : aplf.fields) {
-			FieldTools.updateField(ap, afv.name, afv.value);
-		}
-		updateProductLabelContent(userId, pl.getContent(), ap);
-	}
-
 	public void updateProductWithLabels(Long userId, ApiProduct ap, Product p) throws ApiException {
 		ap.labels = new ArrayList<>();
 		for (ProductLabel pl : p.getLabels()) {

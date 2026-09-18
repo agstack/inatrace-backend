@@ -119,25 +119,11 @@ public class ProductController {
     	return new ApiDefaultResponse();
     }
 
-    @PutMapping(value = "/label/values")
-    @Operation(summary = "Update field values")
-    public ApiDefaultResponse updateProductLabelValues(@AuthenticationPrincipal CustomUserDetails authUser,
-    		@Valid @RequestBody ApiProductLabelUpdateValues request) throws ApiException {
-    	return productService.updateProductLabelValues(authUser, request);
-    }    
-    
     @PutMapping(value = "/label/content")
     @Operation(summary = "Update label content")
     public ApiDefaultResponse updateProductLabelContent(@AuthenticationPrincipal CustomUserDetails authUser,
     		@Valid @RequestBody ApiProductLabelContent request) throws ApiException {
     	return productService.updateProductLabelContent(authUser, request);
-    }
-    
-    @GetMapping(value = "/label/values/{id}")
-    @Operation(summary = "Get label with field values")
-    public ApiResponse<ApiProductLabelValues> getProductLabelValues(@AuthenticationPrincipal CustomUserDetails authUser,
-    		@Valid @Parameter(description = "Record id", required = true)  @PathVariable("id") Long id) throws ApiException {
-    	return new ApiResponse<>(productService.getProductLabelValues(authUser, id));
     }
     
     @GetMapping(value = "/label/content/{id}")

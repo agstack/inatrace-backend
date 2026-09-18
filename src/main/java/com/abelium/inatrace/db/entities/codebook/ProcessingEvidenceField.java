@@ -12,16 +12,6 @@ import java.util.Set;
 @Entity
 @Table(indexes = { @Index(columnList = "label") })
 @NamedQueries({
-	@NamedQuery(name = "ProcessingEvidenceField.listProcessingEvidenceFieldsByValueChain", 
-				query = "SELECT pef FROM ProcessingEvidenceField pef "
-						+ "INNER JOIN pef.valueChains vcs "
-						+ "INNER JOIN vcs.valueChain vc "
-						+ "WHERE vc.id = :valueChainId"),
-	@NamedQuery(name = "ProcessingEvidenceField.countProcessingEvidenceFieldsByValueChain",
-	            query = "SELECT COUNT(pef) FROM ProcessingEvidenceField pef "
-						+ "INNER JOIN pef.valueChains vcs "
-						+ "INNER JOIN vcs.valueChain vc "
-						+ "WHERE vc.id = :valueChainId"),
 	@NamedQuery(name = "ProcessingEvidenceField.getProcessingEvidenceFieldsForValueChainIds",
 	            query = "SELECT DISTINCT vcpef.processingEvidenceField FROM ValueChainProcessingEvidenceField vcpef "
 			            + "WHERE vcpef.valueChain.id IN :valueChainIds"),

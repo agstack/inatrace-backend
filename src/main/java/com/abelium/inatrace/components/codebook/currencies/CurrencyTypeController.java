@@ -16,12 +16,6 @@ public class CurrencyTypeController {
     @Autowired
     private CurrencyTypeService currencyTypeService;
 
-    @GetMapping("list")
-    @Operation(summary = "Get list of enabled and disables supported currencies")
-    public ApiPaginatedResponse<ApiCurrencyType> getCurrencyTypes(ApiCurrencyTypeRequest request) {
-        return currencyTypeService.getCurrencyTypeList(null, request);
-    }
-
     @GetMapping("list/enabled")
     @Operation(summary = "Get list of enabled supported currencies")
     public ApiPaginatedResponse<ApiCurrencyType> getEnabledCurrencyTypes(ApiCurrencyTypeRequest request) {
