@@ -1027,14 +1027,46 @@ public class StockOrderService extends BaseService {
         // If entity is new and processing order is provided with processing action type 'GENERATE_QR_CODE', generate a new QR code tag for this stock order
         generateStockOrderQRCodeTag(entity, processingOrder);
 
+        Long previousLocationId = entity.getProductionLocation() == null
+                ? null : entity.getProductionLocation().getId();
+
         // Production location
         ApiStockOrderLocation apiProdLocation = apiStockOrder.getProductionLocation();
         if (apiProdLocation != null) {
 
-            StockOrderLocation stockOrderLocation = fetchEntityOrElse(apiProdLocation.getId(), StockOrderLocation.class, null);
-
-            if(stockOrderLocation == null) {
+            StockOrderLocation stockOrderLocation;
+            if (apiProdLocation.getId() == null) {
                 stockOrderLocation = new StockOrderLocation();
+                em.persist(stockOrderLocation);
+            } else {
+                stockOrderLocation = fetchEntity(apiProdLocation.getId(), StockOrderLocation.class);
+                Long sameCompanyReferences = em.createQuery(
+                                "SELECT COUNT(so) FROM StockOrder so WHERE so.productionLocation.id = :locationId " +
+                                        "AND so.company.id = :companyId", Long.class)
+                        .setParameter("locationId", stockOrderLocation.getId())
+                        .setParameter("companyId", entity.getCompany().getId())
+                        .getSingleResult();
+                if (sameCompanyReferences == 0) {
+                    throw new ApiException(ApiStatus.UNAUTHORIZED, "Production location does not belong to this company");
+                }
+
+                Long allReferences = em.createQuery(
+                                "SELECT COUNT(so) FROM StockOrder so WHERE so.productionLocation.id = :locationId",
+                                Long.class)
+                        .setParameter("locationId", stockOrderLocation.getId())
+                        .getSingleResult();
+                boolean locationChanged = !Objects.equals(stockOrderLocation.getLatitude(), apiProdLocation.getLatitude())
+                        || !Objects.equals(stockOrderLocation.getLongitude(), apiProdLocation.getLongitude())
+                        || !Objects.equals(stockOrderLocation.getNumberOfFarmers(), apiProdLocation.getNumberOfFarmers())
+                        || !Objects.equals(stockOrderLocation.getPinName(), apiProdLocation.getPinName());
+                boolean usedByAnotherOrder = allReferences > (Objects.equals(previousLocationId,
+                        stockOrderLocation.getId()) ? 1 : 0);
+                if (locationChanged && usedByAnotherOrder) {
+                    StockOrderLocation copy = new StockOrderLocation();
+                    copy.setAddress(stockOrderLocation.getAddress());
+                    stockOrderLocation = copy;
+                    em.persist(stockOrderLocation);
+                }
             }
 
             stockOrderLocation.setLatitude(apiProdLocation.getLatitude());
@@ -1100,7 +1132,11 @@ public class StockOrderService extends BaseService {
                 if(apiStockOrder.getRepresentativeOfProducerUserCustomer() != null)
                     entity.setRepresentativeOfProducerUserCustomer(fetchEntity(apiStockOrder.getRepresentativeOfProducerUserCustomer().getId(), UserCustomer.class));
 
-                // Create or update activity proofs
+                // Replace the links; their ActivityProof rows are cleaned up after the links are flushed.
+                Set<Long> previousProofIds = entity.getActivityProofs().stream()
+                        .map(link -> link.getActivityProof().getId())
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toSet());
                 entity.getActivityProofs().clear();
 
                 for (ApiActivityProof apiAP : apiStockOrder.getActivityProofs()) {
@@ -1109,13 +1145,20 @@ public class StockOrderService extends BaseService {
 
                     StockOrderActivityProof stockOrderActivityProof = new StockOrderActivityProof();
                     stockOrderActivityProof.setStockOrder(entity);
-                    stockOrderActivityProof.setActivityProof(new ActivityProof());
-                    stockOrderActivityProof.getActivityProof().setDocument(activityProofDoc);
-                    stockOrderActivityProof.getActivityProof().setFormalCreationDate(apiAP.getFormalCreationDate());
-                    stockOrderActivityProof.getActivityProof().setType(apiAP.getType());
-                    stockOrderActivityProof.getActivityProof().setValidUntil(apiAP.getValidUntil());
+                    ActivityProof activityProof = new ActivityProof();
+                    activityProof.setDocument(activityProofDoc);
+                    activityProof.setFormalCreationDate(apiAP.getFormalCreationDate());
+                    activityProof.setType(apiAP.getType());
+                    activityProof.setValidUntil(apiAP.getValidUntil());
+                    em.persist(activityProof);
+                    stockOrderActivityProof.setActivityProof(activityProof);
 
                     entity.getActivityProofs().add(stockOrderActivityProof);
+                }
+
+                if (!previousProofIds.isEmpty()) {
+                    em.flush();
+                    previousProofIds.forEach(this::removeUnreferencedActivityProof);
                 }
 
                 break;
@@ -1139,6 +1182,12 @@ public class StockOrderService extends BaseService {
 
         if (entity.getId() == null) {
             em.persist(entity);
+        }
+
+        if (previousLocationId != null && !Objects.equals(previousLocationId,
+                entity.getProductionLocation() == null ? null : entity.getProductionLocation().getId())) {
+            em.flush();
+            removeUnreferencedProductionLocation(previousLocationId);
         }
 
         return new ApiBaseEntity(entity);
@@ -1304,7 +1353,52 @@ public class StockOrderService extends BaseService {
 
         PermissionsUtil.checkUserIfCompanyEnrolledAndAdminOrSystemAdmin(stockOrder.getCompany().getUsers().stream().toList(), user);
 
+        Set<Long> proofIds = stockOrder.getActivityProofs().stream()
+                .map(link -> link.getActivityProof().getId())
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Long locationId = stockOrder.getProductionLocation() == null
+                ? null : stockOrder.getProductionLocation().getId();
+
         em.remove(stockOrder);
+        em.flush();
+        proofIds.forEach(this::removeUnreferencedActivityProof);
+        if (locationId != null) {
+            removeUnreferencedProductionLocation(locationId);
+        }
+    }
+
+    private void removeUnreferencedActivityProof(Long proofId) {
+        Long stockLinks = em.createQuery(
+                        "SELECT COUNT(link) FROM StockOrderActivityProof link WHERE link.activityProof.id = :proofId",
+                        Long.class)
+                .setParameter("proofId", proofId)
+                .getSingleResult();
+        Long bulkLinks = em.createQuery(
+                        "SELECT COUNT(link) FROM BulkPaymentActivityProof link WHERE link.activityProof.id = :proofId",
+                        Long.class)
+                .setParameter("proofId", proofId)
+                .getSingleResult();
+        if (stockLinks == 0 && bulkLinks == 0) {
+            ActivityProof proof = em.find(ActivityProof.class, proofId);
+            if (proof != null) {
+                em.remove(proof);
+            }
+        }
+    }
+
+    private void removeUnreferencedProductionLocation(Long locationId) {
+        Long references = em.createQuery(
+                        "SELECT COUNT(so) FROM StockOrder so WHERE so.productionLocation.id = :locationId",
+                        Long.class)
+                .setParameter("locationId", locationId)
+                .getSingleResult();
+        if (references == 0) {
+            StockOrderLocation location = em.find(StockOrderLocation.class, locationId);
+            if (location != null) {
+                em.remove(location);
+            }
+        }
     }
 
     public <E> E fetchEntity(Long id, Class<E> entityClass) throws ApiException {
@@ -1314,11 +1408,6 @@ public class StockOrderService extends BaseService {
             throw new ApiException(ApiStatus.INVALID_REQUEST, "Invalid " + entityClass.getSimpleName() + " ID");
         }
         return entity;
-    }
-
-    private <E> E fetchEntityOrElse(Long id, Class<E> entityClass, E defaultValue) {
-        E entity = Queries.get(em, entityClass, id);
-        return entity == null ? defaultValue : entity;
     }
 
     private BigDecimal calculateBalanceForPurchaseOrder(StockOrder stockOrder) {

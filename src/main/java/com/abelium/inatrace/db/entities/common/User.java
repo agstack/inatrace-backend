@@ -72,7 +72,7 @@ public class User extends TimestampEntity {
 	/**
 	 * User connected companies
 	 */
-	@OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+	@OneToMany(mappedBy = "user", fetch = FetchType.LAZY)
 	@NotAudited
 	private Set<CompanyUser> userCompanies;
 

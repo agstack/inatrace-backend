@@ -58,14 +58,14 @@ public class Facility extends TimestampEntity {
 	@Column
 	private Boolean displayPriceDeterminedLater;
 
-	@ManyToOne(fetch = FetchType.LAZY, cascade = CascadeType.ALL)
+	@ManyToOne(fetch = FetchType.LAZY)
 	@JoinColumn(name = "facilityLocation_id", nullable = true)
 	private FacilityLocation facilityLocation;
 
 	@ManyToOne
 	private Company company;
 
-	@ManyToOne(cascade = CascadeType.ALL)
+	@ManyToOne
 	private FacilityType facilityType;
 
 	@OneToMany(mappedBy = "facility", cascade = CascadeType.ALL, orphanRemoval = true)

@@ -556,11 +556,13 @@ public class PaymentService extends BaseService {
 
 			BulkPaymentActivityProof bulkPaymentActivityProof = new BulkPaymentActivityProof();
 			bulkPaymentActivityProof.setBulkPayment(entity);
-			bulkPaymentActivityProof.setActivityProof(new ActivityProof());
-			bulkPaymentActivityProof.getActivityProof().setDocument(activityProofDoc);
-			bulkPaymentActivityProof.getActivityProof().setType(apiActivityProof.getType());
-			bulkPaymentActivityProof.getActivityProof().setFormalCreationDate(apiActivityProof.getFormalCreationDate());
-			bulkPaymentActivityProof.getActivityProof().setValidUntil(apiActivityProof.getValidUntil());
+			ActivityProof activityProof = new ActivityProof();
+			activityProof.setDocument(activityProofDoc);
+			activityProof.setType(apiActivityProof.getType());
+			activityProof.setFormalCreationDate(apiActivityProof.getFormalCreationDate());
+			activityProof.setValidUntil(apiActivityProof.getValidUntil());
+			em.persist(activityProof);
+			bulkPaymentActivityProof.setActivityProof(activityProof);
 
 			entity.getAdditionalProofs().add(bulkPaymentActivityProof);
 		}

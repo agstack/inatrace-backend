@@ -25,10 +25,10 @@ public class ProcessingOrder extends TimestampEntity {
     @ManyToOne
     private ProcessingAction processingAction;
 
-    @OneToMany(mappedBy = "targetProcessingOrder", cascade = CascadeType.ALL)
+    @OneToMany(mappedBy = "targetProcessingOrder")
     private Set<Transaction> inputTransactions;
 
-    @OneToMany(mappedBy = "processingOrder",cascade = CascadeType.ALL, fetch = FetchType.EAGER)
+    @OneToMany(mappedBy = "processingOrder", fetch = FetchType.EAGER)
     private Set<StockOrder> targetStockOrders;
 
     public Long getInitiatorUserId() {

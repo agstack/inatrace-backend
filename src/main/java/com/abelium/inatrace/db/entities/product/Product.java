@@ -58,7 +58,7 @@ public class Product extends ProductContent {
 	/**
 	 * labels
 	 */
-	@OneToMany(fetch = FetchType.LAZY, cascade = CascadeType.ALL, mappedBy = "product")
+	@OneToMany(fetch = FetchType.LAZY, mappedBy = "product")
 	private Set<ProductLabel> labels = new HashSet<>();
 
 	/**
