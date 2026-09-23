@@ -13,6 +13,7 @@ import com.abelium.inatrace.components.codebook.facility_type.api.ApiFacilityTyp
 import com.abelium.inatrace.components.payment.PaymentService;
 import com.abelium.inatrace.components.payment.api.ApiBulkPayment;
 import com.abelium.inatrace.components.payment.api.ApiPayment;
+import com.abelium.inatrace.components.processingorder.ProcessingOrderService;
 import com.abelium.inatrace.components.stockorder.StockOrderService;
 import com.abelium.inatrace.components.stockorder.api.ApiStockOrder;
 import com.abelium.inatrace.components.stockorder.api.ApiStockOrderLocation;
@@ -32,13 +33,17 @@ import com.abelium.inatrace.db.entities.facility.Facility;
 import com.abelium.inatrace.db.entities.facility.FacilityLocation;
 import com.abelium.inatrace.db.entities.payment.BulkPayment;
 import com.abelium.inatrace.db.entities.payment.RecipientType;
+import com.abelium.inatrace.db.entities.processingaction.ProcessingAction;
+import com.abelium.inatrace.db.entities.processingorder.ProcessingOrder;
 import com.abelium.inatrace.db.entities.stockorder.StockOrder;
 import com.abelium.inatrace.db.entities.stockorder.StockOrderActivityProof;
 import com.abelium.inatrace.db.entities.stockorder.StockOrderLocation;
+import com.abelium.inatrace.db.entities.stockorder.Transaction;
 import com.abelium.inatrace.db.entities.stockorder.enums.OrderType;
 import com.abelium.inatrace.security.service.CustomUserDetails;
 import com.abelium.inatrace.types.CompanyStatus;
 import com.abelium.inatrace.types.CompanyUserRole;
+import com.abelium.inatrace.types.ProcessingActionType;
 import com.abelium.inatrace.types.UserRole;
 import com.abelium.inatrace.types.UserStatus;
 import jakarta.persistence.EntityManager;
@@ -77,6 +82,7 @@ class SharedReferenceServiceTest {
     @Autowired StockOrderService stockOrderService;
     @Autowired PaymentService paymentService;
     @Autowired FacilityService facilityService;
+    @Autowired ProcessingOrderService processingOrderService;
 
     private Company company;
     private Facility facility;
@@ -154,6 +160,30 @@ class SharedReferenceServiceTest {
 
         assertNull(em.find(ActivityProof.class, oldProofId));
         assertEquals(1, em.find(StockOrder.class, orderId).getActivityProofs().size());
+    }
+
+    @Test
+    void updatingAnUnchangedProofKeepsItsIdentity() throws Exception {
+        Document proofDocument = document();
+        ApiStockOrder create = purchaseOrder();
+        create.setActivityProofs(List.of(proof(proofDocument)));
+        Long orderId = stockOrderService.createOrUpdateStockOrder(create, principal, null).getId();
+        em.flush();
+
+        ActivityProof existingProof = em.find(StockOrder.class, orderId).getActivityProofs()
+                .iterator().next().getActivityProof();
+        ApiActivityProof unchanged = proof(proofDocument);
+        unchanged.setId(existingProof.getId());
+        ApiStockOrder update = purchaseOrder();
+        update.setId(orderId);
+        update.setActivityProofs(List.of(unchanged));
+        stockOrderService.createOrUpdateStockOrder(update, principal, null);
+        em.flush();
+        em.clear();
+
+        ActivityProof savedProof = em.find(StockOrder.class, orderId).getActivityProofs()
+                .iterator().next().getActivityProof();
+        assertEquals(existingProof.getId(), savedProof.getId());
     }
 
     @Test
@@ -238,6 +268,95 @@ class SharedReferenceServiceTest {
         request.setProductionLocation(location(foreignLocation.getId(), 9.0));
         assertThrows(ApiException.class,
                 () -> stockOrderService.createOrUpdateStockOrder(request, principal, null));
+    }
+
+    @Test
+    void rejectsMovingAnOrderBetweenCompaniesEvenForAMemberOfBoth() throws Exception {
+        Long orderId = stockOrderService.createOrUpdateStockOrder(purchaseOrder(), principal, null).getId();
+
+        Company otherCompany = new Company();
+        otherCompany.setName("Other company");
+        otherCompany.setStatus(CompanyStatus.ACTIVE);
+        em.persist(otherCompany);
+        User currentUser = em.find(User.class, principal.getUserId());
+        CompanyUser otherMembership = new CompanyUser();
+        otherMembership.setUser(currentUser);
+        otherMembership.setCompany(otherCompany);
+        otherMembership.setRole(CompanyUserRole.COMPANY_ADMIN);
+        em.persist(otherMembership);
+        otherCompany.getUsers().add(otherMembership);
+        Facility otherFacility = new Facility();
+        otherFacility.setName("Other station");
+        otherFacility.setCompany(otherCompany);
+        em.persist(otherFacility);
+        em.flush();
+
+        ApiStockOrder update = purchaseOrder();
+        update.setId(orderId);
+        ApiFacility facilityRef = new ApiFacility();
+        facilityRef.setId(otherFacility.getId());
+        update.setFacility(facilityRef);
+        assertThrows(ApiException.class,
+                () -> stockOrderService.createOrUpdateStockOrder(update, principal, null));
+    }
+
+    @Test
+    void cannotDeleteAFacilityWithStockOrders() throws Exception {
+        stockOrderService.createOrUpdateStockOrder(purchaseOrder(), principal, null);
+        em.flush();
+
+        assertThrows(ApiException.class, () -> facilityService.deleteFacility(facility.getId(), principal));
+    }
+
+    @Test
+    void deletingAProcessingOrderRestoresTheSourceQuantity() throws Exception {
+        FacilityLocation sourceLocation = new FacilityLocation();
+        sourceLocation.setLatitude(1.0);
+        sourceLocation.setLongitude(1.0);
+        Country sourceCountry = new Country();
+        sourceCountry.setCode("SP");
+        sourceCountry.setName("Source country");
+        em.persist(sourceCountry);
+        Address sourceAddress = new Address();
+        sourceAddress.setCountry(sourceCountry);
+        sourceLocation.setAddress(sourceAddress);
+        em.persist(sourceLocation);
+        facility.setFacilityLocation(sourceLocation);
+        FacilityType sourceFacilityType = new FacilityType("PROCESSING", "Processing");
+        em.persist(sourceFacilityType);
+        facility.setFacilityType(sourceFacilityType);
+        Long sourceOrderId = stockOrderService.createOrUpdateStockOrder(purchaseOrder(), principal, null).getId();
+        StockOrder sourceOrder = em.find(StockOrder.class, sourceOrderId);
+        sourceOrder.setAvailableQuantity(new BigDecimal("7"));
+
+        ProcessingAction action = new ProcessingAction();
+        action.setCompany(company);
+        action.setType(ProcessingActionType.PROCESSING);
+        em.persist(action);
+        ProcessingOrder processingOrder = new ProcessingOrder();
+        processingOrder.setProcessingAction(action);
+        em.persist(processingOrder);
+
+        Transaction transaction = new Transaction();
+        transaction.setCompany(company);
+        transaction.setSourceStockOrder(sourceOrder);
+        transaction.setSourceFacility(facility);
+        transaction.setTargetProcessingOrder(processingOrder);
+        transaction.setInputQuantity(new BigDecimal("3"));
+        transaction.setOutputQuantity(new BigDecimal("3"));
+        em.persist(transaction);
+        processingOrder.getInputTransactions().add(transaction);
+        em.flush();
+
+        Long processingOrderId = processingOrder.getId();
+        Long transactionId = transaction.getId();
+        processingOrderService.deleteProcessingOrder(processingOrderId, principal);
+        em.flush();
+        em.clear();
+
+        assertNull(em.find(ProcessingOrder.class, processingOrderId));
+        assertNull(em.find(Transaction.class, transactionId));
+        assertEquals(0, BigDecimal.TEN.compareTo(em.find(StockOrder.class, sourceOrderId).getAvailableQuantity()));
     }
 
     @Test

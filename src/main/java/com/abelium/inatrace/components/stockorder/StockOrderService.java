@@ -937,6 +937,13 @@ public class StockOrderService extends BaseService {
             entity = fetchEntity(apiStockOrder.getId(), StockOrder.class);
             entity.setUpdatedBy(fetchEntity(user.getUserId(), User.class));
 
+            // An update must be authorised against the owner before any request field can
+            // replace its facility/company. Moving an order between tenants is not supported
+            // by this endpoint because it would also move its financial and stock history.
+            if (checkCompanyEnrolment) {
+                PermissionsUtil.checkUserIfCompanyEnrolled(entity.getCompany().getUsers().stream().toList(), user);
+            }
+
         } else {
             entity = new StockOrder();
             entity.setCreatedBy(fetchEntity(user.getUserId(), User.class));
@@ -960,6 +967,12 @@ public class StockOrderService extends BaseService {
         // executed checks (approve/reject quote order transaction, etc.)
         if (checkCompanyEnrolment) {
             PermissionsUtil.checkUserIfCompanyEnrolled(facility.getCompany().getUsers().stream().toList(), user);
+        }
+
+        if (entity.getId() != null && checkCompanyEnrolment
+                && !Objects.equals(entity.getCompany().getId(), facility.getCompany().getId())) {
+            throw new ApiException(ApiStatus.VALIDATION_ERROR,
+                    "Changing a stock order to a facility from another company is not supported");
         }
 
         entity.setOrderType(apiStockOrder.getOrderType());
@@ -1132,30 +1145,7 @@ public class StockOrderService extends BaseService {
                 if(apiStockOrder.getRepresentativeOfProducerUserCustomer() != null)
                     entity.setRepresentativeOfProducerUserCustomer(fetchEntity(apiStockOrder.getRepresentativeOfProducerUserCustomer().getId(), UserCustomer.class));
 
-                // Replace the links; their ActivityProof rows are cleaned up after the links are flushed.
-                Set<Long> previousProofIds = entity.getActivityProofs().stream()
-                        .map(link -> link.getActivityProof().getId())
-                        .filter(Objects::nonNull)
-                        .collect(Collectors.toSet());
-                entity.getActivityProofs().clear();
-
-                for (ApiActivityProof apiAP : apiStockOrder.getActivityProofs()) {
-
-                    Document activityProofDoc = fetchEntity(apiAP.getDocument().getId(), Document.class);
-
-                    StockOrderActivityProof stockOrderActivityProof = new StockOrderActivityProof();
-                    stockOrderActivityProof.setStockOrder(entity);
-                    ActivityProof activityProof = new ActivityProof();
-                    activityProof.setDocument(activityProofDoc);
-                    activityProof.setFormalCreationDate(apiAP.getFormalCreationDate());
-                    activityProof.setType(apiAP.getType());
-                    activityProof.setValidUntil(apiAP.getValidUntil());
-                    em.persist(activityProof);
-                    stockOrderActivityProof.setActivityProof(activityProof);
-
-                    entity.getActivityProofs().add(stockOrderActivityProof);
-                }
-
+                Set<Long> previousProofIds = updateActivityProofs(entity, apiStockOrder.getActivityProofs());
                 if (!previousProofIds.isEmpty()) {
                     em.flush();
                     previousProofIds.forEach(this::removeUnreferencedActivityProof);
@@ -1353,8 +1343,24 @@ public class StockOrderService extends BaseService {
 
         PermissionsUtil.checkUserIfCompanyEnrolledAndAdminOrSystemAdmin(stockOrder.getCompany().getUsers().stream().toList(), user);
 
+        deleteStockOrder(stockOrder);
+    }
+
+    /**
+     * Deletes an output order while its ProcessingOrder service is already performing
+     * the authorisation and dependency checks.
+     */
+    @Transactional
+    public void deleteProcessingOutputStockOrder(StockOrder stockOrder) {
+        deleteStockOrder(stockOrder);
+    }
+
+    private void deleteStockOrder(StockOrder stockOrder) {
+
         Set<Long> proofIds = stockOrder.getActivityProofs().stream()
-                .map(link -> link.getActivityProof().getId())
+                .map(StockOrderActivityProof::getActivityProof)
+                .filter(Objects::nonNull)
+                .map(ActivityProof::getId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
         Long locationId = stockOrder.getProductionLocation() == null
@@ -1366,6 +1372,67 @@ public class StockOrderService extends BaseService {
         if (locationId != null) {
             removeUnreferencedProductionLocation(locationId);
         }
+    }
+
+    private Set<Long> updateActivityProofs(StockOrder stockOrder, List<ApiActivityProof> requestedProofs) throws ApiException {
+        Map<Long, StockOrderActivityProof> linksByProofId = stockOrder.getActivityProofs().stream()
+                .filter(link -> link.getActivityProof() != null && link.getActivityProof().getId() != null)
+                .collect(Collectors.toMap(link -> link.getActivityProof().getId(), link -> link));
+        Set<Long> requestedIds = new HashSet<>();
+        Set<Long> removedProofIds = new HashSet<>();
+
+        for (ApiActivityProof requested : requestedProofs) {
+            if (requested == null || requested.getDocument() == null || requested.getDocument().getId() == null) {
+                throw new ApiException(ApiStatus.INVALID_REQUEST, "Every activity proof must include a document ID");
+            }
+
+            if (requested.getId() != null) {
+                if (!requestedIds.add(requested.getId())) {
+                    throw new ApiException(ApiStatus.INVALID_REQUEST, "An activity proof cannot be provided more than once");
+                }
+                StockOrderActivityProof currentLink = linksByProofId.get(requested.getId());
+                if (currentLink == null) {
+                    throw new ApiException(ApiStatus.UNAUTHORIZED, "Activity proof does not belong to this stock order");
+                }
+                ActivityProof currentProof = currentLink.getActivityProof();
+                if (activityProofChanged(currentProof, requested)) {
+                    removedProofIds.add(currentProof.getId());
+                    stockOrder.getActivityProofs().remove(currentLink);
+                    stockOrder.getActivityProofs().add(newActivityProofLink(stockOrder, requested));
+                }
+            } else {
+                stockOrder.getActivityProofs().add(newActivityProofLink(stockOrder, requested));
+            }
+        }
+
+        for (Map.Entry<Long, StockOrderActivityProof> entry : linksByProofId.entrySet()) {
+            if (!requestedIds.contains(entry.getKey())) {
+                removedProofIds.add(entry.getKey());
+                stockOrder.getActivityProofs().remove(entry.getValue());
+            }
+        }
+        return removedProofIds;
+    }
+
+    private StockOrderActivityProof newActivityProofLink(StockOrder stockOrder, ApiActivityProof requested) throws ApiException {
+        ActivityProof proof = new ActivityProof();
+        proof.setDocument(fetchEntity(requested.getDocument().getId(), Document.class));
+        proof.setFormalCreationDate(requested.getFormalCreationDate());
+        proof.setType(requested.getType());
+        proof.setValidUntil(requested.getValidUntil());
+        em.persist(proof);
+
+        StockOrderActivityProof link = new StockOrderActivityProof();
+        link.setStockOrder(stockOrder);
+        link.setActivityProof(proof);
+        return link;
+    }
+
+    private boolean activityProofChanged(ActivityProof current, ApiActivityProof requested) {
+        return !Objects.equals(current.getDocument() == null ? null : current.getDocument().getId(), requested.getDocument().getId())
+                || !Objects.equals(current.getFormalCreationDate(), requested.getFormalCreationDate())
+                || !Objects.equals(current.getType(), requested.getType())
+                || !Objects.equals(current.getValidUntil(), requested.getValidUntil());
     }
 
     private void removeUnreferencedActivityProof(Long proofId) {

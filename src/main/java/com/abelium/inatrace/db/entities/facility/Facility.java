@@ -77,7 +77,7 @@ public class Facility extends TimestampEntity {
 	@OneToMany(mappedBy = "facility", cascade = CascadeType.ALL, orphanRemoval = true)
 	private Set<FacilityValueChain> facilityValueChains;
 	
-	@OneToMany(mappedBy = "facility", cascade = CascadeType.ALL)
+	@OneToMany(mappedBy = "facility")
 	private Set<StockOrder> stockOrders;
 
 	@OneToMany(mappedBy = "facility", cascade = CascadeType.ALL, orphanRemoval = true)

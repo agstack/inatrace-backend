@@ -119,6 +119,17 @@ public class TransactionService extends BaseService {
         em.remove(transaction);
     }
 
+    /**
+     * Processing-order deletion is authorised by ProcessingOrderService. Revert the
+     * reserved quantity without requiring the caller to be enrolled in every source
+     * company connected to that processing order.
+     */
+    @Transactional
+    public void deleteTransactionForProcessingOrder(Transaction transaction, CustomUserDetails user) throws ApiException {
+        revertQuantities(transaction, user, Language.EN, false);
+        em.remove(transaction);
+    }
+
     @Transactional
     public void approveTransaction(Long id, CustomUserDetails user, Language language) throws ApiException {
 
