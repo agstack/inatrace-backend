@@ -17,6 +17,7 @@ import com.abelium.inatrace.components.processingorder.ProcessingOrderService;
 import com.abelium.inatrace.components.stockorder.StockOrderService;
 import com.abelium.inatrace.components.stockorder.api.ApiStockOrder;
 import com.abelium.inatrace.components.stockorder.api.ApiStockOrderLocation;
+import com.abelium.inatrace.components.transaction.TransactionService;
 import com.abelium.inatrace.components.codebook.semiproduct.api.ApiSemiProduct;
 import com.abelium.inatrace.api.errors.ApiException;
 import com.abelium.inatrace.db.entities.codebook.SemiProduct;
@@ -40,9 +41,11 @@ import com.abelium.inatrace.db.entities.stockorder.StockOrderActivityProof;
 import com.abelium.inatrace.db.entities.stockorder.StockOrderLocation;
 import com.abelium.inatrace.db.entities.stockorder.Transaction;
 import com.abelium.inatrace.db.entities.stockorder.enums.OrderType;
+import com.abelium.inatrace.db.entities.stockorder.enums.TransactionStatus;
 import com.abelium.inatrace.security.service.CustomUserDetails;
 import com.abelium.inatrace.types.CompanyStatus;
 import com.abelium.inatrace.types.CompanyUserRole;
+import com.abelium.inatrace.types.Language;
 import com.abelium.inatrace.types.ProcessingActionType;
 import com.abelium.inatrace.types.UserRole;
 import com.abelium.inatrace.types.UserStatus;
@@ -83,6 +86,7 @@ class SharedReferenceServiceTest {
     @Autowired PaymentService paymentService;
     @Autowired FacilityService facilityService;
     @Autowired ProcessingOrderService processingOrderService;
+    @Autowired TransactionService transactionService;
 
     private Company company;
     private Facility facility;
@@ -310,6 +314,74 @@ class SharedReferenceServiceTest {
 
     @Test
     void deletingAProcessingOrderRestoresTheSourceQuantity() throws Exception {
+        ProcessingInput input = processingInput(new BigDecimal("8"), new BigDecimal("3"),
+                new BigDecimal("2"), TransactionStatus.PENDING);
+        processingOrderService.deleteProcessingOrder(input.processingOrderId(), principal);
+        em.flush();
+        em.clear();
+
+        assertNull(em.find(ProcessingOrder.class, input.processingOrderId()));
+        assertNull(em.find(Transaction.class, input.transactionId()));
+        assertEquals(0, BigDecimal.TEN.compareTo(em.find(StockOrder.class, input.sourceOrderId()).getAvailableQuantity()));
+    }
+
+    @Test
+    void deletingAProcessingOrderDoesNotRestoreCanceledTransactionsTwice() throws Exception {
+        // A canceled transaction has already returned its output quantity in rejectTransaction.
+        ProcessingInput input = processingInput(BigDecimal.TEN, new BigDecimal("3"),
+                new BigDecimal("2"), TransactionStatus.CANCELED);
+        processingOrderService.deleteProcessingOrder(input.processingOrderId(), principal);
+        em.flush();
+        em.clear();
+
+        assertEquals(0, BigDecimal.TEN.compareTo(em.find(StockOrder.class, input.sourceOrderId()).getAvailableQuantity()));
+    }
+
+    @Test
+    void deletingACanceledTransactionDoesNotRestoreTheSourceQuantityTwice() throws Exception {
+        // A canceled transaction has already returned its output quantity in rejectTransaction.
+        ProcessingInput input = processingInput(BigDecimal.TEN, new BigDecimal("3"),
+                new BigDecimal("2"), TransactionStatus.CANCELED);
+        transactionService.deleteTransaction(input.transactionId(), principal, Language.EN);
+        em.flush();
+        em.clear();
+
+        assertNull(em.find(Transaction.class, input.transactionId()));
+        assertEquals(0, BigDecimal.TEN.compareTo(em.find(StockOrder.class, input.sourceOrderId()).getAvailableQuantity()));
+    }
+
+    @Test
+    void deletingAnActiveTransactionRestoresItsOutputQuantity() throws Exception {
+        ProcessingInput input = processingInput(new BigDecimal("8"), new BigDecimal("3"),
+                new BigDecimal("2"), TransactionStatus.PENDING);
+        transactionService.deleteTransaction(input.transactionId(), principal, Language.EN);
+        em.flush();
+        em.clear();
+
+        assertNull(em.find(Transaction.class, input.transactionId()));
+        assertEquals(0, BigDecimal.TEN.compareTo(em.find(StockOrder.class, input.sourceOrderId()).getAvailableQuantity()));
+    }
+
+    @Test
+    void deletingANonPendingShipmentDoesNotChangeStock() throws Exception {
+        ProcessingInput input = processingInput(BigDecimal.TEN, new BigDecimal("3"),
+                new BigDecimal("2"), TransactionStatus.CANCELED, ProcessingActionType.SHIPMENT);
+
+        assertThrows(ApiException.class,
+                () -> transactionService.deleteTransaction(input.transactionId(), principal, Language.EN));
+
+        assertNotNull(em.find(Transaction.class, input.transactionId()));
+        assertEquals(0, BigDecimal.TEN.compareTo(em.find(StockOrder.class, input.sourceOrderId()).getAvailableQuantity()));
+    }
+
+    private ProcessingInput processingInput(BigDecimal availableQuantity, BigDecimal inputQuantity,
+                                            BigDecimal outputQuantity, TransactionStatus status) throws Exception {
+        return processingInput(availableQuantity, inputQuantity, outputQuantity, status, ProcessingActionType.PROCESSING);
+    }
+
+    private ProcessingInput processingInput(BigDecimal availableQuantity, BigDecimal inputQuantity,
+                                            BigDecimal outputQuantity, TransactionStatus status,
+                                            ProcessingActionType processingActionType) throws Exception {
         FacilityLocation sourceLocation = new FacilityLocation();
         sourceLocation.setLatitude(1.0);
         sourceLocation.setLongitude(1.0);
@@ -327,11 +399,11 @@ class SharedReferenceServiceTest {
         facility.setFacilityType(sourceFacilityType);
         Long sourceOrderId = stockOrderService.createOrUpdateStockOrder(purchaseOrder(), principal, null).getId();
         StockOrder sourceOrder = em.find(StockOrder.class, sourceOrderId);
-        sourceOrder.setAvailableQuantity(new BigDecimal("7"));
+        sourceOrder.setAvailableQuantity(availableQuantity);
 
         ProcessingAction action = new ProcessingAction();
         action.setCompany(company);
-        action.setType(ProcessingActionType.PROCESSING);
+        action.setType(processingActionType);
         em.persist(action);
         ProcessingOrder processingOrder = new ProcessingOrder();
         processingOrder.setProcessingAction(action);
@@ -342,21 +414,16 @@ class SharedReferenceServiceTest {
         transaction.setSourceStockOrder(sourceOrder);
         transaction.setSourceFacility(facility);
         transaction.setTargetProcessingOrder(processingOrder);
-        transaction.setInputQuantity(new BigDecimal("3"));
-        transaction.setOutputQuantity(new BigDecimal("3"));
+        transaction.setInputQuantity(inputQuantity);
+        transaction.setOutputQuantity(outputQuantity);
+        transaction.setStatus(status);
         em.persist(transaction);
         processingOrder.getInputTransactions().add(transaction);
         em.flush();
+        return new ProcessingInput(sourceOrderId, processingOrder.getId(), transaction.getId());
+    }
 
-        Long processingOrderId = processingOrder.getId();
-        Long transactionId = transaction.getId();
-        processingOrderService.deleteProcessingOrder(processingOrderId, principal);
-        em.flush();
-        em.clear();
-
-        assertNull(em.find(ProcessingOrder.class, processingOrderId));
-        assertNull(em.find(Transaction.class, transactionId));
-        assertEquals(0, BigDecimal.TEN.compareTo(em.find(StockOrder.class, sourceOrderId).getAvailableQuantity()));
+    private record ProcessingInput(Long sourceOrderId, Long processingOrderId, Long transactionId) {
     }
 
     @Test

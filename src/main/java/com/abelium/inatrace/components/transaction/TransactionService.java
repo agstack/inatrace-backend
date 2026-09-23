@@ -106,14 +106,18 @@ public class TransactionService extends BaseService {
 
         PermissionsUtil.checkUserIfCompanyEnrolled(transaction.getCompany().getUsers().stream().toList(), user);
 
-        revertQuantities(transaction, user, language);
-
         // Only PENDING transactions can be deleted within QUOTE order
         if (transaction.getStatus() != TransactionStatus.PENDING
                 && transaction.getTargetProcessingOrder() != null
                 && transaction.getTargetProcessingOrder().getProcessingAction().getType() == ProcessingActionType.SHIPMENT) {
 
             throw new ApiException(ApiStatus.VALIDATION_ERROR, "Only PENDING transactions can be deleted.");
+        }
+
+        // rejectTransaction already restored a canceled transaction. Deleting it must
+        // not return the source quantity a second time.
+        if (!TransactionStatus.CANCELED.equals(transaction.getStatus())) {
+            revertQuantities(transaction, user, language);
         }
 
         em.remove(transaction);
@@ -126,7 +130,11 @@ public class TransactionService extends BaseService {
      */
     @Transactional
     public void deleteTransactionForProcessingOrder(Transaction transaction, CustomUserDetails user) throws ApiException {
-        revertQuantities(transaction, user, Language.EN, false);
+        // rejectTransaction already restored a canceled transaction. Restoring it again
+        // here would increase the source order's available quantity twice.
+        if (!TransactionStatus.CANCELED.equals(transaction.getStatus())) {
+            revertQuantities(transaction, user, Language.EN, false);
+        }
         em.remove(transaction);
     }
 
@@ -203,9 +211,9 @@ public class TransactionService extends BaseService {
 
         StockOrder sourceStockOrder = transaction.getSourceStockOrder();
 
-        // Set source StockOrder available quantity
+        // Reservation subtracts outputQuantity, so the reversal must use the same unit.
         if (sourceStockOrder != null) {
-            sourceStockOrder.setAvailableQuantity(sourceStockOrder.getAvailableQuantity().add(transaction.getInputQuantity()));
+            sourceStockOrder.setAvailableQuantity(sourceStockOrder.getAvailableQuantity().add(transaction.getOutputQuantity()));
             stockOrderService.createOrUpdateStockOrder(
                     StockOrderMapper.toApiStockOrder(sourceStockOrder, user.getUserId(), language),
                     user,
