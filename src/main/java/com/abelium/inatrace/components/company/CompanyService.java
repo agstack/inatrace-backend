@@ -334,23 +334,68 @@ public class CompanyService extends BaseService {
 	 * name is not treated as a duplicate.
 	 */
 	public boolean existsUserCustomer(ApiUserCustomer apiUserCustomer) {
+		return !findMatchingUserCustomers(apiUserCustomer).isEmpty();
+	}
 
-		if (StringUtils.isNotBlank(apiUserCustomer.getFarmerCompanyInternalId())
-				&& !em.createNamedQuery("UserCustomer.getUserCustomerByCompanyAndInternalId", UserCustomer.class)
-						.setParameter("companyId", apiUserCustomer.getCompanyId())
-						.setParameter("internalId", apiUserCustomer.getFarmerCompanyInternalId())
-						.getResultList()
-						.isEmpty()) {
-			return true;
+	/**
+	 * Farmers an imported row is considered a duplicate of: by company-internal ID when the row has
+	 * one and it matches, otherwise by name, surname and city. existsUserCustomer and
+	 * addPlotsToExistingFarmer must agree on this, or a row reported as a duplicate gets its plots
+	 * silently dropped.
+	 */
+	private List<UserCustomer> findMatchingUserCustomers(ApiUserCustomer apiUserCustomer) {
+		if (StringUtils.isNotBlank(apiUserCustomer.getFarmerCompanyInternalId())) {
+			List<UserCustomer> byInternalId = em.createNamedQuery(
+							"UserCustomer.getUserCustomerByCompanyAndInternalId",
+							UserCustomer.class)
+					.setParameter("companyId", apiUserCustomer.getCompanyId())
+					.setParameter("internalId", apiUserCustomer.getFarmerCompanyInternalId())
+					.getResultList();
+
+			if (!byInternalId.isEmpty()) return byInternalId;
 		}
 
-		return !em.createNamedQuery("UserCustomer.getUserCustomerByNameSurnameAndCity", UserCustomer.class)
+		return em.createNamedQuery("UserCustomer.getUserCustomerByNameSurnameAndCity",
+						UserCustomer.class)
 				.setParameter("companyId", apiUserCustomer.getCompanyId())
 				.setParameter("name", apiUserCustomer.getName())
 				.setParameter("surname", apiUserCustomer.getSurname())
 				.setParameter("city", apiUserCustomer.getLocation().getAddress().getCity())
-				.getResultList()
-				.isEmpty();
+				.getResultList();
+	}
+
+	public void addPlotsToExistingFarmer(ApiUserCustomer newFarmerData) throws ApiException {
+		List<UserCustomer> matches = findMatchingUserCustomers(newFarmerData);
+		if (matches.isEmpty()) {
+			return;
+		}
+		UserCustomer existingFarmer = matches.get(0);
+
+		for (ApiPlot apiPlot : newFarmerData.getPlots()) {
+			Plot plot = new Plot();
+			plot.setPlotName(apiPlot.getPlotName());
+			if (apiPlot.getCrop() != null && apiPlot.getCrop().getId() != null) {
+				plot.setCrop(fetchProductType(apiPlot.getCrop().getId()));
+			}
+			plot.setNumberOfPlants(apiPlot.getNumberOfPlants());
+			plot.setUnit(apiPlot.getUnit());
+			plot.setSize(apiPlot.getSize());
+			plot.setFarmer(existingFarmer);
+			plot.setLastUpdated(new Date());
+
+			for (ApiPlotCoordinate apiPlotCoordinate : apiPlot.getCoordinates()) {
+				PlotCoordinate plotCoordinate = new PlotCoordinate();
+				plotCoordinate.setLatitude(roundCoordinate(apiPlotCoordinate.getLatitude()));
+				plotCoordinate.setLongitude(roundCoordinate(apiPlotCoordinate.getLongitude()));
+				plotCoordinate.setPlot(plot);
+				plot.getCoordinates().add(plotCoordinate);
+			}
+
+			// Generate Plot GeoID
+			plot.setGeoId(generatePlotGeoID(plot.getCoordinates()));
+
+			existingFarmer.getPlots().add(plot);
+		}
 	}
 
 	public ApiPaginatedList<ApiUserCustomer> getUserCustomersForCompanyAndType(Long companyId,
