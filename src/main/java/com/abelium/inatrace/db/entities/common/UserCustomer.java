@@ -82,7 +82,8 @@ public class UserCustomer extends BaseEntity {
 	@Column(length = Lengths.DEFAULT)
 	private String location;
 
-	@OneToOne
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "userCustomerLocation_id", nullable = true)
 	private UserCustomerLocation userCustomerLocation;
 	
 	/**

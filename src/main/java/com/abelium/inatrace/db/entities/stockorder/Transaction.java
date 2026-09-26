@@ -28,8 +28,9 @@ public class Transaction extends TimestampEntity {
 
 	@Column
 	private Long initiationUserId;
-	
-	@OneToOne
+
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "sourceStockOrder_id", nullable = true)
 	private StockOrder sourceStockOrder;
 
 	@ManyToOne(fetch = FetchType.LAZY)
@@ -56,7 +57,8 @@ public class Transaction extends TimestampEntity {
 	@Column
 	private Long shipmentId;
 
-	@OneToOne
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "inputMeasureUnitType_id", nullable = true)
 	private MeasureUnitType inputMeasureUnitType;
 	
 	@Column

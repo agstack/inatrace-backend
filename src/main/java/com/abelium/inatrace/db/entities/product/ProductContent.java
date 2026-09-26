@@ -39,34 +39,40 @@ public class ProductContent extends BaseEntity {
 	/**
 	 * process
 	 */
-	@OneToOne(fetch = FetchType.LAZY)
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "process_id", nullable = true)
 	private Process process = new Process();
 	
 	/**
 	 * social responsibility
 	 */
-	@OneToOne(fetch = FetchType.LAZY)
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "responsibility_id", nullable = true)
 	private Responsibility responsibility = new Responsibility();
 	
 	/**
 	 * environmental sustainability
 	 */
-	@OneToOne(fetch = FetchType.LAZY)
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "sustainability_id", nullable = true)
 	private Sustainability sustainability = new Sustainability();
 
     /**
      * journey coordinates
      */
-    @OneToOne(fetch = FetchType.LAZY)
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "journey_id", nullable = true)
     private ProductJourney journey = new ProductJourney();
 	
 	/**
 	 * product settings
 	 */
-	@OneToOne(fetch = FetchType.LAZY)
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "settings_id", nullable = true)
 	private ProductSettings settings = new ProductSettings();
 
-	@OneToOne
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "businessToCustomerSettings_id", nullable = true)
 	private BusinessToCustomerSettings businessToCustomerSettings = new BusinessToCustomerSettings();
 
 	public String getName() {
