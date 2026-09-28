@@ -109,6 +109,8 @@ INATrace.auth.accessTokenExpirationSec = 3600
 INATrace.auth.refreshTokenCookieName = inatrace-refreshToken
 INATrace.auth.refreshTokenExpirationSec = 300
 INATrace.auth.jwtSigningKey = 
+# BCrypt work factor. Keep this at 10 or higher outside of test profiles.
+INATrace.auth.bcryptStrength = 10
 
 # path to import resources (e.g. in migrations to fill tables)
 INATrace.import.path = import/
@@ -136,6 +138,8 @@ INATrace.requestLog.token =
 
 # Exchange rate API key
 INAtrace.exchangerate.apiKey =
+# Set false only in environments where automatic external refreshes are intentionally disabled.
+INATrace.currency.autoUpdate.enabled = true
 
 # Beyco integration OAuth2 data
 beyco.oauth2.clientId =

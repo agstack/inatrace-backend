@@ -12,10 +12,7 @@ import com.abelium.inatrace.tools.PaginationTools;
 import com.abelium.inatrace.tools.QueryTools;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.context.event.ApplicationReadyEvent;
-import org.springframework.context.event.EventListener;
 import org.springframework.http.MediaType;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -64,8 +61,6 @@ public class CurrencyTypeService extends BaseService {
     }
 
     @Transactional
-    @Scheduled(cron = "0 1 0 * * *")
-    @EventListener(ApplicationReadyEvent.class)
     public void updateCurrencies() {
         WebClient webClientSymbols = WebClient.create("http://api.exchangeratesapi.io/v1/symbols?access_key=" + apiKey);
         ApiCurrencySymbolsResponse apiCurrencySymbolsResponse = webClientSymbols

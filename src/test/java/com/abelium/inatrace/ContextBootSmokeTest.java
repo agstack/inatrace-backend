@@ -1,6 +1,7 @@
 package com.abelium.inatrace;
 
 import com.abelium.inatrace.support.AbstractMySqlIntegrationTest;
+import com.abelium.inatrace.components.codebook.currencies.CurrencyUpdateScheduler;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -63,6 +64,8 @@ class ContextBootSmokeTest extends AbstractMySqlIntegrationTest {
 		assertTrue(context.containsBean("entityManagerFactory"), "JPA should be wired up");
 		assertTrue(context.getBeanNamesForType(org.flywaydb.core.Flyway.class).length > 0,
 				"MigrationsConfiguration injects the Flyway bean, so it must exist");
+		assertTrue(context.getBeansOfType(CurrencyUpdateScheduler.class).isEmpty(),
+				"the test profile must not start the external currency refresh");
 	}
 
 	@Test

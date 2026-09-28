@@ -4,6 +4,8 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.MySQLContainer;
 
+import java.util.Map;
+
 /**
  * One MySQL instance shared by compatible integration-test contexts in one Maven JVM.
  *
@@ -16,7 +18,8 @@ public abstract class AbstractMySqlIntegrationTest {
 
     private static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4.11")
             .withUrlParam("allowPublicKeyRetrieval", "true")
-            .withUrlParam("useSSL", "false");
+            .withUrlParam("useSSL", "false")
+            .withTmpFs(Map.of("/var/lib/mysql", "rw"));
 
     static {
         MYSQL.start();
