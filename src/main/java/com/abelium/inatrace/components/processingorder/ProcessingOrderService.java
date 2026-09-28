@@ -13,6 +13,7 @@ import com.abelium.inatrace.components.transaction.TransactionService;
 import com.abelium.inatrace.components.transaction.api.ApiTransaction;
 import com.abelium.inatrace.db.entities.processingaction.ProcessingAction;
 import com.abelium.inatrace.db.entities.processingorder.ProcessingOrder;
+import com.abelium.inatrace.db.entities.payment.Payment;
 import com.abelium.inatrace.db.entities.product.FinalProduct;
 import com.abelium.inatrace.db.entities.stockorder.StockOrder;
 import com.abelium.inatrace.db.entities.stockorder.Transaction;
@@ -425,24 +426,48 @@ public class ProcessingOrderService extends BaseService {
     @Transactional
     public void deleteProcessingOrder(Long id, CustomUserDetails user) throws ApiException {
 
-        // Transactions should not be deleted -> May result in inappropriate quantities
-
         ProcessingOrder entity = fetchEntity(id, ProcessingOrder.class);
 
         // Check if req. user is enrolled in owner company for this processing order
         PermissionsUtil.checkUserIfCompanyEnrolledAndAdminOrSystemAdmin(entity.getProcessingAction().getCompany().getUsers().stream().toList(), user);
 
-        // Remove connected transactions
-        for (Transaction t: entity.getInputTransactions()) {
-            em.remove(t);
+        assertProcessingOutputsCanBeDeleted(entity);
+
+        // Removing a processing order also removes its generated orders. Restore the
+        // quantities reserved by each input transaction before deleting that transaction.
+        for (Transaction t: Set.copyOf(entity.getInputTransactions())) {
+            transactionService.deleteTransactionForProcessingOrder(t, user);
         }
 
-        // Remove target stock orders
-        for (StockOrder so: entity.getTargetStockOrders()) {
-            em.remove(so);
+        for (StockOrder so: Set.copyOf(entity.getTargetStockOrders())) {
+            stockOrderService.deleteProcessingOutputStockOrder(so);
         }
 
         em.remove(entity);
+    }
+
+    private void assertProcessingOutputsCanBeDeleted(ProcessingOrder processingOrder) throws ApiException {
+        for (StockOrder output : processingOrder.getTargetStockOrders()) {
+            Long otherTransactions = em.createQuery(
+                            "SELECT COUNT(t) FROM Transaction t WHERE t.sourceStockOrder.id = :stockOrderId " +
+                                    "AND (t.targetProcessingOrder IS NULL OR t.targetProcessingOrder.id <> :processingOrderId)",
+                            Long.class)
+                    .setParameter("stockOrderId", output.getId())
+                    .setParameter("processingOrderId", processingOrder.getId())
+                    .getSingleResult();
+            if (otherTransactions > 0) {
+                throw new ApiException(ApiStatus.VALIDATION_ERROR,
+                        "Cannot delete a processing order whose output has been used by another transaction");
+            }
+
+            Long payments = em.createQuery("SELECT COUNT(p) FROM Payment p WHERE p.stockOrder.id = :stockOrderId", Long.class)
+                    .setParameter("stockOrderId", output.getId())
+                    .getSingleResult();
+            if (payments > 0) {
+                throw new ApiException(ApiStatus.VALIDATION_ERROR,
+                        "Cannot delete a processing order whose output has payments");
+            }
+        }
     }
 
     /**

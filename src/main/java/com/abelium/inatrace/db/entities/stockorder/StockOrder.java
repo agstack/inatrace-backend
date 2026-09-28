@@ -60,12 +60,14 @@ public class StockOrder extends TimestampEntity {
 	// Farmer representative - collector
 	@ManyToOne
 	private UserCustomer representativeOfProducerUserCustomer;
-	
-	@OneToOne(cascade = CascadeType.ALL)
+
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "productionLocation_id", nullable = true)
 	private StockOrderLocation productionLocation;
 
 	// The company customer for which the stock order was placed
-	@OneToOne
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "consumerCompanyCustomer_id", nullable = true)
 	private CompanyCustomer consumerCompanyCustomer;
 
 	// Set when this stock order represent a unit of quantity for a semi-product (used in processing)

@@ -41,6 +41,7 @@ import org.torpedoquery.jakarta.jpa.Torpedo;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -108,7 +109,7 @@ public class FacilityService extends BaseService {
 		if (apiFacility.getId() != null) {
 			entity = fetchFacility(apiFacility.getId());
 			facilityLocation = entity.getFacilityLocation();
-			address = entity.getFacilityLocation().getAddress();
+			address = facilityLocation == null ? null : facilityLocation.getAddress();
 			company = entity.getCompany();
 		} else {
 			entity = new Facility();
@@ -119,6 +120,25 @@ public class FacilityService extends BaseService {
 
 		// Create or update can be done only by company admin or system admin
 		PermissionsUtil.checkUserIfCompanyEnrolledAndAdminOrSystemAdmin(company.getUsers().stream().toList(), user);
+		if (facilityLocation == null) {
+			facilityLocation = new FacilityLocation();
+		}
+		if (address == null) {
+			address = new Address();
+		}
+
+		Long previousLocationId = facilityLocation.getId();
+		if (entity.getId() != null && previousLocationId != null) {
+			Long references = em.createQuery(
+						"SELECT COUNT(f) FROM Facility f WHERE f.facilityLocation.id = :locationId", Long.class)
+					.setParameter("locationId", previousLocationId)
+					.getSingleResult();
+			if (references > 1 && facilityLocationChanged(facilityLocation, apiFacility)) {
+				// Editing one facility must not change the other facilities using this location.
+				facilityLocation = new FacilityLocation();
+				address = new Address();
+			}
+		}
 
 		entity.setIsCollectionFacility(apiFacility.getIsCollectionFacility());
 		entity.setIsPublic(apiFacility.getIsPublic());
@@ -156,6 +176,9 @@ public class FacilityService extends BaseService {
 
 		entity.setCompany(company);
 
+		if (facilityLocation.getId() == null) {
+			em.persist(facilityLocation);
+		}
 		if (entity.getId() == null) {
 			em.persist(entity);
 		}
@@ -186,6 +209,11 @@ public class FacilityService extends BaseService {
 			entity.getFacilityTranslations().add(translation);
 		});
 
+		if (previousLocationId != null && !Objects.equals(previousLocationId, facilityLocation.getId())) {
+			em.flush();
+			removeUnreferencedFacilityLocation(previousLocationId);
+		}
+
 		return new ApiBaseEntity(entity);
 	}
 
@@ -207,8 +235,75 @@ public class FacilityService extends BaseService {
 
 		// Remove can be done only by company admin or system admin
 		PermissionsUtil.checkUserIfCompanyEnrolledAndAdminOrSystemAdmin(facility.getCompany().getUsers().stream().toList(), user);
+		assertFacilityHasNoBusinessHistory(id);
 
+		Long locationId = facility.getFacilityLocation() == null
+				? null : facility.getFacilityLocation().getId();
 		em.remove(facility);
+		em.flush();
+		if (locationId != null) {
+			removeUnreferencedFacilityLocation(locationId);
+		}
+	}
+
+	private boolean facilityLocationChanged(FacilityLocation current, ApiFacility requested) {
+		if (!Objects.equals(current.getLatitude(), requested.getFacilityLocation().getLatitude())
+				|| !Objects.equals(current.getLongitude(), requested.getFacilityLocation().getLongitude())
+				|| !Objects.equals(current.getNumberOfFarmers(), requested.getFacilityLocation().getNumberOfFarmers())
+				|| !Objects.equals(current.getPinName(), requested.getFacilityLocation().getPinName())
+				|| !Objects.equals(current.getPubliclyVisible(), requested.getFacilityLocation().getPubliclyVisible())) {
+			return true;
+		}
+
+		Address currentAddress = current.getAddress();
+		var requestedAddress = requested.getFacilityLocation().getAddress();
+		Long currentCountryId = currentAddress == null || currentAddress.getCountry() == null
+				? null : currentAddress.getCountry().getId();
+		Long requestedCountryId = requestedAddress == null || requestedAddress.getCountry() == null
+				? null : requestedAddress.getCountry().getId();
+		return currentAddress == null || requestedAddress == null
+				|| !Objects.equals(currentAddress.getAddress(), requestedAddress.getAddress())
+				|| !Objects.equals(currentAddress.getCity(), requestedAddress.getCity())
+				|| !Objects.equals(currentAddress.getState(), requestedAddress.getState())
+				|| !Objects.equals(currentAddress.getZip(), requestedAddress.getZip())
+				|| !Objects.equals(currentAddress.getCell(), requestedAddress.getCell())
+				|| !Objects.equals(currentAddress.getSector(), requestedAddress.getSector())
+				|| !Objects.equals(currentAddress.getVillage(), requestedAddress.getVillage())
+				|| !Objects.equals(currentCountryId, requestedCountryId);
+	}
+
+	private void assertFacilityHasNoBusinessHistory(Long facilityId) throws ApiException {
+		if (countFacilityReferences("SELECT COUNT(so) FROM StockOrder so WHERE so.facility.id = :facilityId OR so.quoteFacility.id = :facilityId", facilityId) > 0) {
+			throw new ApiException(ApiStatus.VALIDATION_ERROR, "Cannot delete a facility that has stock orders");
+		}
+		if (countFacilityReferences("SELECT COUNT(t) FROM Transaction t WHERE t.sourceFacility.id = :facilityId", facilityId) > 0) {
+			throw new ApiException(ApiStatus.VALIDATION_ERROR, "Cannot delete a facility that has transactions");
+		}
+		if (countFacilityReferences("SELECT COUNT(po) FROM ProductOrder po WHERE po.facility.id = :facilityId", facilityId) > 0) {
+			throw new ApiException(ApiStatus.VALIDATION_ERROR, "Cannot delete a facility that has product orders");
+		}
+		if (countFacilityReferences("SELECT COUNT(paf) FROM ProcessingActionFacility paf WHERE paf.facility.id = :facilityId", facilityId) > 0) {
+			throw new ApiException(ApiStatus.VALIDATION_ERROR, "Cannot delete a facility used by a processing action");
+		}
+	}
+
+	private Long countFacilityReferences(String jpql, Long facilityId) {
+		return em.createQuery(jpql, Long.class)
+				.setParameter("facilityId", facilityId)
+				.getSingleResult();
+	}
+
+	private void removeUnreferencedFacilityLocation(Long locationId) {
+		Long references = em.createQuery(
+					"SELECT COUNT(f) FROM Facility f WHERE f.facilityLocation.id = :locationId", Long.class)
+				.setParameter("locationId", locationId)
+				.getSingleResult();
+		if (references == 0) {
+			FacilityLocation location = em.find(FacilityLocation.class, locationId);
+			if (location != null) {
+				em.remove(location);
+			}
+		}
 	}
 
 	public Facility fetchFacility(Long id) throws ApiException {

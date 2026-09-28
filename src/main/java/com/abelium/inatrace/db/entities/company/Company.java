@@ -43,7 +43,8 @@ public class Company extends BaseEntity implements CompanyTranslatables {
 	/**
 	 * high-resolution logo of the company (jpeg, jpg, png)
 	 */
-	@OneToOne
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "logo_id", nullable = true)
 	private Document logo;
 	
 	@Embedded

@@ -16,9 +16,11 @@ import com.abelium.inatrace.components.stockorder.api.ApiStockOrder;
 import com.abelium.inatrace.components.stockorder.api.ApiStockOrderEvidenceTypeValue;
 import com.abelium.inatrace.components.user.mappers.UserMapper;
 import com.abelium.inatrace.db.entities.stockorder.StockOrder;
+import com.abelium.inatrace.db.entities.stockorder.StockOrderActivityProof;
 import com.abelium.inatrace.types.Language;
 import org.apache.commons.lang3.BooleanUtils;
 
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 public class StockOrderMapper {
@@ -92,7 +94,9 @@ public class StockOrderMapper {
         // Map the activity proofs
         if (!entity.getActivityProofs().isEmpty()) {
             apiStockOrder.setActivityProofs(entity.getActivityProofs().stream()
-                    .map(ap -> ActivityProofMapper.toApiActivityProof(ap.getActivityProof(), userId))
+                    .map(StockOrderActivityProof::getActivityProof)
+                    .filter(Objects::nonNull)
+                    .map(activityProof -> ActivityProofMapper.toApiActivityProof(activityProof, userId))
                     .collect(Collectors.toList()));
         }
 

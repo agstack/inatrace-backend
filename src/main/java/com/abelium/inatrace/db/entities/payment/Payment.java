@@ -92,7 +92,8 @@ public class Payment extends TimestampEntity {
 	@Column
 	private String receiptNumber; // defined by user
 
-	@OneToOne(cascade = CascadeType.ALL)
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "receiptDocument_id", nullable = true)
 	private Document receiptDocument; // document info
 	
 	@Enumerated(EnumType.STRING)

@@ -94,19 +94,24 @@ public class BusinessToCustomerSettings extends TimestampEntity {
     @Column(name = "average_region_farm_gate_price")
     private BigDecimal averageRegionFarmGatePrice;
 
-    @OneToOne
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "productFont_id", nullable = true)
     private Document productFont;
 
-    @OneToOne
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "textFont_id", nullable = true)
     private Document textFont;
 
-    @OneToOne
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "landingPageImage_id", nullable = true)
     private Document landingPageImage;
 
-    @OneToOne
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "landingPageBackgroundImage_id", nullable = true)
     private Document landingPageBackgroundImage;
 
-    @OneToOne
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "headerBackgroundImage_id", nullable = true)
     private Document headerBackgroundImage;
 
     public String getPrimaryColor() {

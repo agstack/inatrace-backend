@@ -198,7 +198,9 @@ class ProductOrderApiTest extends AbstractMySqlIntegrationTest {
 		Facility f = new Facility();
 		f.setName(name);
 		f.setCompany(company);
-		f.setFacilityLocation(new FacilityLocation());
+		FacilityLocation location = new FacilityLocation();
+		em.persist(location);
+		f.setFacilityLocation(location);
 		em.persist(f);
 		return f;
 	}

@@ -1041,7 +1041,21 @@ public class CompanyService extends BaseService {
 		userCustomer.getFarm().setTotalCultivatedArea(apiUserCustomer.getFarm().getTotalCultivatedArea());
 
 		if (userCustomer.getUserCustomerLocation() == null) {
-			userCustomer.setUserCustomerLocation(new UserCustomerLocation());
+			UserCustomerLocation location = new UserCustomerLocation();
+			em.persist(location);
+			userCustomer.setUserCustomerLocation(location);
+		} else {
+			Long references = em.createQuery(
+						"SELECT COUNT(uc) FROM UserCustomer uc WHERE uc.userCustomerLocation.id = :locationId",
+						Long.class)
+					.setParameter("locationId", userCustomer.getUserCustomerLocation().getId())
+					.getSingleResult();
+			if (references > 1) {
+				// Keep changes to this farmer/collector from changing another record.
+				UserCustomerLocation location = new UserCustomerLocation();
+				em.persist(location);
+				userCustomer.setUserCustomerLocation(location);
+			}
 		}
 		if (userCustomer.getUserCustomerLocation().getAddress() == null) {
 			userCustomer.getUserCustomerLocation().setAddress(new Address());
