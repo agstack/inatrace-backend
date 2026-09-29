@@ -847,6 +847,21 @@ public class StockOrderService extends BaseService {
         Facility facility = facilityService.fetchFacility(apiPurchaseOrder.getFacility().id);
         PermissionsUtil.checkUserIfCompanyEnrolled(facility.getCompany().getUsers().stream().toList(), user);
 
+        // Validate the complete batch before the first insert. ApiException is a
+        // checked exception, so refusing a later farmer must not leave earlier
+        // purchase orders from this request behind.
+        if (apiPurchaseOrder.getRepresentativeOfProducerUserCustomer() != null) {
+            checkPurchaseOrderUserCustomerCompany(
+                    apiPurchaseOrder.getRepresentativeOfProducerUserCustomer().getId(), facility);
+        }
+        for (ApiPurchaseOrderFarmer farmer : apiPurchaseOrder.getFarmers()) {
+            if (farmer.getProducerUserCustomer() == null) {
+                throw new ApiException(ApiStatus.INVALID_REQUEST,
+                        "Producer user customer is required for purchase orders!");
+            }
+            checkPurchaseOrderUserCustomerCompany(farmer.getProducerUserCustomer().getId(), facility);
+        }
+
         // Update stocks of type Purchase, one by one
         for (ApiPurchaseOrderFarmer farmer : apiPurchaseOrder.getFarmers()) {
 
@@ -907,15 +922,42 @@ public class StockOrderService extends BaseService {
                                                        CustomUserDetails user,
                                                        ProcessingOrder processingOrder) throws ApiException {
 
-        // Check that the request user is form a company which is connected to the company that owns the quote order (or is a user of that company)
-        if (apiStockOrder.getCompany() != null && apiStockOrder.getCompany().getId() != null) {
-            PermissionsUtil.checkUserIfConnectedWithProducts(companyQueries.fetchCompanyProducts(apiStockOrder.getCompany().getId()), user);
-        } else {
-            // When creating a new Quote order, the underlying stock order has not yet set company
-            PermissionsUtil.checkUserIfConnectedWithProducts(companyQueries.fetchCompanyProducts(processingOrder.getProcessingAction().getCompany().getId()), user);
-        }
+        checkQuoteStockOrderPermission(apiStockOrder, user, processingOrder);
 
         return createOrUpdateStockOrder(apiStockOrder, user, processingOrder, false);
+    }
+
+    public void checkQuoteStockOrderPermission(ApiStockOrder apiStockOrder,
+                                               CustomUserDetails user,
+                                               ProcessingOrder processingOrder) throws ApiException {
+
+        // The request's company ID is not a trusted authorization source. A quote
+        // output belongs to the company that owns its processing action and must
+        // stay there even when an existing StockOrder ID is supplied.
+        Long actionCompanyId = processingOrder.getProcessingAction().getCompany().getId();
+        PermissionsUtil.checkUserIfConnectedWithProducts(
+                companyQueries.fetchCompanyProducts(actionCompanyId), user);
+        if (apiStockOrder.getFacility() == null || apiStockOrder.getFacility().getId() == null) {
+            throw new ApiException(ApiStatus.INVALID_REQUEST, "Facility needs to be provided!");
+        }
+        Facility facility = facilityService.fetchFacility(apiStockOrder.getFacility().getId());
+        if (!Objects.equals(facility.getCompany().getId(), actionCompanyId)) {
+            throw new ApiException(ApiStatus.UNAUTHORIZED,
+                    "Quote output facility belongs to another company");
+        }
+        if (apiStockOrder.getId() != null) {
+            StockOrder existing = fetchEntity(apiStockOrder.getId(), StockOrder.class);
+            if (!Objects.equals(existing.getCompany().getId(), actionCompanyId)) {
+                throw new ApiException(ApiStatus.UNAUTHORIZED,
+                        "Quote output stock order belongs to another company");
+            }
+            if (existing.getProcessingOrder() != null
+                    && !Objects.equals(existing.getProcessingOrder().getId(), processingOrder.getId())) {
+                throw new ApiException(ApiStatus.UNAUTHORIZED,
+                        "Quote output stock order belongs to another processing order");
+            }
+        }
+
     }
 
     @Transactional
@@ -973,6 +1015,38 @@ public class StockOrderService extends BaseService {
                 && !Objects.equals(entity.getCompany().getId(), facility.getCompany().getId())) {
             throw new ApiException(ApiStatus.VALIDATION_ERROR,
                     "Changing a stock order to a facility from another company is not supported");
+        }
+
+        if (apiStockOrder.getConsumerCompanyCustomer() != null
+                && apiStockOrder.getConsumerCompanyCustomer().getId() != null) {
+            CompanyCustomer customer = fetchEntity(
+                    apiStockOrder.getConsumerCompanyCustomer().getId(), CompanyCustomer.class);
+            if (customer.getCompany() == null
+                    || !Objects.equals(customer.getCompany().getId(), facility.getCompany().getId())) {
+                throw new ApiException(ApiStatus.UNAUTHORIZED,
+                        "Stock order customer belongs to another company");
+            }
+        }
+        if (apiStockOrder.getProductOrder() != null
+                && apiStockOrder.getProductOrder().getId() != null) {
+            ProductOrder productOrder = fetchEntity(apiStockOrder.getProductOrder().getId(), ProductOrder.class);
+            if (productOrder.getFacility() == null
+                    || !Objects.equals(productOrder.getFacility().getCompany().getId(), facility.getCompany().getId())) {
+                throw new ApiException(ApiStatus.UNAUTHORIZED,
+                        "Product order belongs to another company");
+            }
+        }
+
+        // A facility owner must not attach another tenant's farmer or collector to a
+        // purchase order. The IDs in the request are untrusted even when the facility
+        // itself belongs to the authenticated user's company.
+        if (apiStockOrder.getOrderType() == OrderType.PURCHASE_ORDER) {
+            if (apiStockOrder.getProducerUserCustomer() != null) {
+                checkPurchaseOrderUserCustomerCompany(apiStockOrder.getProducerUserCustomer().getId(), facility);
+            }
+            if (apiStockOrder.getRepresentativeOfProducerUserCustomer() != null) {
+                checkPurchaseOrderUserCustomerCompany(apiStockOrder.getRepresentativeOfProducerUserCustomer().getId(), facility);
+            }
         }
 
         entity.setOrderType(apiStockOrder.getOrderType());
@@ -1337,6 +1411,15 @@ public class StockOrderService extends BaseService {
     }
 
     @Transactional
+    private void checkPurchaseOrderUserCustomerCompany(Long userCustomerId, Facility facility) throws ApiException {
+        UserCustomer userCustomer = fetchEntity(userCustomerId, UserCustomer.class);
+        if (userCustomer.getCompany() == null
+                || !Objects.equals(userCustomer.getCompany().getId(), facility.getCompany().getId())) {
+            throw new ApiException(ApiStatus.UNAUTHORIZED,
+                    "Purchase order farmer or collector belongs to another company");
+        }
+    }
+
     public void deleteStockOrder(Long id, CustomUserDetails user) throws ApiException {
 
         StockOrder stockOrder = fetchEntity(id, StockOrder.class);

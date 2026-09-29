@@ -2,23 +2,39 @@ package com.abelium.inatrace.components.groupstockorder;
 
 import com.abelium.inatrace.api.ApiPaginatedList;
 import com.abelium.inatrace.api.ApiPaginatedRequest;
+import com.abelium.inatrace.api.errors.ApiException;
 import com.abelium.inatrace.components.common.BaseService;
+import com.abelium.inatrace.components.facility.FacilityService;
 import com.abelium.inatrace.components.groupstockorder.api.ApiGroupStockOrder;
+import com.abelium.inatrace.security.service.CustomUserDetails;
+import com.abelium.inatrace.security.utils.PermissionsUtil;
 import com.abelium.inatrace.tools.PaginationTools;
 import com.abelium.inatrace.types.Language;
 import jakarta.persistence.TypedQuery;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @Lazy
 @Service
 public class GroupStockOrderService extends BaseService {
 
+    private final FacilityService facilityService;
+
+    @Autowired
+    public GroupStockOrderService(FacilityService facilityService) {
+        this.facilityService = facilityService;
+    }
+
     public ApiPaginatedList<ApiGroupStockOrder> getGroupedStockOrderList(
             ApiPaginatedRequest request,
             GroupStockOrderQueryRequest queryRequest,
-            Language language
-    ) {
+            Language language,
+            CustomUserDetails user
+    ) throws ApiException {
+
+        PermissionsUtil.checkUserIfCompanyEnrolled(
+                facilityService.fetchFacility(queryRequest.facilityId).getCompany().getUsers().stream().toList(), user);
 
         // SELECT query string for which columns to get from database and put them into DTO ApiGroupStockOrder
         StringBuilder queryString = new StringBuilder(

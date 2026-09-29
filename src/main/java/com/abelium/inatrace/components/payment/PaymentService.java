@@ -522,6 +522,22 @@ public class PaymentService extends BaseService {
 		// Check that the request user is enrolled in the paying company (the company that initiates the payment)
 		PermissionsUtil.checkUserIfCompanyEnrolled(payingCompany.getUsers().stream().toList(), user);
 
+		// Check every child before creating the first payment. Otherwise a checked
+		// authorization exception in a later child can leave an earlier payment
+		// attached to a bulk payment that was never persisted.
+		for (ApiPayment apiPayment : apiBulkPayment.getPayments()) {
+			if (apiPayment.getId() != null || apiPayment.getStockOrder() == null
+					|| apiPayment.getStockOrder().getId() == null) {
+				throw new ApiException(ApiStatus.INVALID_REQUEST,
+						"Bulk payment requires new payments with a stock order ID");
+			}
+			StockOrder stockOrder = fetchEntity(apiPayment.getStockOrder().getId(), StockOrder.class);
+			if (!payingCompany.getId().equals(stockOrder.getCompany().getId())) {
+				throw new ApiException(ApiStatus.UNAUTHORIZED,
+						"Bulk payment contains a stock order from another company");
+			}
+		}
+
 		BulkPayment entity = new BulkPayment();
 
 		entity.setCreatedBy(userService.fetchUserById(user.getUserId()));

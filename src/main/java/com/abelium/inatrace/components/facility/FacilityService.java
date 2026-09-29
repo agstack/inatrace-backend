@@ -120,6 +120,20 @@ public class FacilityService extends BaseService {
 
 		// Create or update can be done only by company admin or system admin
 		PermissionsUtil.checkUserIfCompanyEnrolledAndAdminOrSystemAdmin(company.getUsers().stream().toList(), user);
+		if (apiFacility.getFacilityFinalProducts() != null) {
+			for (ApiFinalProduct requested : apiFacility.getFacilityFinalProducts()) {
+				FinalProduct finalProduct = finalProductService.fetchFinalProduct(requested.getId());
+				var product = finalProduct.getProduct();
+				boolean owned = product != null && product.getCompany() != null
+						&& company.getId().equals(product.getCompany().getId());
+				boolean associated = product != null && product.getAssociatedCompanies().stream()
+						.anyMatch(association -> company.getId().equals(association.getCompany().getId()));
+				if (!owned && !associated) {
+					throw new ApiException(ApiStatus.UNAUTHORIZED,
+							"Final product is not associated with facility company");
+				}
+			}
+		}
 		if (facilityLocation == null) {
 			facilityLocation = new FacilityLocation();
 		}

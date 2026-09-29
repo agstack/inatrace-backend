@@ -13,6 +13,8 @@ import com.abelium.inatrace.db.entities.stockorder.StockOrderPEFieldValue;
 import com.abelium.inatrace.db.entities.stockorder.Transaction;
 import com.abelium.inatrace.db.entities.stockorder.enums.OrderType;
 import com.abelium.inatrace.db.entities.stockorder.enums.TransactionStatus;
+import com.abelium.inatrace.security.service.CustomUserDetails;
+import com.abelium.inatrace.security.utils.PermissionsUtil;
 import com.abelium.inatrace.types.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -63,11 +65,8 @@ public class BeycoOrderService extends BaseService {
         this.companyQueries = companyQueries;
     }
 
-    public ApiBeycoTokenResponse getBeycoAuthToken(String authCode, Long companyId) throws ApiException {
-        Company company = companyQueries.fetchCompany(companyId);
-        if (company.getAllowBeycoIntegration() == null || !company.getAllowBeycoIntegration()) {
-            throw new ApiException(ApiStatus.INVALID_REQUEST, "Company is not allowed to use Beyco platform");
-        }
+    public ApiBeycoTokenResponse getBeycoAuthToken(String authCode, Long companyId, CustomUserDetails user) throws ApiException {
+        fetchAuthorizedCompany(companyId, user);
 
         RestTemplate restTemplate = new RestTemplate();
         ApiBeycoTokenRequest tokenRequest = new ApiBeycoTokenRequest();
@@ -81,11 +80,8 @@ public class BeycoOrderService extends BaseService {
         return response.getBody();
     }
 
-    public ApiBeycoTokenResponse refreshBeycoAuthToken(String refreshToken, Long companyId) throws ApiException {
-        Company company = companyQueries.fetchCompany(companyId);
-        if (company.getAllowBeycoIntegration() == null || !company.getAllowBeycoIntegration()) {
-            throw new ApiException(ApiStatus.INVALID_REQUEST, "Company is not allowed to use Beyco platform");
-        }
+    public ApiBeycoTokenResponse refreshBeycoAuthToken(String refreshToken, Long companyId, CustomUserDetails user) throws ApiException {
+        fetchAuthorizedCompany(companyId, user);
 
         RestTemplate restTemplate = new RestTemplate();
         ApiBeycoTokenRequest tokenRequest = new ApiBeycoTokenRequest();
@@ -99,11 +95,8 @@ public class BeycoOrderService extends BaseService {
         return response.getBody();
     }
 
-    public Object sendBeycoOrder(ApiBeycoOrderFields beycoOrder, String token, Long companyId) throws ApiException {
-        Company company = companyQueries.fetchCompany(companyId);
-        if (company.getAllowBeycoIntegration() == null || !company.getAllowBeycoIntegration()) {
-            throw new ApiException(ApiStatus.INVALID_REQUEST, "Company is not allowed to use Beyco platform");
-        }
+    public Object sendBeycoOrder(ApiBeycoOrderFields beycoOrder, String token, Long companyId, CustomUserDetails user) throws ApiException {
+        fetchAuthorizedCompany(companyId, user);
 
         beycoOrder.setPrivacy(BeycoPrivacy.Public);
         for(ApiBeycoOrderCoffees beycoCoffees : beycoOrder.getOfferCoffees()) {
@@ -126,14 +119,25 @@ public class BeycoOrderService extends BaseService {
         return response.getBody();
     }
 
-    public ApiBeycoOrderFields getBeycoOrderFieldList(List<Long> stockOrderIds, Long companyId) throws ApiException {
-        Company company = companyQueries.fetchCompany(companyId);
-        if (company.getAllowBeycoIntegration() == null || !company.getAllowBeycoIntegration()) {
-            throw new ApiException(ApiStatus.INVALID_REQUEST, "Company is not allowed to use Beyco platform");
+    public ApiBeycoOrderFields getBeycoOrderFieldList(List<Long> stockOrderIds, Long companyId, CustomUserDetails user) throws ApiException {
+        fetchAuthorizedCompany(companyId, user);
+        if (stockOrderIds == null || stockOrderIds.isEmpty()) {
+            throw new ApiException(ApiStatus.INVALID_REQUEST, "At least one stock order ID is required");
+        }
+
+        // Check every requested row before building any part of the response. A valid company ID
+        // must not authorize a stock order ID belonging to another company.
+        List<StockOrder> stockOrders = new ArrayList<>();
+        for (Long stockOrderId : stockOrderIds) {
+            StockOrder requested = stockOrderService.fetchEntity(stockOrderId, StockOrder.class);
+            if (!companyId.equals(requested.getCompany().getId())) {
+                throw new ApiException(ApiStatus.UNAUTHORIZED, "Stock order does not belong to company");
+            }
+            stockOrders.add(requested);
         }
 
         ApiBeycoOrderFields beycoOrderFields = new ApiBeycoOrderFields();
-        StockOrder stockOrder = stockOrderService.fetchEntity(stockOrderIds.get(0), StockOrder.class);
+        StockOrder stockOrder = stockOrders.get(0);
         beycoOrderFields.setPrivacy(BeycoPrivacy.Public);
         beycoOrderFields.setPortOfExport(new ApiBeycoPortOfExport());
         beycoOrderFields.setOfferCoffees(new ArrayList<>());
@@ -153,8 +157,8 @@ public class BeycoOrderService extends BaseService {
         beycoOrderFields.getPortOfExport().setLatitude(stockOrder.getFacility().getFacilityLocation().getLatitude());
         beycoOrderFields.getPortOfExport().setLongitude(stockOrder.getFacility().getFacilityLocation().getLongitude());
 
-        for(Long stockOrderId : stockOrderIds) {
-            stockOrder = stockOrderService.fetchEntity(stockOrderId, StockOrder.class);
+        for(StockOrder selectedStockOrder : stockOrders) {
+            stockOrder = selectedStockOrder;
             ApiBeycoOrderCoffees orderCoffees = new ApiBeycoOrderCoffees();
             orderCoffees.setCoffee(new ApiBeycoCoffee());
 
@@ -179,6 +183,15 @@ public class BeycoOrderService extends BaseService {
             beycoOrderFields.getOfferCoffees().add(orderCoffees);
         }
         return beycoOrderFields;
+    }
+
+    private Company fetchAuthorizedCompany(Long companyId, CustomUserDetails user) throws ApiException {
+        Company company = companyQueries.fetchCompany(companyId);
+        PermissionsUtil.checkUserIfCompanyEnrolled(company.getUsers().stream().toList(), user);
+        if (!Boolean.TRUE.equals(company.getAllowBeycoIntegration())) {
+            throw new ApiException(ApiStatus.INVALID_REQUEST, "Company is not allowed to use Beyco platform");
+        }
+        return company;
     }
 
     private void findRequiredFieldsInHistory(ApiBeycoCoffee coffee, StockOrder stockOrder) {

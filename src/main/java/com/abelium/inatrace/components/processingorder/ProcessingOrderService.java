@@ -73,7 +73,7 @@ public class ProcessingOrderService extends BaseService {
      * @return Status
      * @throws ApiException - You know... when something goes wrong it's nice to have a feedback
      */
-    @Transactional
+    @Transactional(rollbackOn = ApiException.class)
     public ApiBaseEntity createOrUpdateProcessingOrder(ApiProcessingOrder apiProcessingOrder, CustomUserDetails user, Language language) throws ApiException {
 
         ProcessingOrder entity = fetchEntityOrElse(apiProcessingOrder.getId(), ProcessingOrder.class, new ProcessingOrder());
@@ -89,6 +89,46 @@ public class ProcessingOrderService extends BaseService {
         }
 
         ProcessingAction processingAction = fetchEntity(apiProcessingOrder.getProcessingAction().getId(), ProcessingAction.class);
+
+        // The action ID is supplied by the caller. Validate its owner before any
+        // output or input transaction can be changed, including for SHIPMENT.
+        PermissionsUtil.checkUserIfCompanyEnrolled(
+                processingAction.getCompany().getUsers().stream().toList(), user);
+        if (entity.getId() != null) {
+            ProcessingAction existingAction = entity.getProcessingAction();
+            PermissionsUtil.checkUserIfCompanyEnrolled(
+                    existingAction.getCompany().getUsers().stream().toList(), user);
+            if (!existingAction.getCompany().getId().equals(processingAction.getCompany().getId())) {
+                throw new ApiException(ApiStatus.UNAUTHORIZED,
+                        "Changing a processing order to an action from another company is not supported");
+            }
+        }
+
+        if (apiProcessingOrder.getInputTransactions() != null) {
+            for (ApiTransaction input : apiProcessingOrder.getInputTransactions()) {
+                if (input.getSourceStockOrder() == null || input.getSourceStockOrder().getId() == null) {
+                    throw new ApiException(ApiStatus.INVALID_REQUEST,
+                            "Input transaction source StockOrder ID is required");
+                }
+                StockOrder source = fetchEntity(input.getSourceStockOrder().getId(), StockOrder.class);
+                PermissionsUtil.checkUserIfConnectedWithProducts(
+                        companyQueries.fetchCompanyProducts(source.getCompany().getId()), user);
+                if (input.getCompany() == null || input.getCompany().getId() == null
+                        || !source.getCompany().getId().equals(input.getCompany().getId())) {
+                    throw new ApiException(ApiStatus.UNAUTHORIZED,
+                            "Input transaction company does not own its source stock order");
+                }
+                if (input.getId() != null) {
+                    Transaction existingInput = fetchEntity(input.getId(), Transaction.class);
+                    if (!existingInput.getSourceStockOrder().getId().equals(source.getId())
+                            || existingInput.getTargetProcessingOrder() == null
+                            || !existingInput.getTargetProcessingOrder().getId().equals(entity.getId())) {
+                        throw new ApiException(ApiStatus.UNAUTHORIZED,
+                                "Input transaction belongs to another processing order");
+                    }
+                }
+            }
+        }
 
         entity.setProcessingAction(processingAction);
         entity.setInitiatorUserId(apiProcessingOrder.getInitiatorUserId());
@@ -345,6 +385,15 @@ public class ProcessingOrderService extends BaseService {
             throw new ApiException(ApiStatus.INVALID_REQUEST, "Order ID cannot be provided when there is a Product ID present");
         }
 
+        stockOrderService.checkQuoteStockOrderPermission(apiQuoteStockOrder, user, entity);
+
+        // Transactions reference this processing order. Persist it before the first
+        // input transaction can trigger a flush; the transaction rolls back on any
+        // later ApiException, so a failed request cannot leave an empty order.
+        if (entity.getId() == null) {
+            em.persist(entity);
+        }
+
         // Remove transactions that are not present in request
         if (entity.getId() != null) {
             List<Transaction> transactionsToBeDeleted = entity.getInputTransactions()
@@ -415,10 +464,6 @@ public class ProcessingOrderService extends BaseService {
         quoteStockOrder.setOrderId(apiQuoteStockOrder.getOrderId());
 
         entity.setTargetStockOrders(Set.of(quoteStockOrder));
-
-        if (entity.getId() == null) {
-            em.persist(entity);
-        }
 
         return new ApiBaseEntity(entity);
     }
