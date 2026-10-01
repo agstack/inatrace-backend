@@ -19,6 +19,7 @@ import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -30,7 +31,10 @@ class LegacyUniqueIndexMigrationTest {
 
     @Container
     @ServiceConnection
-    static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4");
+    static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4.11")
+            .withUrlParam("allowPublicKeyRetrieval", "true")
+            .withUrlParam("useSSL", "false")
+            .withTmpFs(Map.of("/var/lib/mysql", "rw"));
 
     @Autowired DataSource dataSource;
     @Autowired EntityManagerFactory entityManagerFactory;

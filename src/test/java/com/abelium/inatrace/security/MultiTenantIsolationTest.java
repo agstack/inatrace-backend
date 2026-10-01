@@ -1,5 +1,6 @@
 package com.abelium.inatrace.security;
 
+import com.abelium.inatrace.support.AbstractMySqlIntegrationTest;
 import com.abelium.inatrace.components.common.TokenService;
 import com.abelium.inatrace.db.entities.common.User;
 import com.abelium.inatrace.db.entities.company.Company;
@@ -22,11 +23,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.transaction.annotation.Transactional;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -54,13 +51,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-@Testcontainers
 @Transactional
-class MultiTenantIsolationTest {
-
-    @Container
-    @ServiceConnection
-    static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4");
+class MultiTenantIsolationTest extends AbstractMySqlIntegrationTest {
 
     /** Quantity of the seeded delivery; distinctive so it can be spotted in a response body. */
     private static final BigDecimal DELIVERY_QUANTITY = new BigDecimal("1234.50");

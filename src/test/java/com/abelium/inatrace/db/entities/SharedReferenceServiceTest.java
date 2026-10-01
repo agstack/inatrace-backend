@@ -1,5 +1,6 @@
 package com.abelium.inatrace.db.entities;
 
+import com.abelium.inatrace.support.AbstractMySqlIntegrationTest;
 import com.abelium.inatrace.components.common.api.ApiActivityProof;
 import com.abelium.inatrace.components.common.api.ApiDocument;
 import com.abelium.inatrace.components.common.api.ApiCountry;
@@ -53,13 +54,10 @@ import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -72,14 +70,10 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @SpringBootTest
+@AutoConfigureMockMvc
 @ActiveProfiles("test")
-@Testcontainers
 @Transactional
-class SharedReferenceServiceTest {
-
-    @Container
-    @ServiceConnection
-    static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4");
+class SharedReferenceServiceTest extends AbstractMySqlIntegrationTest {
 
     @Autowired EntityManager em;
     @Autowired StockOrderService stockOrderService;

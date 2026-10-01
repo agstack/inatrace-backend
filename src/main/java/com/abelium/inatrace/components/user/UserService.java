@@ -38,7 +38,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.torpedoquery.jakarta.jpa.Function;
 import org.torpedoquery.jakarta.jpa.OnGoingLogicalCondition;
@@ -80,6 +80,9 @@ public class UserService extends BaseService {
     
     @Autowired
     private TokenService tokenEngine;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
     
 	@Transactional
 	public User fetchUserByEmail(String email) {
@@ -113,7 +116,7 @@ public class UserService extends BaseService {
 			throw new ApiException(ApiStatus.AUTH_ERROR, "Invalid credentials");
 		}
 		checkUserMayStartSession(user);
-		if (!new BCryptPasswordEncoder().matches(loginRequest.password, user.getPassword())) {
+		if (!passwordEncoder.matches(loginRequest.password, user.getPassword())) {
 			throw new ApiException(ApiStatus.AUTH_ERROR, "Invalid credentials");
 		}
 		return loginUser(user);
@@ -246,7 +249,7 @@ public class UserService extends BaseService {
         
         User user = new User();
         user.setEmail(createUserRequest.email);
-        user.setPassword(new BCryptPasswordEncoder().encode(createUserRequest.password));
+        user.setPassword(passwordEncoder.encode(createUserRequest.password));
         user.setName(createUserRequest.name);
         user.setSurname(createUserRequest.surname);
         user.setLanguage(createUserRequest.language);
@@ -455,7 +458,7 @@ public class UserService extends BaseService {
             throw new ApiException(ApiStatus.VALIDATION_ERROR, "Invalid password");
         }
         confirmationToken.setStatus(Status.DISABLED);
-        confirmationToken.getUser().setPassword(new BCryptPasswordEncoder().encode(request.password));
+        confirmationToken.getUser().setPassword(passwordEncoder.encode(request.password));
 
         // The password is changed either way; the session is only granted to an account that could
         // have logged in with it. An account still awaiting approval gets a plain success and has

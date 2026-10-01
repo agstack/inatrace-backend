@@ -1,18 +1,16 @@
 package com.abelium.inatrace;
 
+import com.abelium.inatrace.support.AbstractMySqlIntegrationTest;
+import com.abelium.inatrace.components.codebook.currencies.CurrencyUpdateScheduler;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.ApplicationContext;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ActiveProfiles;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import javax.sql.DataSource;
 
@@ -40,17 +38,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
-@Testcontainers
-class ContextBootSmokeTest {
-
-	/**
-	 * Started once for the class and thrown away afterwards. {@code @ServiceConnection} feeds
-	 * its url, username and password to Spring, which is why the test profile configures no
-	 * datasource of its own.
-	 */
-	@Container
-	@ServiceConnection
-	static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4.11");
+class ContextBootSmokeTest extends AbstractMySqlIntegrationTest {
 
 	@Autowired
 	private ApplicationContext context;
@@ -76,6 +64,8 @@ class ContextBootSmokeTest {
 		assertTrue(context.containsBean("entityManagerFactory"), "JPA should be wired up");
 		assertTrue(context.getBeanNamesForType(org.flywaydb.core.Flyway.class).length > 0,
 				"MigrationsConfiguration injects the Flyway bean, so it must exist");
+		assertTrue(context.getBeansOfType(CurrencyUpdateScheduler.class).isEmpty(),
+				"the test profile must not start the external currency refresh");
 	}
 
 	@Test

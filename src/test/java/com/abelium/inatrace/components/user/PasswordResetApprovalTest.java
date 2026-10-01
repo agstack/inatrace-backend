@@ -1,5 +1,6 @@
 package com.abelium.inatrace.components.user;
 
+import com.abelium.inatrace.support.AbstractMySqlIntegrationTest;
 import com.abelium.inatrace.db.entities.auth.ConfirmationToken;
 import com.abelium.inatrace.db.entities.common.User;
 import com.abelium.inatrace.types.ConfirmationTokenType;
@@ -15,7 +16,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -23,13 +23,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.util.List;
 import java.util.Map;
@@ -54,12 +51,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
-@Testcontainers
-class PasswordResetApprovalTest {
-
-	@Container
-	@ServiceConnection
-	static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4");
+class PasswordResetApprovalTest extends AbstractMySqlIntegrationTest {
 
 	private static final String PASSWORD = "correct-horse-battery";
 	private static final String NEW_PASSWORD = "a-different-password";
@@ -72,6 +64,9 @@ class PasswordResetApprovalTest {
 
 	@Autowired
 	private PlatformTransactionManager txManager;
+
+	@Autowired
+	private PasswordEncoder passwordEncoder;
 
 	/**
 	 * These endpoints answer 401 and 403 often, and the JDK's HttpURLConnection reacts to a 401 by
@@ -146,7 +141,7 @@ class PasswordResetApprovalTest {
 			user.setLanguage(Language.EN);
 			user.setStatus(status);
 			user.setRole(UserRole.USER);
-			user.setPassword(new BCryptPasswordEncoder().encode(PASSWORD));
+			user.setPassword(passwordEncoder.encode(PASSWORD));
 			em.persist(user);
 			em.flush();
 			return user;

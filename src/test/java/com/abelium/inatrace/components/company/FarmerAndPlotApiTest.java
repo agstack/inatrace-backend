@@ -1,5 +1,6 @@
 package com.abelium.inatrace.components.company;
 
+import com.abelium.inatrace.support.AbstractMySqlIntegrationTest;
 import com.abelium.inatrace.components.common.TokenService;
 import com.abelium.inatrace.db.entities.codebook.ProductType;
 import com.abelium.inatrace.db.entities.common.Address;
@@ -29,16 +30,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -84,13 +81,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-@Testcontainers
 @Transactional
-class FarmerAndPlotApiTest {
-
-	@Container
-	@ServiceConnection
-	static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4");
+class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 
 	/** Markers that must never appear in a response to someone outside Acme. */
 	private static final String FARMER_NAME = "Celestine";
