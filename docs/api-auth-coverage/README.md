@@ -26,7 +26,7 @@ authorization coverage**.
 | Companies, farmers and plots | 1 | part of the historical 45 | 30 | [existing.md](existing.md) |
 | Supply Chain #35 | 9 | 51 | 51 | pending #35 PR |
 | Products and consumer labels #36 | 2 | 36 | 34 | pending #36 PR |
-| Public #37 | 1 | 13 | 13 | pending #37 PR |
+| Public #37 | 1 | 13 | 13 | [37-public.md](37-public.md) — policy decision pending |
 | Codebooks #38 | 9 | 44 | 41 | pending #38 PR |
 | Files, settings and reporting #39 | 2 | 14 | 12 | pending #39 PR |
 | **Total** | **25 current** | **203 historical** | **196** | |
