@@ -1,33 +1,53 @@
+# Phase 1 (pull request) and phase 2 (merge to main). See RELEASE.md.
 name: CI
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
-  pull_request:
-  workflow_dispatch:
 
-# A newer push to the same branch supersedes an in-flight run.
+# A newer push to a pull request supersedes its running checks. Runs on main are never
+# cancelled, so every merged commit gets its image.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+# Explicit bash runs steps with -eo pipefail (the implicit default has no pipefail).
+defaults:
+  run:
+    shell: bash
 
 jobs:
-  build:
-    name: Build and context smoke test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
+  test:
+    uses: ./.github/workflows/_test.yml
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v5
-        with:
-          java-version: '17'
-          distribution: temurin
-          cache: maven
+  # Pull requests: the image is only built, so it does not wait for the tests.
+  image-check:
+    if: github.event_name == 'pull_request'
+    # Must grant what the reusable workflow declares; nothing is pushed here, and pull
+    # requests from forks get a read-only token anyway.
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    uses: ./.github/workflows/_image.yml
 
-      - name: Build and run tests
-        # The smoke test starts a mysql:8.4.11 container through Testcontainers, using
-        # the Docker daemon already running on the hosted runner. No service
-        # container is declared: Testcontainers owns the lifecycle.
-        run: mvn -B --no-transfer-progress clean verify
-
+  # Main: the image is published only after the tests pass.
+  image:
+    if: github.event_name == 'push'
+    needs: test
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    uses: ./.github/workflows/_image.yml
+    with:
+      push: true

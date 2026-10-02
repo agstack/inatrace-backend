@@ -1,0 +1,108 @@
+# Phase 3: prepares a release from the current main. See RELEASE.md.
+#   gh workflow run release.yml -f version=2.40.1-rc.1
+name: "Release: prepare (manual)"
+run-name: Prepare release ${{ inputs.version }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release, X.Y.Z or X.Y.Z-rc.N (no leading v)
+        required: true
+        type: string
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+# Explicit bash runs steps with -eo pipefail (the implicit default has no pipefail).
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  prepare:
+    name: Validate version
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    outputs:
+      commit: ${{ steps.check.outputs.commit }}
+      notes-start: ${{ steps.check.outputs.notes-start }}
+      prerelease: ${{ steps.check.outputs.prerelease }}
+    steps:
+      - name: Require main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Releases are cut from main; this run is on $GITHUB_REF."
+          exit 1
+
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Validate
+        id: check
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          mapfile -t published < <(git tag -l 'v*')
+          python3 .github/scripts/release.py validate "$VERSION" "${published[@]}"
+          # Release notes can only start from a tag in this commit's history.
+          mapfile -t merged < <(git tag -l 'v*' --merged HEAD)
+          {
+            echo "commit=$(git rev-parse HEAD)"
+            echo "notes-start=$(python3 .github/scripts/release.py notes-start "$VERSION" "${merged[@]}")"
+            echo "prerelease=$([[ "$VERSION" == *-rc.* ]] && echo true || echo false)"
+          } >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: prepare
+    uses: ./.github/workflows/_test.yml
+    with:
+      ref: ${{ needs.prepare.outputs.commit }}
+      revision: ${{ inputs.version }}
+
+  image:
+    needs: [prepare, test]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    uses: ./.github/workflows/_image.yml
+    with:
+      ref: ${{ needs.prepare.outputs.commit }}
+      version: ${{ inputs.version }}
+      push: true
+
+  draft:
+    name: Draft release
+    needs: [prepare, image]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Create draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ inputs.version }}
+          COMMIT: ${{ needs.prepare.outputs.commit }}
+          NOTES_START: ${{ needs.prepare.outputs.notes-start }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+          IMAGE: ${{ needs.image.outputs.image }}
+          DIGEST: ${{ needs.image.outputs.digest }}
+        run: |
+          args=(--repo "$GITHUB_REPOSITORY" --target "$COMMIT" --title "$TAG" --draft --generate-notes)
+          [ -n "$NOTES_START" ] && args+=(--notes-start-tag "$NOTES_START")
+          [ "$PRERELEASE" = true ] && args+=(--prerelease)
+          echo "Built $IMAGE@$DIGEST"
+          if [ -n "$ACT" ]; then
+            echo "act: would run gh release create $TAG ${args[*]}"
+          else
+            gh release create "$TAG" "${args[@]}"
+          fi
