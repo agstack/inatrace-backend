@@ -1,1 +1,8 @@
-target
+# Only what the Dockerfile copies is sent to the build.
+*
+!pom.xml
+!src
+!fonts
+!import
+# Local configuration may contain secrets; images never ship configuration.
+src/main/resources/application.properties

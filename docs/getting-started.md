@@ -5,11 +5,10 @@ Running the INATrace backend on a development machine. Configuration is covered 
 ## Requirements
 * Java `17` or higher
 * Maven `3.8.5`
-* MySQL `8.4.11`
+* Docker with Compose, for MySQL `8.4.11` (or your own MySQL `8.4.11`)
 
 ## Optional
-* Docker
-* Mailhog
+* Mailpit, to catch the e-mails the backend sends (the compose file below starts it)
 
 ## How to run
 1. Clone the repository
@@ -25,22 +24,28 @@ Running the INATrace backend on a development machine. Configuration is covered 
 
 ### Create database
 
-Spin up a container:
+`compose-dev.yaml` in the project root starts the development infrastructure, MySQL and
+[Mailpit](#email-testing):
 
 ```
-docker run --name inatrace-mysql -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=inatrace -e MYSQL_USER=inatrace -e MYSQL_PASSWORD=inatrace -p 3306:3306 -d mysql:8.4.11
+docker compose -f compose-dev.yaml up -d
 ```
 
-Tables will be created and prefilled with starter data on application startup.
+MySQL listens on `localhost:3306`, with database, user and password `inatrace`. Tables
+will be created and prefilled with starter data on application startup. The data is kept
+in a Docker volume between restarts:
+
+```
+docker compose -f compose-dev.yaml down       # stop, keeping the data
+docker compose -f compose-dev.yaml down -v    # stop and erase the data
+```
 
 ### Email testing
 
-MailHog is an email testing tool for developers. It runs a SMTP server on port `1025` which intercepts messages and displays them in a GUI.
+[Mailpit](https://mailpit.axllent.org/) is an email testing tool for developers. It runs
+an SMTP server on port `1025` which intercepts messages and displays them in a GUI. The
+same `compose-dev.yaml` starts it.
 
-Spin up a container:
-
-```
-docker run --name inatrace-mailhog -p 1025:1025 -p 8025:8025 -d mailhog/mailhog:v1.0.1
-```
-
-The GUI is available at [`localhost:8025`](http://localhost:8025).
+The GUI is available at [`localhost:8025`](http://localhost:8025). Point the
+[SMTP settings](configuration.md#smtp) at `localhost:1025` and set
+`INATrace.mail.sendingEnabled = true`; any username and password are accepted.

@@ -12,12 +12,14 @@
 	
 	<groupId>com.abelium.INATrace</groupId>
 	<artifactId>coffee-backend</artifactId>
-	<version>2.39.0-SNAPSHOT</version>
+	<!-- Set by CI from the release tag or git describe; see RELEASE.md -->
+	<version>${revision}</version>
 	<name>Coffee backend</name>
 	<description>Coffee backend services</description>
 
 	<properties>
 		<java.version>17</java.version>
+		<revision>dev-SNAPSHOT</revision>
     </properties>
 
 	<dependencies>
@@ -243,10 +245,19 @@
   </dependencies>
 
   <build>
+    <finalName>app</finalName>
     <plugins>
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <!-- Exposes the version at runtime through BuildProperties -->
+            <goals>
+              <goal>build-info</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>
