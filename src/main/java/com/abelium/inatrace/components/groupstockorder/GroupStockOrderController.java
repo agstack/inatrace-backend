@@ -2,11 +2,14 @@ package com.abelium.inatrace.components.groupstockorder;
 
 import com.abelium.inatrace.api.ApiPaginatedRequest;
 import com.abelium.inatrace.api.ApiPaginatedResponse;
+import com.abelium.inatrace.api.errors.ApiException;
 import com.abelium.inatrace.components.groupstockorder.api.ApiGroupStockOrder;
+import com.abelium.inatrace.security.service.CustomUserDetails;
 import com.abelium.inatrace.types.Language;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.validation.Valid;
@@ -30,8 +33,9 @@ public class GroupStockOrderController {
             @Valid @Parameter(description = "Available orders only") @RequestParam(value = "availableOnly", required = false) Boolean availableOnly,
             @Valid @Parameter(description = "Is purchase orders only") @RequestParam(value = "isPurchaseOrderOnly", required = false) Boolean isPurchaseOrderOnly,
             @Valid @Parameter(description = "Semi-product ID") @RequestParam(value = "semiProductId", required = false) Long semiProductId,
+            @AuthenticationPrincipal CustomUserDetails authUser,
             @RequestHeader(value = "language", defaultValue = "EN", required = false) Language language
-    ) {
+    ) throws ApiException {
         return new ApiPaginatedResponse<>(this.groupStockOrderService.getGroupedStockOrderList(
                 request,
                 new GroupStockOrderQueryRequest(
@@ -40,7 +44,8 @@ public class GroupStockOrderController {
                         isPurchaseOrderOnly,
                         semiProductId
                 ),
-                language
+                language,
+                authUser
         ));
     }
 

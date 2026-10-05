@@ -109,6 +109,16 @@ public class ProcessingActionService extends BaseService {
 		// Validate Processing action data
 		validateProcessingAction(apiProcessingAction);
 
+		if (entity.getId() != null) {
+			// An existing action belongs to its persisted owner. A caller must not take it
+			// over by supplying a company ID where they happen to be an admin.
+			PermissionsUtil.checkUserIfCompanyEnrolledAndAdminOrSystemAdmin(
+					entity.getCompany().getUsers().stream().toList(), user);
+			if (!entity.getCompany().getId().equals(apiProcessingAction.getCompany().getId())) {
+				throw new ApiException(ApiStatus.UNAUTHORIZED, "Processing action company cannot be changed");
+			}
+		}
+
 		// Fetch owner company
 		Company company = companyQueries.fetchCompany(apiProcessingAction.getCompany().getId());
 
