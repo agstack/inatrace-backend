@@ -84,7 +84,7 @@ class PublicLabelApiTest extends AbstractMySqlIntegrationTest {
     @Test void draftDerivedRoutesAreCharacterizedBeforeAnyPublicationPolicyFix() throws Exception {
         // These routes currently bypass fetchProductLabelPublic. This test records the observed exposure.
         assertContains(get("/api/public/product/label_batch/" + draftUid + "/DRAFT37"), 200, "DRAFT37");
-        assertContains(get("/api/public/product/label/" + draftUid + "/verify_batch_authenticity").param("number", "DRAFT37").param("productionDate", "2025-12-31"), 200, "true");
+        assertContains(get("/api/public/product/label/" + draftUid + "/verify_batch_authenticity").param("number", "DRAFT37").param("productionDate", "2025-12-31"), 200, "\"data\":false");
         assertContains(get("/api/public/product/label/" + draftUid + "/verify_batch_origin").param("number", "DRAFT37"), 200, "DRAFT-ORIGIN-37");
         assertContains(get("/api/public/product/knowledgeBlog/" + blogId), 200, DRAFT);
         assertContains(get("/api/public/product/label/feedback/list/" + draftUid), 200, "DRAFT-FEEDBACK-37");

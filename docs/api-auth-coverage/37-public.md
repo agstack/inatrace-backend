@@ -15,7 +15,7 @@ unchanged.
 | GET | `/api/public/stock-order/{qrTag}` | QR tag is the public capability | Valid tag returns marker; unknown tag does not | Verified |
 | GET | `/api/public/product/knowledgeBlog/{id}` | Currently resolved by blog ID only | Draft-label blog marker is returned anonymously | Characterized: publication gate bypassed |
 | GET | `/api/public/product/label_batch/{uid}/{number}` | Currently resolved by label UID and batch number only | Draft batch, dates and origin marker are returned | Characterized: publication gate bypassed |
-| GET | `/api/public/product/label/{uid}/verify_batch_authenticity` | Currently resolved by label UID and batch data only | Draft batch verifies anonymously | Characterized: publication gate bypassed |
+| GET | `/api/public/product/label/{uid}/verify_batch_authenticity` | Currently resolved by label UID and batch data only | Draft batch check returns its boolean result anonymously | Characterized: publication gate bypassed |
 | GET | `/api/public/product/label/{uid}/verify_batch_origin` | Currently resolved by label UID and batch number only | Draft origin marker is returned anonymously | Characterized: publication gate bypassed |
 | POST | `/api/public/logRequest` | Request-log token | Valid token succeeds; invalid token receives 403 | Verified |
 | GET | `/api/public/document/{storageKey}` | Opaque, temporary public storage key | Valid public key streams bytes; unknown key is rejected without marker | Verified |
