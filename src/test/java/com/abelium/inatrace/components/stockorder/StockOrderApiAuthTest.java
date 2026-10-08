@@ -1,6 +1,7 @@
 package com.abelium.inatrace.components.stockorder;
 
 import com.abelium.inatrace.components.common.TokenService;
+import com.abelium.inatrace.components.stockorder.api.ApiStockOrderHistory;
 import com.abelium.inatrace.db.entities.codebook.FacilityType;
 import com.abelium.inatrace.db.entities.codebook.MeasureUnitType;
 import com.abelium.inatrace.db.entities.codebook.ProductType;
@@ -74,10 +75,14 @@ class StockOrderApiAuthTest extends AbstractMySqlIntegrationTest {
     private static final String MARKER = "ACME-DELIVERY-ONLY-35";
     private static final String GEO_MARKER = "44.654321";
     private static final String QUOTE_MARKER = "ACME-QUOTE-ONLY-35";
+    private static final String NO_PRODUCT_MARKER = "NO-PRODUCT-STOCK-49";
+    private static final String NO_PRODUCT_PROCESS_MARKER = "No product process 49";
+    private static final String NO_PRODUCT_GEO_MARKER = "77.987654";
 
     @Autowired private MockMvc mockMvc;
     @Autowired private EntityManager em;
     @Autowired private TokenService tokenService;
+    @Autowired private StockOrderService stockOrderService;
 
     @Value("${INATrace.auth.accessTokenCookieName}")
     private String accessCookieName;
@@ -102,6 +107,7 @@ class StockOrderApiAuthTest extends AbstractMySqlIntegrationTest {
     private Long rivalStockOrderId;
     private Cookie ownerSession;
     private Cookie strangerSession;
+    private Cookie associatedSession;
 
     @BeforeEach
     void seed() {
@@ -140,6 +146,15 @@ class StockOrderApiAuthTest extends AbstractMySqlIntegrationTest {
         association.setType(ProductCompanyType.OWNER);
         em.persist(association);
         product.getAssociatedCompanies().add(association);
+        Company associated = company("Associated stock 35");
+        User associatedUser = user("stock-associated-35@associated.test");
+        enroll(associatedUser, associated, CompanyUserRole.COMPANY_USER);
+        ProductCompany associatedCompany = new ProductCompany();
+        associatedCompany.setProduct(product);
+        associatedCompany.setCompany(associated);
+        associatedCompany.setType(ProductCompanyType.PROCESSOR);
+        em.persist(associatedCompany);
+        product.getAssociatedCompanies().add(associatedCompany);
 
         CompanyCustomer customer = new CompanyCustomer();
         customer.setName("Acme customer 35");
@@ -363,6 +378,7 @@ class StockOrderApiAuthTest extends AbstractMySqlIntegrationTest {
         rivalFarmerId = rivalFarmer.getId();
         ownerSession = cookie(owner);
         strangerSession = cookie(stranger);
+        associatedSession = cookie(associatedUser);
         em.flush();
         em.clear();
     }
@@ -373,6 +389,42 @@ class StockOrderApiAuthTest extends AbstractMySqlIntegrationTest {
                 "/api/chain/stock-order/" + orderId + "/aggregated-history")) {
             assertAllowedAndRefused(path, MARKER);
         }
+    }
+
+    @Test
+    void productlessStockReadsAllowOwnerAndSystemAdminsWithoutWeakeningTenantBoundaries() throws Exception {
+        ProductlessStockFixture fixture = productlessStockFixture();
+
+        for (Cookie permittedSession : List.of(
+                fixture.memberSession,
+                fixture.companyAdminSession,
+                fixture.enrolledSystemAdminSession,
+                fixture.systemAdminSession)) {
+            assertProductlessStockReadsAllowed(fixture, permittedSession);
+        }
+
+        assertProductlessStockReadsRefused(fixture);
+    }
+
+    @Test
+    void productAssociatedCompanyKeepsAdministrativeStockReadAccess() throws Exception {
+        assertAllowed(associatedSession, "/api/chain/stock-order/" + orderId, MARKER);
+        assertAllowed(associatedSession, "/api/chain/stock-order/" + quoteOrderId() + "/processing-order", QUOTE_MARKER);
+        assertAllowed(associatedSession,
+                "/api/chain/stock-order/list/facility/" + facilityId + "/available?semiProductId=" + semiProductId,
+                MARKER);
+        assertAllowed(associatedSession, "/api/chain/stock-order/" + orderId + "/aggregated-history", MARKER);
+        assertGeoJsonAllowed(associatedSession, "/api/chain/stock-order/" + orderId + "/exportGeoData", GEO_MARKER);
+    }
+
+    @Test
+    void publicHistoryDoesNotRequireAUserWhenDetailsAreNotRequested() {
+        ProductlessStockFixture fixture = productlessStockFixture();
+
+        ApiStockOrderHistory history = assertDoesNotThrow(() ->
+                stockOrderService.getStockOrderAggregatedHistoryList(fixture.orderId, Language.EN, null, false));
+
+        assertFalse(history.getTimelineItems().isEmpty());
     }
 
     @Test
@@ -888,6 +940,40 @@ class StockOrderApiAuthTest extends AbstractMySqlIntegrationTest {
         return em.createQuery("SELECT COUNT(po) FROM ProcessingOrder po", Long.class).getSingleResult();
     }
 
+    private void assertProductlessStockReadsAllowed(ProductlessStockFixture fixture, Cookie session) throws Exception {
+        assertAllowed(session, "/api/chain/stock-order/" + fixture.orderId, NO_PRODUCT_MARKER);
+        assertAllowed(session, "/api/chain/stock-order/" + fixture.orderId + "/processing-order", NO_PRODUCT_PROCESS_MARKER);
+        assertAllowed(session,
+                "/api/chain/stock-order/list/facility/" + fixture.facilityId + "/available?semiProductId=" + fixture.semiProductId,
+                NO_PRODUCT_MARKER);
+        assertAllowed(session, "/api/chain/stock-order/" + fixture.orderId + "/aggregated-history", NO_PRODUCT_MARKER);
+        assertGeoJsonAllowed(session,
+                "/api/chain/stock-order/" + fixture.orderId + "/exportGeoData",
+                NO_PRODUCT_GEO_MARKER);
+    }
+
+    private void assertProductlessStockReadsRefused(ProductlessStockFixture fixture) throws Exception {
+        assertRefused("/api/chain/stock-order/" + fixture.orderId, NO_PRODUCT_MARKER);
+        assertRefused("/api/chain/stock-order/" + fixture.orderId + "/processing-order", NO_PRODUCT_PROCESS_MARKER);
+        assertRefused(
+                "/api/chain/stock-order/list/facility/" + fixture.facilityId + "/available?semiProductId=" + fixture.semiProductId,
+                NO_PRODUCT_MARKER);
+        assertRefused("/api/chain/stock-order/" + fixture.orderId + "/aggregated-history", NO_PRODUCT_MARKER);
+        assertRefused("/api/chain/stock-order/" + fixture.orderId + "/exportGeoData", NO_PRODUCT_GEO_MARKER);
+    }
+
+    private void assertAllowed(Cookie session, String path, String marker) throws Exception {
+        MvcResult result = mockMvc.perform(get(path).cookie(session)).andReturn();
+        assertEquals(200, result.getResponse().getStatus(), path + ": " + result.getResponse().getContentAsString());
+        assertTrue(result.getResponse().getContentAsString().contains(marker), path);
+    }
+
+    private void assertGeoJsonAllowed(Cookie session, String path, String coordinateMarker) throws Exception {
+        MvcResult result = mockMvc.perform(get(path).cookie(session)).andReturn();
+        assertEquals(200, result.getResponse().getStatus(), path + ": " + result.getResponse().getContentAsString());
+        assertTrue(result.getResponse().getContentAsString().contains(coordinateMarker), path);
+    }
+
     private void assertAllowedAndRefused(String path, String marker) throws Exception {
         MvcResult allowed = mockMvc.perform(get(path).cookie(ownerSession)).andReturn();
         assertEquals(200, allowed.getResponse().getStatus(), path + ": " + allowed.getResponse().getContentAsString());
@@ -931,12 +1017,148 @@ class StockOrderApiAuthTest extends AbstractMySqlIntegrationTest {
     }
 
     private void enroll(User user, Company company) {
+        enroll(user, company, CompanyUserRole.COMPANY_ADMIN);
+    }
+
+    private void enroll(User user, Company company, CompanyUserRole role) {
         CompanyUser enrollment = new CompanyUser();
         enrollment.setUser(user);
         enrollment.setCompany(company);
-        enrollment.setRole(CompanyUserRole.COMPANY_ADMIN);
+        enrollment.setRole(role);
         em.persist(enrollment);
         company.getUsers().add(enrollment);
+    }
+
+    private ProductlessStockFixture productlessStockFixture() {
+        Company company = company("No product stock 49");
+        User member = user("stock-member-49@company.test");
+        User companyAdmin = user("stock-admin-49@company.test");
+        User enrolledSystemAdmin = systemAdmin("stock-enrolled-system-admin-49@test");
+        User systemAdmin = systemAdmin("stock-system-admin-49@test");
+        enroll(member, company, CompanyUserRole.COMPANY_USER);
+        enroll(companyAdmin, company, CompanyUserRole.COMPANY_ADMIN);
+        enroll(enrolledSystemAdmin, company, CompanyUserRole.COMPANY_ADMIN);
+
+        Country country = new Country();
+        country.setCode("N9");
+        country.setName("No product stock country 49");
+        em.persist(country);
+        FacilityType facilityType = new FacilityType("NO_PRODUCT_STOCK_49", "No product stock facility 49");
+        em.persist(facilityType);
+        Address address = new Address();
+        address.setCountry(country);
+        address.setAddress("No product stock address 49");
+        FacilityLocation location = new FacilityLocation();
+        location.setAddress(address);
+        em.persist(location);
+        Facility facility = new Facility();
+        facility.setName("No product stock facility 49");
+        facility.setCompany(company);
+        facility.setFacilityLocation(location);
+        facility.setFacilityType(facilityType);
+        facility.setIsCollectionFacility(true);
+        facility.setIsDeactivated(false);
+        em.persist(facility);
+        FacilityTranslation facilityTranslation = new FacilityTranslation();
+        facilityTranslation.setFacility(facility);
+        facilityTranslation.setLanguage(Language.EN);
+        facilityTranslation.setName("No product stock facility 49");
+        em.persist(facilityTranslation);
+        facility.getFacilityTranslations().add(facilityTranslation);
+
+        UserCustomer farmer = new UserCustomer();
+        farmer.setName("No product stock farmer 49");
+        farmer.setSurname("Only");
+        farmer.setType(UserCustomerType.FARMER);
+        farmer.setCompany(company);
+        em.persist(farmer);
+        Plot plot = new Plot();
+        plot.setFarmer(farmer);
+        plot.setPlotName("No product stock plot 49");
+        em.persist(plot);
+        PlotCoordinate coordinate = new PlotCoordinate();
+        coordinate.setPlot(plot);
+        coordinate.setLatitude(12.345678);
+        coordinate.setLongitude(77.987654);
+        em.persist(coordinate);
+        plot.getCoordinates().add(coordinate);
+
+        SemiProduct semiProduct = em.find(SemiProduct.class, semiProductId);
+        StockOrder order = new StockOrder();
+        order.setCompany(company);
+        order.setFacility(facility);
+        order.setSemiProduct(semiProduct);
+        order.setMeasurementUnitType(semiProduct.getMeasurementUnitType());
+        order.setProducerUserCustomer(farmer);
+        order.setCreatedBy(member);
+        order.setUpdatedBy(member);
+        order.setIdentifier(NO_PRODUCT_MARKER);
+        order.setOrderType(OrderType.PURCHASE_ORDER);
+        order.setPreferredWayOfPayment(PreferredWayOfPayment.BANK_TRANSFER);
+        order.setPurchaseOrder(true);
+        order.setAvailable(true);
+        order.setTotalQuantity(new BigDecimal("123.50"));
+        order.setTotalGrossQuantity(new BigDecimal("123.50"));
+        order.setFulfilledQuantity(new BigDecimal("123.50"));
+        order.setAvailableQuantity(new BigDecimal("113.50"));
+        order.setPricePerUnit(new BigDecimal("4.00"));
+        order.setCost(new BigDecimal("494.00"));
+        order.setProductionDate(LocalDate.of(2025, 8, 18));
+        em.persist(order);
+
+        ProcessingAction action = new ProcessingAction();
+        action.setCompany(company);
+        action.setType(ProcessingActionType.SHIPMENT);
+        action.setInputSemiProduct(semiProduct);
+        action.setPrefix("NO-PRODUCT-49");
+        em.persist(action);
+        ProcessingActionTranslation actionTranslation = new ProcessingActionTranslation(Language.EN);
+        actionTranslation.setProcessingAction(action);
+        actionTranslation.setName(NO_PRODUCT_PROCESS_MARKER);
+        em.persist(actionTranslation);
+        action.getProcessingActionTranslations().add(actionTranslation);
+        ProcessingOrder processingOrder = new ProcessingOrder();
+        processingOrder.setProcessingAction(action);
+        processingOrder.setInitiatorUserId(member.getId());
+        processingOrder.setProcessingDate(LocalDate.of(2025, 8, 19));
+        em.persist(processingOrder);
+        order.setProcessingOrder(processingOrder);
+        processingOrder.getTargetStockOrders().add(order);
+
+        em.flush();
+        ProductlessStockFixture fixture = new ProductlessStockFixture(
+                facility.getId(), order.getId(), semiProduct.getId(), cookie(member), cookie(companyAdmin),
+                cookie(enrolledSystemAdmin), cookie(systemAdmin));
+        em.clear();
+        return fixture;
+    }
+
+    private User systemAdmin(String email) {
+        User user = user(email);
+        user.setRole(UserRole.SYSTEM_ADMIN);
+        return user;
+    }
+
+    private static final class ProductlessStockFixture {
+        private final Long facilityId;
+        private final Long orderId;
+        private final Long semiProductId;
+        private final Cookie memberSession;
+        private final Cookie companyAdminSession;
+        private final Cookie enrolledSystemAdminSession;
+        private final Cookie systemAdminSession;
+
+        private ProductlessStockFixture(Long facilityId, Long orderId, Long semiProductId,
+                                        Cookie memberSession, Cookie companyAdminSession,
+                                        Cookie enrolledSystemAdminSession, Cookie systemAdminSession) {
+            this.facilityId = facilityId;
+            this.orderId = orderId;
+            this.semiProductId = semiProductId;
+            this.memberSession = memberSession;
+            this.companyAdminSession = companyAdminSession;
+            this.enrolledSystemAdminSession = enrolledSystemAdminSession;
+            this.systemAdminSession = systemAdminSession;
+        }
     }
 
     private Cookie cookie(User user) {
