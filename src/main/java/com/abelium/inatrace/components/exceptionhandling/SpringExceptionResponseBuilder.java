@@ -39,13 +39,12 @@ public class SpringExceptionResponseBuilder {
     
     private ResponseEntity<?> getAcceptableResponse(HttpStatus httpStatus, ApiError response, String message, HttpServletRequest request) {
         List<MediaType> acceptedMediaTypes = parseMediaTypes(request.getHeader(HttpHeaders.ACCEPT));
-        // if Accept type includes JSON, return JSON encoded ApiError response
-        if (anyTypeIncludes(acceptedMediaTypes, MediaType.APPLICATION_JSON)) {
-            return new ResponseEntity<ApiError>(response, httpStatus);
+        ErrorResponseType responseType = negotiateErrorResponseType(acceptedMediaTypes);
+        if (responseType == ErrorResponseType.JSON) {
+            return ResponseEntity.status(httpStatus).contentType(MediaType.APPLICATION_JSON).body(response);
         }
-        // if any text response is accepted, we return status message 
-        if (anyTypeIsIncluded(acceptedMediaTypes, TEXT_ANY) ) {
-            return new ResponseEntity<String>(message, httpStatus);
+        if (responseType == ErrorResponseType.TEXT) {
+            return ResponseEntity.status(httpStatus).contentType(MediaType.TEXT_PLAIN).body(message);
         }
         return ResponseEntity.status(httpStatus).build(); // return empty body
     }
@@ -78,6 +77,39 @@ public class SpringExceptionResponseBuilder {
 
     private List<MediaType> parseMediaTypes(String str) {
         return str != null ? MediaType.parseMediaTypes(str) : Collections.emptyList();
+    }
+
+    /**
+     * Error responses are JSON by default. Browsers and API clients commonly omit {@code Accept},
+     * and returning only an HTTP status in that case discards the {@link ApiError} assembled by
+     * the exception handler.
+     */
+    private ErrorResponseType negotiateErrorResponseType(List<MediaType> acceptedMediaTypes) {
+        if (acceptedMediaTypes.isEmpty()) {
+            return ErrorResponseType.JSON;
+        }
+
+        // This is an API error response, so prefer JSON whenever the client permits it.
+        if (anyTypeIncludes(acceptedMediaTypes, MediaType.APPLICATION_JSON)
+                && !isExplicitlyRejected(acceptedMediaTypes, MediaType.APPLICATION_JSON)) {
+            return ErrorResponseType.JSON;
+        }
+        if (anyTypeIsIncluded(acceptedMediaTypes, TEXT_ANY)
+                && !isExplicitlyRejected(acceptedMediaTypes, MediaType.TEXT_PLAIN)) {
+            return ErrorResponseType.TEXT;
+        }
+        return ErrorResponseType.EMPTY;
+    }
+
+    private boolean isExplicitlyRejected(List<MediaType> acceptedMediaTypes, MediaType supportedMediaType) {
+        return acceptedMediaTypes.stream()
+                .anyMatch(accepted -> accepted.getQualityValue() == 0 && accepted.includes(supportedMediaType));
+    }
+
+    private enum ErrorResponseType {
+        JSON,
+        TEXT,
+        EMPTY
     }
     
 	//    private List<MediaType> parseMediaTypes(String[] strs) {
