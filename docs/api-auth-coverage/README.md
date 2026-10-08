@@ -78,7 +78,9 @@ tests, `mvn -q -DargLine=-Dapi.version=1.43 clean verify` passed and cleared
 stale Surefire reports. A subsequent run of the original `verify` command
 passed in **37.933 s** wall time. Both wall times are single local runs, not
 medians; the approximately 0.99 s difference is not a controlled performance
-benchmark.
+benchmark. These runs used Testcontainers 1.19, which needed
+`-Dapi.version` to reach Docker 29; since the upgrade to 1.21.4 the plain
+`mvn verify` works.
 
 | Metric after clean verification | Result |
 |---|---:|
@@ -100,7 +102,7 @@ external calls.
 ## Regenerating and reviewing the route inventory
 
 ```bash
-mvn -q -DargLine=-Dapi.version=1.43 -Dtest=ApiRouteInventoryTest -Dapi.inventory.dump=true test
+mvn -q -Dtest=ApiRouteInventoryTest -Dapi.inventory.dump=true test
 ```
 
 The command prints lines prefixed `API_AUTH_ROUTE`, with method, path, and

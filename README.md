@@ -17,10 +17,8 @@ the mobile app.
 ## Quick start
 
 ```bash
-# MySQL
-docker run --name inatrace-mysql -e MYSQL_ROOT_PASSWORD=root \
-  -e MYSQL_DATABASE=inatrace -e MYSQL_USER=inatrace -e MYSQL_PASSWORD=inatrace \
-  -p 3306:3306 -d mysql:8.4.11
+# MySQL, and Mailpit to catch e-mails (http://localhost:8025)
+docker compose -f compose-dev.yaml up -d
 
 cp src/main/resources/application.properties.template \
    src/main/resources/application.properties

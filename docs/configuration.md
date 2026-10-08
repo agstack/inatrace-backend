@@ -9,6 +9,9 @@ Spring uses `application.properties` file stored in `src/main/resources` for con
 
 *NOTE*: The values defined below are applicable for a local development environment. For other environments, change the values accordingly.
 
+The Docker image contains no configuration: mount the file at
+`/app/config/application.properties` instead. See [Building](building.md#running).
+
 ## Datasource
 
 - `INATrace.database.name`: `inatrace`
@@ -40,7 +43,7 @@ Spring uses `application.properties` file stored in `src/main/resources` for con
 
 ## Storage
 
-- `INATrace.fileStorage.root`: Path on local filesystem for saving images, documents, etc. (e.g. `C:\\Users\\Name\\inatrace-backend` or `/home/name/inatrace-backend`) 
+- `INATrace.fileStorage.root`: Path on local filesystem for saving images, documents, etc. (e.g. `C:\\Users\\Name\\inatrace-backend` or `/home/name/inatrace-backend`). In the Docker image, use `/data/storage` and mount a volume there.
 
 ## Exchange rates API
 
