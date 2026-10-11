@@ -2,11 +2,13 @@ package com.abelium.inatrace.components.pub;
 
 import com.abelium.inatrace.components.common.StorageKeyCache;
 import com.abelium.inatrace.components.common.StorageService;
+import com.abelium.inatrace.components.common.TokenService;
 import com.abelium.inatrace.db.entities.codebook.ProductType;
 import com.abelium.inatrace.db.entities.common.Document;
 import com.abelium.inatrace.db.entities.common.GlobalSettings;
 import com.abelium.inatrace.db.entities.common.User;
 import com.abelium.inatrace.db.entities.company.Company;
+import com.abelium.inatrace.db.entities.company.CompanyUser;
 import com.abelium.inatrace.db.entities.product.*;
 import com.abelium.inatrace.db.entities.stockorder.StockOrder;
 import com.abelium.inatrace.db.entities.value_chain.ValueChain;
@@ -14,9 +16,11 @@ import com.abelium.inatrace.db.entities.value_chain.enums.ValueChainStatus;
 import com.abelium.inatrace.support.AbstractMySqlIntegrationTest;
 import com.abelium.inatrace.types.*;
 import jakarta.persistence.EntityManager;
+import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
@@ -30,6 +34,8 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -42,11 +48,16 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 class PublicLabelApiTest extends AbstractMySqlIntegrationTest {
     private static final String PUBLISHED = "PUBLIC-LABEL-37";
     private static final String DRAFT = "DRAFT-LABEL-37";
+    private static final String LABEL_MEDIA = "LABEL-MEDIA-37";
+    private static final String BLOG_MEDIA = "BLOG-MEDIA-37";
     @Autowired private MockMvc mockMvc;
     @Autowired private EntityManager em;
     @Autowired private StorageService storageService;
+    @Autowired private TokenService tokenService;
+    @Value("${INATrace.auth.accessTokenCookieName}") private String accessCookieName;
     private String publishedUid, draftUid, documentKey, imageKey;
-    private Long blogId;
+    private Long blogId, publishedLabelId;
+    private Cookie ownerSession;
 
     @BeforeEach void seed() throws Exception {
         Company company = new Company(); company.setName("Public 37 company"); company.setStatus(CompanyStatus.ACTIVE); em.persist(company);
@@ -56,11 +67,15 @@ class PublicLabelApiTest extends AbstractMySqlIntegrationTest {
         Product product = new Product(); product.setName(PUBLISHED); product.setDescription(PUBLISHED); product.setCompany(company); product.setValueChain(chain);
         em.persist(product.getProcess()); em.persist(product.getResponsibility()); em.persist(product.getSustainability()); em.persist(product.getJourney()); em.persist(product.getSettings()); em.persist(product.getBusinessToCustomerSettings()); em.persist(product);
         ProductCompany owner = new ProductCompany(); owner.setProduct(product); owner.setCompany(company); owner.setType(ProductCompanyType.OWNER); em.persist(owner);
+        CompanyUser membership = new CompanyUser(); membership.setCompany(company); membership.setUser(user); membership.setRole(CompanyUserRole.COMPANY_ADMIN); em.persist(membership); company.getUsers().add(membership);
         ProductLabel published = label(product, PUBLISHED, ProductLabelStatus.PUBLISHED);
         ProductLabel draft = label(product, DRAFT, ProductLabelStatus.UNPUBLISHED);
-        batch(published, "PUBLIC37"); batch(draft, "DRAFT37");
+        Document labelMedia = storageService.uploadDocument(LABEL_MEDIA.getBytes(), "label37.txt", MediaType.TEXT_PLAIN_VALUE, (long) LABEL_MEDIA.length(), DocumentType.GENERAL);
+        batch(published, "PUBLIC37").setPhoto(labelMedia); batch(draft, "DRAFT37");
+        ProductLabelFeedback publishedFeedback = new ProductLabelFeedback(); publishedFeedback.setLabel(published); publishedFeedback.setType(ProductLabelFeedbackType.PRAISE); publishedFeedback.setFeedback(PUBLISHED + "-FEEDBACK"); em.persist(publishedFeedback);
         ProductLabelFeedback draftFeedback = new ProductLabelFeedback(); draftFeedback.setLabel(draft); draftFeedback.setType(ProductLabelFeedbackType.PRAISE); draftFeedback.setFeedback("DRAFT-FEEDBACK-37"); em.persist(draftFeedback);
-        KnowledgeBlog blog = new KnowledgeBlog(); blog.setProduct(product); blog.setType(KnowledgeBlogType.PROVENANCE); blog.setTitle(DRAFT); blog.setSummary(DRAFT); blog.setContent(DRAFT); em.persist(blog); blogId = blog.getId();
+        Document blogMedia = storageService.uploadDocument(BLOG_MEDIA.getBytes(), "blog37.txt", MediaType.TEXT_PLAIN_VALUE, (long) BLOG_MEDIA.length(), DocumentType.GENERAL);
+        KnowledgeBlog blog = new KnowledgeBlog(); blog.setProduct(product); blog.setType(KnowledgeBlogType.PROVENANCE); blog.setTitle(DRAFT); blog.setSummary(DRAFT); blog.setContent(DRAFT); blog.getDocuments().add(blogMedia); em.persist(blog); blogId = blog.getId();
         StockOrder stock = new StockOrder(); stock.setOrderId(PUBLISHED); stock.setQrCodeTag("QR-PUBLIC-37"); stock.setCreatedBy(user); stock.setUpdatedBy(user); em.persist(stock);
         GlobalSettings publicSetting = new GlobalSettings(); publicSetting.setName("public37"); publicSetting.setValue(PUBLISHED); publicSetting.setIsPublic(true); em.persist(publicSetting);
         GlobalSettings privateSetting = new GlobalSettings(); privateSetting.setName("private37"); privateSetting.setValue(DRAFT); privateSetting.setIsPublic(false); em.persist(privateSetting);
@@ -68,7 +83,8 @@ class PublicLabelApiTest extends AbstractMySqlIntegrationTest {
         documentKey = StorageKeyCache.put(document.getStorageKey(), null);
         Document image = storageService.uploadImageVariants(imageBytes(), com.abelium.inatrace.tools.ImageTools.STANDARD_IMAGE_SIZES, MediaType.IMAGE_PNG_VALUE, "public37.png");
         imageKey = StorageKeyCache.put(image.getStorageKey(), null);
-        publishedUid = published.getUuid(); draftUid = draft.getUuid(); em.flush(); em.clear();
+        publishedUid = published.getUuid(); draftUid = draft.getUuid(); publishedLabelId = published.getId(); em.flush(); em.clear();
+        ownerSession = new Cookie(accessCookieName, tokenService.createAccessToken(user));
     }
 
     @Test void publishedLabelIsAnonymousButDraftLandingAndFeedbackCreationAreWithdrawn() throws Exception {
@@ -81,13 +97,41 @@ class PublicLabelApiTest extends AbstractMySqlIntegrationTest {
         assertEquals(before + 1, count(ProductLabelFeedback.class));
     }
 
-    @Test void draftDerivedRoutesAreCharacterizedBeforeAnyPublicationPolicyFix() throws Exception {
-        // These routes currently bypass fetchProductLabelPublic. This test records the observed exposure.
-        assertContains(get("/api/public/product/label_batch/" + draftUid + "/DRAFT37"), 200, "DRAFT37");
-        assertContains(get("/api/public/product/label/" + draftUid + "/verify_batch_authenticity").param("number", "DRAFT37").param("productionDate", "2025-12-31"), 200, "\"data\":false");
-        assertContains(get("/api/public/product/label/" + draftUid + "/verify_batch_origin").param("number", "DRAFT37"), 200, "DRAFT-ORIGIN-37");
+    @Test void publishedLabelDerivedRoutesRemainAvailableAndDraftRoutesAreWithdrawn() throws Exception {
+        assertContains(get("/api/public/product/label_batch/" + publishedUid + "/PUBLIC37"), 200, "PUBLIC37");
+        assertContains(get("/api/public/product/label/" + publishedUid + "/verify_batch_authenticity").param("number", "PUBLIC37").param("productionDate", "2025-12-31"), 200, "\"data\":true");
+        assertContains(get("/api/public/product/label/" + publishedUid + "/verify_batch_origin").param("number", "PUBLIC37"), 200, "PUBLIC-ORIGIN-37");
+        assertContains(get("/api/public/product/label/feedback/list/" + publishedUid), 200, PUBLISHED + "-FEEDBACK");
+
+        assertDenied(get("/api/public/product/label_batch/" + draftUid + "/DRAFT37"), "DRAFT37");
+        assertDenied(get("/api/public/product/label/" + draftUid + "/verify_batch_authenticity").param("number", "DRAFT37").param("productionDate", "2026-01-01"), DRAFT);
+        assertDenied(get("/api/public/product/label/" + draftUid + "/verify_batch_origin").param("number", "DRAFT37"), "DRAFT-ORIGIN-37");
+        assertDenied(get("/api/public/product/label/feedback/list/" + draftUid), "DRAFT-FEEDBACK-37");
+
+        // Knowledge blogs belong to a product, so the blog remains public while that product has
+        // its separate published label.
         assertContains(get("/api/public/product/knowledgeBlog/" + blogId), 200, DRAFT);
-        assertContains(get("/api/public/product/label/feedback/list/" + draftUid), 200, "DRAFT-FEEDBACK-37");
+    }
+
+    @Test void unpublishingTheLastPublishedLabelWithdrawsPublicMediaAndKnowledgeBlogs() throws Exception {
+        String labelMediaKey = storageKey(get("/api/public/product/label_batch/" + publishedUid + "/PUBLIC37"));
+        String blogMediaKey = storageKey(get("/api/public/product/knowledgeBlog/" + blogId));
+        assertTextBytes(get("/api/public/document/" + labelMediaKey), LABEL_MEDIA);
+        assertTextBytes(get("/api/public/document/" + blogMediaKey), BLOG_MEDIA);
+
+        assertStatus(post("/api/product/label/execute/UNPUBLISH_LABEL")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"id\":" + publishedLabelId + "}")
+                .cookie(ownerSession), 200);
+
+        assertDenied(get("/api/public/product/label/" + publishedUid), PUBLISHED);
+        assertDenied(get("/api/public/product/label_batch/" + publishedUid + "/PUBLIC37"), "PUBLIC37");
+        assertDenied(get("/api/public/product/label/" + publishedUid + "/verify_batch_authenticity").param("number", "PUBLIC37").param("productionDate", "2026-01-01"), PUBLISHED);
+        assertDenied(get("/api/public/product/label/" + publishedUid + "/verify_batch_origin").param("number", "PUBLIC37"), "PUBLIC-ORIGIN-37");
+        assertDenied(get("/api/public/product/label/feedback/list/" + publishedUid), PUBLISHED + "-FEEDBACK");
+        assertDenied(get("/api/public/product/knowledgeBlog/" + blogId), DRAFT);
+        assertRejected(get("/api/public/document/" + labelMediaKey));
+        assertRejected(get("/api/public/document/" + blogMediaKey));
     }
 
     @Test void qrFilesLoggingAndPublicSettingsWorkWithoutASession() throws Exception {
@@ -108,14 +152,19 @@ class PublicLabelApiTest extends AbstractMySqlIntegrationTest {
         em.persist(content.getProcess()); em.persist(content.getResponsibility()); em.persist(content.getSustainability()); em.persist(content.getJourney()); em.persist(content.getSettings()); em.persist(content.getBusinessToCustomerSettings()); em.persist(content);
         ProductLabel label = new ProductLabel(); label.setProduct(product); label.setContent(content); label.setTitle(marker); label.setLanguage(Language.EN); label.setStatus(status); em.persist(label); return label;
     }
-    private void batch(ProductLabel label, String number) {
+    private ProductLabelBatch batch(ProductLabel label, String number) {
         ProductLabelBatch batch = new ProductLabelBatch(); batch.setLabel(label); batch.setNumber(number); batch.setProductionDate(LocalDate.of(2026,1,1)); batch.setExpiryDate(LocalDate.of(2027,1,1)); batch.setCheckAuthenticity(true); batch.setTraceOrigin(true); em.persist(batch);
-        if (number.equals("DRAFT37")) { BatchLocation location = new BatchLocation(); location.setBatch(batch); location.setPinName("DRAFT-ORIGIN-37"); location.setLatitude(-23.5505); location.setLongitude(-46.6333); em.persist(location); }
+        BatchLocation location = new BatchLocation(); location.setBatch(batch); location.setPinName(number.equals("DRAFT37") ? "DRAFT-ORIGIN-37" : "PUBLIC-ORIGIN-37"); location.setLatitude(-23.5505); location.setLongitude(-46.6333); em.persist(location);
+        return batch;
     }
     private byte[] imageBytes() throws Exception { BufferedImage image = new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB); image.setRGB(0, 0, 0x008037); ByteArrayOutputStream bytes = new ByteArrayOutputStream(); ImageIO.write(image, "png", bytes); return bytes.toByteArray(); }
     private void assertStatus(org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request, int status) throws Exception { MvcResult result=mockMvc.perform(request).andReturn(); assertEquals(status,result.getResponse().getStatus(),result.getResponse().getContentAsString()); }
     private void assertContains(org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request, int status, String marker) throws Exception { MvcResult result=mockMvc.perform(request).andReturn(); assertEquals(status,result.getResponse().getStatus(),result.getResponse().getContentAsString()); assertTrue(result.getResponse().getContentAsString().contains(marker),result.getResponse().getContentAsString()); }
     private void assertBytes(org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request, String marker) throws Exception { MvcResult result=mockMvc.perform(request).andReturn(); assertEquals(200,result.getResponse().getStatus(),result.getResponse().getContentAsString()); assertTrue(new String(result.getResponse().getContentAsByteArray()).contains(marker) || result.getResponse().getContentAsByteArray().length>0); }
+    private void assertTextBytes(org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request, String marker) throws Exception { MvcResult result=mockMvc.perform(request).andReturn(); assertEquals(200,result.getResponse().getStatus(),result.getResponse().getContentAsString()); assertEquals(marker, new String(result.getResponse().getContentAsByteArray())); }
     private void assertRefused(org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request, String marker) throws Exception { MvcResult result=mockMvc.perform(request).andReturn(); assertTrue(result.getResponse().getStatus()>=400 || !result.getResponse().getContentAsString().contains(marker),result.getResponse().getContentAsString()); assertFalse(result.getResponse().getContentAsString().contains(marker),result.getResponse().getContentAsString()); }
+    private void assertDenied(org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request, String marker) throws Exception { MvcResult result=mockMvc.perform(request).andReturn(); assertTrue(result.getResponse().getStatus()>=400,result.getResponse().getContentAsString()); assertFalse(result.getResponse().getContentAsString().contains(marker),result.getResponse().getContentAsString()); }
+    private void assertRejected(org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request) throws Exception { MvcResult result=mockMvc.perform(request).andReturn(); assertTrue(result.getResponse().getStatus()>=400,result.getResponse().getContentAsString()); }
+    private String storageKey(org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request) throws Exception { MvcResult result=mockMvc.perform(request).andReturn(); String body=result.getResponse().getContentAsString(); assertEquals(200,result.getResponse().getStatus(),body); Matcher matcher=Pattern.compile("\\\"storageKey\\\":\\\"([^\\\"]+)\\\"").matcher(body); assertTrue(matcher.find(),body); return matcher.group(1); }
     private long count(Class<?> type) { return em.createQuery("select count(x) from " + type.getSimpleName() + " x",Long.class).getSingleResult(); }
 }
