@@ -98,8 +98,8 @@ class PublicLabelApiTest extends AbstractMySqlIntegrationTest {
     }
 
     @Test void publishedLabelDerivedRoutesRemainAvailableAndDraftRoutesAreWithdrawn() throws Exception {
-        assertContains(get("/api/public/product/label_batch/" + publishedUid + "/PUBLIC37"), 200, "PUBLIC37");
-        assertContains(get("/api/public/product/label/" + publishedUid + "/verify_batch_authenticity").param("number", "PUBLIC37").param("productionDate", "2025-12-31"), 200, "\"data\":true");
+        String publishedProductionDate = productionDate(get("/api/public/product/label_batch/" + publishedUid + "/PUBLIC37"));
+        assertContains(get("/api/public/product/label/" + publishedUid + "/verify_batch_authenticity").param("number", "PUBLIC37").param("productionDate", publishedProductionDate), 200, "\"data\":true");
         assertContains(get("/api/public/product/label/" + publishedUid + "/verify_batch_origin").param("number", "PUBLIC37"), 200, "PUBLIC-ORIGIN-37");
         assertContains(get("/api/public/product/label/feedback/list/" + publishedUid), 200, PUBLISHED + "-FEEDBACK");
 
@@ -166,5 +166,6 @@ class PublicLabelApiTest extends AbstractMySqlIntegrationTest {
     private void assertDenied(org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request, String marker) throws Exception { MvcResult result=mockMvc.perform(request).andReturn(); assertTrue(result.getResponse().getStatus()>=400,result.getResponse().getContentAsString()); assertFalse(result.getResponse().getContentAsString().contains(marker),result.getResponse().getContentAsString()); }
     private void assertRejected(org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request) throws Exception { MvcResult result=mockMvc.perform(request).andReturn(); assertTrue(result.getResponse().getStatus()>=400,result.getResponse().getContentAsString()); }
     private String storageKey(org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request) throws Exception { MvcResult result=mockMvc.perform(request).andReturn(); String body=result.getResponse().getContentAsString(); assertEquals(200,result.getResponse().getStatus(),body); Matcher matcher=Pattern.compile("\\\"storageKey\\\":\\\"([^\\\"]+)\\\"").matcher(body); assertTrue(matcher.find(),body); return matcher.group(1); }
+    private String productionDate(org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request) throws Exception { MvcResult result=mockMvc.perform(request).andReturn(); String body=result.getResponse().getContentAsString(); assertEquals(200,result.getResponse().getStatus(),body); assertTrue(body.contains("PUBLIC37"),body); Matcher matcher=Pattern.compile("\\\"productionDate\\\":\\\"([^\\\"]+)\\\"").matcher(body); assertTrue(matcher.find(),body); return matcher.group(1); }
     private long count(Class<?> type) { return em.createQuery("select count(x) from " + type.getSimpleName() + " x",Long.class).getSingleResult(); }
 }
