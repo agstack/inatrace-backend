@@ -6,7 +6,6 @@ import com.abelium.inatrace.api.ApiResponse;
 import com.abelium.inatrace.api.errors.ApiException;
 import com.abelium.inatrace.components.analytics.RequestLogService;
 import com.abelium.inatrace.components.analytics.api.ApiLogRequest;
-import com.abelium.inatrace.components.common.CommonService;
 import com.abelium.inatrace.components.common.GlobalSettingsService;
 import com.abelium.inatrace.components.common.api.ApiGlobalSettingsValue;
 import com.abelium.inatrace.components.company.CompanyService;
@@ -38,8 +37,6 @@ public class PublicController {
 
 	private final StockOrderService stockOrderService;
 
-    private final CommonService commonService;
-
 	private final RequestLogService requestLogService;
 
     private final GlobalSettingsService globalSettingsService;
@@ -48,13 +45,11 @@ public class PublicController {
 	public PublicController(CompanyService companyService,
 	                        ProductService productService,
 							StockOrderService stockOrderService,
-	                        CommonService commonService,
 	                        RequestLogService requestLogService,
 	                        GlobalSettingsService globalSettingsService) {
 		this.companyService = companyService;
 		this.productService = productService;
 		this.stockOrderService = stockOrderService;
-		this.commonService = commonService;
 		this.requestLogService = requestLogService;
 		this.globalSettingsService = globalSettingsService;
 	}
@@ -86,7 +81,7 @@ public class PublicController {
     @Operation(summary = "Get batch by label and number")
     public ApiResponse<ApiProductLabelBatch> getPublicProductLabelBatch(
 			@Valid @Parameter(description = "Label uid", required = true) @PathVariable("uid") String uid,
-    		@Valid @Parameter(description = "Batch number", required = true)  @PathVariable("number") String number) {
+			@Valid @Parameter(description = "Batch number", required = true)  @PathVariable("number") String number) throws ApiException {
     	return new ApiResponse<>(productService.getProductLabelBatchPublic(uid, number));
     }
     
@@ -94,7 +89,7 @@ public class PublicController {
     @Operation(summary = "Check batch by number and given date(s)")
     public ApiResponse<Boolean> checkPublicProductLabelBatchAuthenticity(HttpServletRequest servletRequest,
     		@Valid @Parameter(description = "Label uid", required = true) @PathVariable("uid") String uid,
-    		@Valid ApiProductLabelBatchCheckAuthenticity request) {
+			@Valid ApiProductLabelBatchCheckAuthenticity request) throws ApiException {
     	return new ApiResponse<>(productService.checkProductLabelBatchAuthenticityPublic(uid, request, servletRequest));
     }
     
@@ -102,7 +97,7 @@ public class PublicController {
     @Operation(summary = "Get batch by label and number")
     public ApiResponse<List<ApiLocation>> checkPublicProductLabelBatchOrigin(HttpServletRequest servletRequest,
     		@Valid @Parameter(description = "Label uid", required = true) @PathVariable("uid") String uid,
-    		@Valid ApiProductLabelBatchCheckOrigin request) {
+			@Valid ApiProductLabelBatchCheckOrigin request) throws ApiException {
     	return new ApiResponse<>(productService.checkProductLabelBatchOriginPublic(uid, request, servletRequest));
     }
 
@@ -122,7 +117,7 @@ public class PublicController {
             )
     })
     public ResponseEntity<byte[]> getPublicDocument(@Valid @PathVariable(value = "storageKey") String storageKey) throws ApiException {
-        return commonService.getDocument(null, storageKey, null).toResponseEntity();
+        return productService.getPublicDocument(storageKey).toResponseEntity();
     }
 
     @GetMapping(value = "/image/{storageKey}", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
@@ -133,7 +128,7 @@ public class PublicController {
             )
     })
     public ResponseEntity<byte[]> getPublicImage(@Valid @PathVariable(value = "storageKey") String storageKey) throws ApiException {
-        return commonService.getImage(null, storageKey, null).toResponseEntity();
+        return productService.getPublicImage(storageKey, null).toResponseEntity();
     }
 
     @GetMapping(value = "/image/{storageKey}/{size}", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
@@ -145,7 +140,7 @@ public class PublicController {
     })
     public ResponseEntity<byte[]> getPublicResizedImage(@Valid @PathVariable(value = "storageKey") String storageKey,
     		@Valid @PathVariable(value = "size", required = false) String size) throws ApiException {
-        return commonService.getImage(null, storageKey, size).toResponseEntity();
+        return productService.getPublicImage(storageKey, size).toResponseEntity();
     }
     
     @GetMapping(value = "/product/label/feedback/list/{labelUid}")
