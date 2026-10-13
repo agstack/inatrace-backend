@@ -89,6 +89,26 @@ public class UserService extends BaseService {
 		return Queries.getUniqueBy(em, User.class, User::getEmail, email);
 	}
 
+	/**
+	 * Resolves the current account for an access-token request.
+	 *
+	 * <p>JWT claims prove who issued a token, but they are only a snapshot of
+	 * the account at the time of login. Authentication must therefore use the
+	 * persisted account and accept only an ACTIVE user. Returning {@code null}
+	 * lets the security filter leave the request anonymous, so Spring Security
+	 * can produce its normal 401 response without disclosing why the account is
+	 * unavailable.
+	 */
+	@Transactional
+	public User findActiveUserById(Long id) {
+		if (id == null) {
+			return null;
+		}
+
+		User user = Queries.get(em, User.class, id);
+		return user != null && user.getStatus() == UserStatus.ACTIVE ? user : null;
+	}
+
 	public User fetchUserById(Long id) throws ApiException {
 		User user = Queries.get(em, User.class, id);
 		if (user == null) {
