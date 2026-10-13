@@ -32,6 +32,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.torpedoquery.jakarta.jpa.Torpedo;
+import jakarta.transaction.Transactional;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -54,6 +55,7 @@ public class UserCustomerImportService extends BaseService {
     @Autowired
     private StorageService storageService;
 
+    @Transactional
     public ApiUserCustomerImportResponse importFarmersSpreadsheet(Long companyId, Long documentId, CustomUserDetails authUser, Language language) throws ApiException {
 
         // If importing as a Regional admin, check that it is enrolled in the company
@@ -62,7 +64,15 @@ public class UserCustomerImportService extends BaseService {
             PermissionsUtil.checkUserIfCompanyEnrolled(company.getUsers().stream().toList(), authUser);
         }
 
-        DocumentData documentData = storageService.downloadDocument(em.find(Document.class, documentId).getStorageKey());
+        Document document = em.find(Document.class, documentId);
+        if (document == null) {
+            throw new ApiException(ApiStatus.INVALID_REQUEST, "Invalid import document.");
+        }
+        if (document.getUploadedBy() == null || !document.getUploadedBy().getId().equals(authUser.getUserId())) {
+            throw new ApiException(ApiStatus.UNAUTHORIZED, "You are not authorized to import this document.");
+        }
+
+        DocumentData documentData = storageService.downloadDocument(document.getStorageKey());
         InputStream inputStream;
         XSSFWorkbook mainWorkbook;
 
