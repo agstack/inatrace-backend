@@ -50,6 +50,7 @@ import com.abelium.inatrace.tools.TranslateTools;
 import com.abelium.inatrace.types.Language;
 import com.abelium.inatrace.types.ProcessingActionType;
 import com.abelium.inatrace.types.ProductCompanyType;
+import com.abelium.inatrace.types.UserRole;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -125,8 +126,7 @@ public class StockOrderService extends BaseService {
 
         StockOrder stockOrder = fetchEntity(id, StockOrder.class);
 
-        // Check that the request user is form a company which is connected to the company that owns the quote order (or is a user of that company)
-        PermissionsUtil.checkUserIfConnectedWithProducts(companyQueries.fetchCompanyProducts(stockOrder.getCompany().getId()), user);
+        checkStockOrderReadPermission(stockOrder.getCompany(), user);
 
         return StockOrderMapper.toApiStockOrder(stockOrder, user.getUserId(), language, withProcessingOrder);
     }
@@ -135,8 +135,7 @@ public class StockOrderService extends BaseService {
 
         StockOrder stockOrder = fetchEntity(id, StockOrder.class);
 
-        // Check that the request user is form a company which is connected to the company that owns the quote order (or is a user of that company)
-        PermissionsUtil.checkUserIfConnectedWithProducts(companyQueries.fetchCompanyProducts(stockOrder.getCompany().getId()), user);
+        checkStockOrderReadPermission(stockOrder.getCompany(), user);
 
         // If Stock order has no Processing order set, exit with exception
         if (stockOrder.getProcessingOrder() == null) {
@@ -155,10 +154,9 @@ public class StockOrderService extends BaseService {
             throw new ApiException(ApiStatus.UNAUTHORIZED, "Facility ID should be provided!");
         }
 
-        // Get the owner company of the facility
-        // Using this, we can get the company products and check if the user is enrolled in any of the connected companies
+        // Available stock belongs to the company that owns the requested facility.
         Facility facility = facilityService.fetchFacility(queryRequest.facilityId);
-        PermissionsUtil.checkUserIfConnectedWithProducts(companyQueries.fetchCompanyProducts(facility.getCompany().getId()), user);
+        checkStockOrderReadPermission(facility.getCompany(), user);
 
         return PaginationTools.createPaginatedResponse(em, request,
                 () -> stockOrderQueryObject(
@@ -663,7 +661,7 @@ public class StockOrderService extends BaseService {
                 throw new ApiException(ApiStatus.UNAUTHORIZED, "Request user is required!");
             }
 
-            PermissionsUtil.checkUserIfConnectedWithProducts(companyQueries.fetchCompanyProducts(stockOrder.getCompany().getId()), user);
+            checkStockOrderReadPermission(stockOrder.getCompany(), user);
         }
 
         ApiStockOrderHistory stockOrderHistory = new ApiStockOrderHistory();
@@ -958,6 +956,23 @@ public class StockOrderService extends BaseService {
             }
         }
 
+    }
+
+    /**
+     * Administrative stock reads are available to the owner company regardless of
+     * whether it has created a consumer-facing product. Product associations still
+     * grant the existing cross-company read access.
+     */
+    private void checkStockOrderReadPermission(Company ownerCompany, CustomUserDetails user) throws ApiException {
+        boolean isOwnerCompanyMember = ownerCompany.getUsers().stream()
+                .anyMatch(companyUser -> companyUser.getUser().getId().equals(user.getUserId()));
+
+        if (UserRole.SYSTEM_ADMIN.equals(user.getUserRole()) || isOwnerCompanyMember) {
+            return;
+        }
+
+        PermissionsUtil.checkUserIfConnectedWithProducts(
+                companyQueries.fetchCompanyProducts(ownerCompany.getId()), user);
     }
 
     @Transactional
