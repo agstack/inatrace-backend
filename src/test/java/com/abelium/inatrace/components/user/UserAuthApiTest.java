@@ -388,6 +388,18 @@ class UserAuthApiTest extends AbstractMySqlIntegrationTest {
 	}
 
 	@Test
+	@DisplayName("an authorization refusal is a JSON API error when JSON is accepted")
+	void plainUserReceivesJsonErrorFromAdministratorList() {
+		User user = seedUser(UserStatus.ACTIVE, UserRole.USER);
+
+		ResponseEntity<String> response = exchange(HttpMethod.GET, "/api/user/admin/list", null, accessCookieFor(user),
+				MediaType.APPLICATION_JSON);
+
+		assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
+		assertApiError(response, "UNAUTHORIZED", "Unauthorized");
+	}
+
+	@Test
 	@DisplayName("a system administrator can read the administrator's user list")
 	void systemAdminCanListAllUsers() {
 		User admin = seedUser(UserStatus.ACTIVE, UserRole.SYSTEM_ADMIN);
@@ -498,13 +510,27 @@ class UserAuthApiTest extends AbstractMySqlIntegrationTest {
 				"a failed login must not hand out an access cookie");
 	}
 
+	private void assertApiError(ResponseEntity<String> response, String status, String errorMessage) {
+		assertEquals(MediaType.APPLICATION_JSON, response.getHeaders().getContentType());
+		assertNotNull(response.getBody());
+		assertTrue(response.getBody().contains("\"status\":\"" + status + "\""), response.getBody());
+		assertTrue(response.getBody().contains("\"errorMessage\":\"" + errorMessage + "\""), response.getBody());
+	}
+
 	private ResponseEntity<String> get(String path, String cookie) {
 		return exchange(HttpMethod.GET, path, null, cookie);
 	}
 
 	private ResponseEntity<String> exchange(HttpMethod method, String path, Object body, String cookie) {
+		return exchange(method, path, body, cookie, null);
+	}
+
+	private ResponseEntity<String> exchange(HttpMethod method, String path, Object body, String cookie, MediaType accept) {
 		HttpHeaders headers = new HttpHeaders();
 		headers.setContentType(MediaType.APPLICATION_JSON);
+		if (accept != null) {
+			headers.setAccept(List.of(accept));
+		}
 		if (cookie != null) {
 			headers.add(HttpHeaders.COOKIE, cookie);
 		}
