@@ -7,6 +7,7 @@ import com.abelium.inatrace.components.analytics.RequestLogService;
 import com.abelium.inatrace.components.codebook.measure_unit_type.MeasureUnitTypeService;
 import com.abelium.inatrace.components.common.BaseService;
 import com.abelium.inatrace.components.common.CommonService;
+import com.abelium.inatrace.components.common.PublicMediaAuthorizationService;
 import com.abelium.inatrace.components.common.StorageKeyCache;
 import com.abelium.inatrace.components.company.CompanyApiTools;
 import com.abelium.inatrace.components.product.api.*;
@@ -66,6 +67,9 @@ public class ProductService extends BaseService {
 
 	@Autowired
 	private CommonService commonService;
+
+	@Autowired
+	private PublicMediaAuthorizationService publicMediaAuthorizationService;
 	
     private Product productListQueryObject(ApiListProductsRequest request) {
         Product pProxy = Torpedo.from(Product.class);
@@ -590,12 +594,12 @@ public class ProductService extends BaseService {
 
 	public MediaObject getPublicDocument(String storageKey) throws ApiException {
 		validatePublicStorageKey(storageKey);
-		return commonService.getDocument(null, storageKey, null);
+		return commonService.getPublicDocument(storageKey, null);
 	}
 
 	public MediaObject getPublicImage(String storageKey, String size) throws ApiException {
 		validatePublicStorageKey(storageKey);
-		return commonService.getImage(null, storageKey, size);
+		return commonService.getPublicImage(storageKey, size);
 	}
     
     @Transactional
@@ -869,15 +873,7 @@ public class ProductService extends BaseService {
 	}
 
 	private void validatePublicStorageKey(String tempKey) throws ApiException {
-		String labelUid = StorageKeyCache.getPublicLabelUid(tempKey);
-		if (labelUid != null) {
-			fetchProductLabelPublic(labelUid);
-		}
-
-		Long productId = StorageKeyCache.getPublicProductId(tempKey);
-		if (productId != null) {
-			checkProductHasPublishedLabel(productId);
-		}
+		publicMediaAuthorizationService.validate(tempKey);
 	}
 
 	private boolean hasPublishedLabel(Long productId) {
