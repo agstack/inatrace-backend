@@ -5,10 +5,12 @@ import com.abelium.inatrace.components.common.TokenService;
 import com.abelium.inatrace.db.entities.common.User;
 import com.abelium.inatrace.db.entities.company.Company;
 import com.abelium.inatrace.db.entities.company.CompanyUser;
+import com.abelium.inatrace.db.entities.processingaction.ProcessingAction;
 import com.abelium.inatrace.db.entities.stockorder.StockOrder;
 import com.abelium.inatrace.db.entities.stockorder.enums.OrderType;
 import com.abelium.inatrace.types.CompanyStatus;
 import com.abelium.inatrace.types.CompanyUserRole;
+import com.abelium.inatrace.types.ProcessingActionType;
 import com.abelium.inatrace.types.UserRole;
 import com.abelium.inatrace.types.UserStatus;
 import jakarta.persistence.EntityManager;
@@ -32,6 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 /**
  * The dashboard endpoints only answer for a company the caller is enrolled in.
@@ -66,6 +69,7 @@ class MultiTenantIsolationTest extends AbstractMySqlIntegrationTest {
     private String accessCookieName;
 
     private Long acmeId;
+    private Long acmeProcessingActionId;
     private Cookie bobSession;
     private Cookie aliceSession;
 
@@ -90,9 +94,18 @@ class MultiTenantIsolationTest extends AbstractMySqlIntegrationTest {
         delivery.setUpdatedBy(alice);
         em.persist(delivery);
 
+        // A minimal action is enough for the performance endpoint's own-company control. No
+        // processing orders are required to prove the authorization guard runs before queries.
+        ProcessingAction action = new ProcessingAction();
+        action.setCompany(acme);
+        action.setType(ProcessingActionType.PROCESSING);
+        action.setPrefix("PERFORMANCE-39");
+        em.persist(action);
+
         em.flush();
 
         acmeId = acme.getId();
+        acmeProcessingActionId = action.getId();
         bobSession = sessionCookie(bob);
         aliceSession = sessionCookie(alice);
     }
@@ -134,6 +147,62 @@ class MultiTenantIsolationTest extends AbstractMySqlIntegrationTest {
                 "A CSV of another tenant's deliveries was downloaded: " + file);
     }
 
+    @Test
+    @DisplayName("Control: Alice can export her own deliveries CSV")
+    void ownCompanyDeliveriesCsvIsExportable() throws Exception {
+        MvcResult result = mockMvc.perform(get("/api/dashboard/deliveries-aggregated-data/export")
+                        .queryParam("companyId", String.valueOf(acmeId))
+                        .queryParam("aggregationType", "DAY")
+                        .queryParam("exportType", "CSV")
+                        .cookie(aliceSession))
+                .andReturn();
+
+        String file = new String(result.getResponse().getContentAsByteArray());
+        assertEquals(200, result.getResponse().getStatus(), file);
+        assertTrue(file.contains(DELIVERY_QUANTITY.toPlainString()),
+                "The owner's CSV should contain the seeded delivery: " + file);
+    }
+
+    @Test
+    @DisplayName("Bob cannot calculate processing performance for a company he does not belong to")
+    void processingPerformanceOfForeignCompanyIsRejected() throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/dashboard/processing-performance-data")
+                        .contentType("application/json")
+                        .content(processingPerformanceRequest())
+                        .cookie(bobSession))
+                .andReturn();
+
+        assertForeignDashboardResponse(result);
+    }
+
+    @Test
+    @DisplayName("Bob cannot export processing performance for a company he does not belong to")
+    void processingPerformanceExportOfForeignCompanyIsRejected() throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/dashboard/processing-performance-data/export")
+                        .contentType("application/json")
+                        .content(processingPerformanceRequestWithExport())
+                        .cookie(bobSession))
+                .andReturn();
+
+        assertForeignDashboardResponse(result);
+    }
+
+    @Test
+    @DisplayName("Dashboard endpoints require an authenticated session")
+    void dashboardEndpointsRejectAnonymousRequests() throws Exception {
+        assertEquals(401, mockMvc.perform(get("/api/dashboard/deliveries-aggregated-data")
+                        .queryParam("companyId", String.valueOf(acmeId))
+                        .queryParam("aggregationType", "DAY")).andReturn().getResponse().getStatus());
+        assertEquals(401, mockMvc.perform(get("/api/dashboard/deliveries-aggregated-data/export")
+                        .queryParam("companyId", String.valueOf(acmeId))
+                        .queryParam("aggregationType", "DAY")
+                        .queryParam("exportType", "CSV")).andReturn().getResponse().getStatus());
+        assertEquals(401, mockMvc.perform(post("/api/dashboard/processing-performance-data")
+                        .contentType("application/json").content(processingPerformanceRequest())).andReturn().getResponse().getStatus());
+        assertEquals(401, mockMvc.perform(post("/api/dashboard/processing-performance-data/export")
+                        .contentType("application/json").content(processingPerformanceRequestWithExport())).andReturn().getResponse().getStatus());
+    }
+
     // ---------------------------------------------------------------- controls
 
     @Test
@@ -162,6 +231,57 @@ class MultiTenantIsolationTest extends AbstractMySqlIntegrationTest {
         assertEquals(200, result.getResponse().getStatus());
         assertTrue(result.getResponse().getContentAsString().contains(DELIVERY_QUANTITY.toPlainString()),
                 "The seeded delivery should be visible to its owner: " + result.getResponse().getContentAsString());
+    }
+
+    @Test
+    @DisplayName("Control: Alice can calculate and export her own processing performance")
+    void ownCompanyProcessingPerformanceIsReadableAndExportable() throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/dashboard/processing-performance-data")
+                        .contentType("application/json").content(processingPerformanceRequest()).cookie(aliceSession))
+                .andReturn();
+        assertEquals(200, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+
+        MvcResult export = mockMvc.perform(post("/api/dashboard/processing-performance-data/export")
+                        .contentType("application/json").content(processingPerformanceRequestWithExport()).cookie(aliceSession))
+                .andReturn();
+        assertEquals(200, export.getResponse().getStatus(), export.getResponse().getContentAsString());
+        assertTrue(export.getResponse().getContentAsByteArray().length > 0,
+                "An authorized processing-performance export should contain a file");
+    }
+
+    @Test
+    @DisplayName("Characterization: omitting optional evidence fields currently breaks a valid performance export")
+    void processingPerformanceExportWithoutEvidenceFieldsIsCharacterizedAsServerError() throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/dashboard/processing-performance-data/export")
+                        .contentType("application/json")
+                        .content("{\"companyId\":" + acmeId + ",\"processActionId\":" + acmeProcessingActionId
+                                + ",\"aggregationType\":\"DAY\",\"exportType\":\"CSV\"}")
+                        .cookie(aliceSession))
+                .andReturn();
+
+        // The calculation route accepts this payload. The export route later dereferences the
+        // optional list while constructing display filters; the pending #39 finding documents the
+        // resulting 500 and the required null-as-empty fix.
+        assertEquals(500, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+    }
+
+    private String processingPerformanceRequest() {
+        return "{\"companyId\":" + acmeId + ",\"processActionId\":" + acmeProcessingActionId
+                + ",\"aggregationType\":\"DAY\"}";
+    }
+
+    private String processingPerformanceRequestWithExport() {
+        return "{\"companyId\":" + acmeId + ",\"processActionId\":" + acmeProcessingActionId
+                + ",\"evidenceFields\":[],\"aggregationType\":\"DAY\",\"exportType\":\"CSV\"}";
+    }
+
+    private void assertForeignDashboardResponse(MvcResult result) throws Exception {
+        String body = result.getResponse().getContentAsString();
+        assertEquals(403, result.getResponse().getStatus(), body);
+        assertFalse(body.contains(DELIVERY_QUANTITY.toPlainString()),
+                "A foreign dashboard response disclosed Acme data: " + body);
+        assertEquals(0, result.getResponse().getContentAsByteArray().length,
+                "A refused dashboard response must not return export bytes");
     }
 
     // ---------------------------------------------------------------- fixture helpers
