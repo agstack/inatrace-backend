@@ -202,6 +202,78 @@ class UserAuthApiTest extends AbstractMySqlIntegrationTest {
 	}
 
 	@Test
+	@DisplayName("an access token stops authenticating immediately after its user is deactivated")
+	void accessCookieIsRejectedAfterUserIsDeactivated() {
+		User user = seedUser(UserStatus.ACTIVE, UserRole.USER);
+		String cookie = accessCookieFor(user);
+
+		assertEquals(HttpStatus.OK, get("/api/user/profile", cookie).getStatusCode(),
+				"the token must work while its user remains active");
+		setStatus(user.getId(), UserStatus.DEACTIVATED);
+
+		ResponseEntity<String> response = get("/api/user/profile", cookie);
+
+		assertEquals(HttpStatus.UNAUTHORIZED, response.getStatusCode(),
+				"the next request must not wait for the access-token expiry");
+		assertFalse(response.getBody() != null && response.getBody().contains(user.getEmail()),
+				"a refused request must not expose the deactivated user's profile");
+	}
+
+	@Test
+	@DisplayName("an access token is refused for every non-active persisted user status")
+	void accessCookieIsRejectedForEveryNonActiveStatus() {
+		for (UserStatus status : List.of(UserStatus.UNCONFIRMED, UserStatus.CONFIRMED_EMAIL, UserStatus.DEACTIVATED)) {
+			User user = seedUser(UserStatus.ACTIVE, UserRole.USER);
+			String cookie = accessCookieFor(user);
+			setStatus(user.getId(), status);
+
+			assertEquals(HttpStatus.UNAUTHORIZED, get("/api/user/profile", cookie).getStatusCode(),
+					"status " + status + " must not authenticate a previously issued access token");
+		}
+	}
+
+	@Test
+	@DisplayName("a deactivated access cookie does not block a public endpoint")
+	void deactivatedAccessCookieDoesNotBlockPublicEndpoint() {
+		User user = seedUser(UserStatus.ACTIVE, UserRole.USER);
+		String cookie = accessCookieFor(user);
+		setStatus(user.getId(), UserStatus.DEACTIVATED);
+
+		ResponseEntity<String> response = get("/api/public/globalSettings/missing-" + UUID.randomUUID(), cookie);
+
+		assertEquals(HttpStatus.OK, response.getStatusCode(),
+				"a rejected principal must leave B2C routes anonymous rather than deny them");
+	}
+
+	@Test
+	@DisplayName("a deactivated user cannot use an already-issued access token to change its profile")
+	void deactivatedUserAccessTokenCannotWrite() {
+		User user = seedUser(UserStatus.ACTIVE, UserRole.USER);
+		String cookie = accessCookieFor(user);
+		setStatus(user.getId(), UserStatus.DEACTIVATED);
+
+		ResponseEntity<String> response = exchange(HttpMethod.PUT, "/api/user/profile",
+				Map.of("name", "ShouldNotPersist"), cookie);
+
+		assertEquals(HttpStatus.UNAUTHORIZED, response.getStatusCode());
+		assertEquals("Test", nameOf(user.getId()),
+				"a rejected access token must not reach the profile update service");
+	}
+
+	@Test
+	@DisplayName("an access token uses the user's current role instead of its role claim")
+	void accessCookieDoesNotKeepAnOldAdministratorRole() {
+		User admin = seedUser(UserStatus.ACTIVE, UserRole.SYSTEM_ADMIN);
+		String cookie = accessCookieFor(admin);
+
+		assertEquals(HttpStatus.OK, get("/api/user/admin/list", cookie).getStatusCode());
+		setRole(admin.getId(), UserRole.USER);
+
+		assertEquals(HttpStatus.FORBIDDEN, get("/api/user/admin/list", cookie).getStatusCode(),
+				"authorization must use the persisted role, not the JWT snapshot");
+	}
+
+	@Test
 	@DisplayName("logout expires both cookies")
 	void logoutClearsCookies() {
 		User user = seedUser(UserStatus.ACTIVE, UserRole.USER);
@@ -226,6 +298,19 @@ class UserAuthApiTest extends AbstractMySqlIntegrationTest {
 		assertEquals(HttpStatus.OK, response.getStatusCode());
 		assertTrue(setCookies(response).stream().anyMatch(c -> c.startsWith("inatrace-accessToken=")),
 				"a refresh should mint a fresh access cookie");
+	}
+
+	@Test
+	@DisplayName("refresh_authentication refuses a user deactivated after login")
+	void refreshRejectsADeactivatedUser() {
+		User user = seedUser(UserStatus.ACTIVE, UserRole.USER);
+		String cookie = bothCookiesFor(user);
+		setStatus(user.getId(), UserStatus.DEACTIVATED);
+
+		ResponseEntity<String> response = exchange(HttpMethod.POST, "/api/user/refresh_authentication", null, cookie);
+
+		assertEquals(HttpStatus.UNAUTHORIZED, response.getStatusCode());
+		assertNoAuthCookies(response);
 	}
 
 	@Test
@@ -471,6 +556,26 @@ class UserAuthApiTest extends AbstractMySqlIntegrationTest {
 						"select u.status from User u where u.email = :email", UserStatus.class)
 				.setParameter("email", email)
 				.getSingleResult());
+	}
+
+	private void setStatus(Long userId, UserStatus status) {
+		tx().executeWithoutResult(s -> {
+			User user = em.find(User.class, userId);
+			user.setStatus(status);
+			em.flush();
+		});
+	}
+
+	private void setRole(Long userId, UserRole role) {
+		tx().executeWithoutResult(s -> {
+			User user = em.find(User.class, userId);
+			user.setRole(role);
+			em.flush();
+		});
+	}
+
+	private String nameOf(Long userId) {
+		return tx().execute(s -> em.find(User.class, userId).getName());
 	}
 
 	private ResponseEntity<String> login(String email, String password) {

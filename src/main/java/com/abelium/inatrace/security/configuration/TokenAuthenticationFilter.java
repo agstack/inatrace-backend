@@ -1,6 +1,8 @@
 package com.abelium.inatrace.security.configuration;
 
 import com.abelium.inatrace.components.common.TokenService;
+import com.abelium.inatrace.components.user.UserService;
+import com.abelium.inatrace.db.entities.common.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,6 +28,9 @@ public class TokenAuthenticationFilter extends OncePerRequestFilter {
     @Autowired
     private TokenService tokenEngine;
 
+    @Autowired
+    private UserService userEngine;
+
     @Override
     protected void doFilterInternal(HttpServletRequest httpServletRequest, HttpServletResponse httpServletResponse, FilterChain filterChain) throws ServletException, IOException {
     	String token = null;
@@ -33,15 +38,17 @@ public class TokenAuthenticationFilter extends OncePerRequestFilter {
         try {
             token = getAccessTokenFromCookie(httpServletRequest);
             if (StringUtils.hasText(token)) {
-            	CustomUserDetails userDetails = tokenEngine.validateToken(token);
-            	if (userDetails != null) {
+                CustomUserDetails tokenDetails = tokenEngine.validateToken(token);
+                User user = tokenDetails == null ? null : userEngine.findActiveUserById(tokenDetails.getUserId());
+                if (user != null) {
+                    CustomUserDetails userDetails = new CustomUserDetails(user);
 	                PreAuthenticatedAuthenticationToken authentication = new PreAuthenticatedAuthenticationToken(userDetails, null, userDetails.getAuthorities());
 	                authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(httpServletRequest));
 	                SecurityContextHolder.getContext().setAuthentication(authentication);
             	}
             }
         } catch (Exception e) {
-            logger.info("Error filtering token {}", token);
+            logger.debug("Unable to authenticate access-token cookie", e);
         }
 
         filterChain.doFilter(httpServletRequest, httpServletResponse);

@@ -62,7 +62,7 @@ public class TokenService extends BaseService {
 					UserRole.valueOf(dct.getClaim("rle").asString()));
 			return cud;
 		} catch (Exception e) {
-			logger.info("Token " + token + " is not valid", e);
+			logger.debug("JWT validation failed", e);
 		}
 		return null;
 	}
@@ -117,11 +117,13 @@ public class TokenService extends BaseService {
     }
     
     public Optional<Cookie> getAccessCookie(Cookie[] cookies) {
-    	return Arrays.stream(cookies).filter(cookie -> accessTokenCookieName.equals(cookie.getName())).findFirst();    	
+	return cookies == null ? Optional.empty()
+			: Arrays.stream(cookies).filter(cookie -> accessTokenCookieName.equals(cookie.getName())).findFirst();
     }
 
     public Optional<Cookie> getRefreshCookie(Cookie[] cookies) {
-    	return Arrays.stream(cookies).filter(cookie -> refreshTokenCookieName.equals(cookie.getName())).findFirst();    	
+	return cookies == null ? Optional.empty()
+			: Arrays.stream(cookies).filter(cookie -> refreshTokenCookieName.equals(cookie.getName())).findFirst();
     }
     
     public String getRefreshToken(Cookie[] cookies) {
