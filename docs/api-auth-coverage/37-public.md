@@ -18,9 +18,9 @@ unchanged.
 | GET | `/api/public/product/label/{uid}/verify_batch_authenticity` | Currently resolved by label UID and batch data only | Draft batch check returns its boolean result anonymously | Characterized: publication gate bypassed |
 | GET | `/api/public/product/label/{uid}/verify_batch_origin` | Currently resolved by label UID and batch number only | Draft origin marker is returned anonymously | Characterized: publication gate bypassed |
 | POST | `/api/public/logRequest` | Request-log token | Valid token succeeds; invalid token receives 403 | Verified |
-| GET | `/api/public/document/{storageKey}` | Opaque, temporary public storage key | Valid public key streams bytes; unknown key is rejected without marker | Verified |
-| GET | `/api/public/image/{storageKey}` | Opaque, temporary public storage key | Valid public key streams image bytes | Verified |
-| GET | `/api/public/image/{storageKey}/{size}` | Opaque, temporary public storage key | Valid public key streams a resized image | Verified |
+| GET | `/api/public/document/{storageKey}` | Opaque, temporary key with an explicit current public scope | Public label/QR-certificate media streams bytes; private, unknown and revoked keys are rejected without marker | Verified |
+| GET | `/api/public/image/{storageKey}` | Opaque, temporary key with an explicit current public scope | Public label image streams bytes; private and revoked keys are rejected | Verified |
+| GET | `/api/public/image/{storageKey}/{size}` | Same scoped media capability as original image | Public label variant streams bytes; a revoked original capability also rejects its variants | Verified |
 | GET | `/api/public/product/label/feedback/list/{labelUid}` | Currently resolved by label UID only | Draft feedback marker is returned anonymously | Characterized: publication gate bypassed |
 | POST | `/api/public/product/label/feedback/{labelUid}` | Published label only | Published write succeeds; draft write is refused and count is unchanged | Verified |
 | GET | `/api/public/globalSettings/{name}` | `isPublic` setting flag | Public value returns; private value is absent | Verified |
@@ -36,3 +36,22 @@ unpublishing a label withdraws all of those public artefacts or only the label
 landing page and feedback submission. Once decided, change the corresponding
 rows from characterization assertions to refusal assertions and implement the
 service guard if needed.
+
+## Media capability policy — issue #68
+
+Public media links are not derived from storage keys. A mapper must issue an
+opaque capability inside an explicit scope: `LABEL`, `PRODUCT`, or
+`QR_CERTIFICATE`. A private capability remains bound to its issuing user and
+cannot be replayed through `/api/public/**`; conversely, a public capability
+cannot be replayed through the authenticated common-media routes.
+
+`LABEL` and `PRODUCT` retain the publication checks introduced by #63/#65. A
+`QR_CERTIFICATE` capability is issued only while serializing a company
+certificate for a public QR history. Before bytes are served, the backend
+checks that the certificate still references the same document and that its
+company still participates in that QR's current history. Removing or replacing
+the certificate therefore revokes an already-issued URL on the next request.
+Individual/farmer certificates and internal documents have no public scope and
+remain private. The `PublicLabelApiTest` covers the valid QR certificate,
+private-media denial, label-image originals and variants, label unpublication,
+and QR certificate removal/replacement.

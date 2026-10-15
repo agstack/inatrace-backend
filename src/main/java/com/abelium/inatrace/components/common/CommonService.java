@@ -97,25 +97,51 @@ public class CommonService extends BaseService {
     }
 
     public MediaObject getDocument(Long userId, String tempKey, EnumSet<DocumentType> allowedTypes) throws ApiException {
-    	String storageKey = StorageKeyCache.get(tempKey, userId);
+		String storageKey = StorageKeyCache.getPrivate(tempKey, userId);
+        if (storageKey == null) {
+            throw new ApiException(ApiStatus.INVALID_OR_EXPIRED_STORAGE_KEY, "Invalid storage key or storage key has expired");
+        }
+        DocumentData document = storageEngine.downloadDocument(storageKey, allowedTypes);
+        MediaType mediaType = document.data.getContentType() == null ? MediaType.APPLICATION_OCTET_STREAM : MediaType.valueOf(document.data.getContentType());
+        return new MediaObject(mediaType, document.file);
+    }
+
+    public MediaObject getPublicDocument(String tempKey, EnumSet<DocumentType> allowedTypes) throws ApiException {
+        String storageKey = StorageKeyCache.getPublic(tempKey);
+        if (storageKey == null) {
+            throw new ApiException(ApiStatus.INVALID_OR_EXPIRED_STORAGE_KEY, "Invalid storage key or storage key has expired");
+        }
         DocumentData document = storageEngine.downloadDocument(storageKey, allowedTypes);
         MediaType mediaType = document.data.getContentType() == null ? MediaType.APPLICATION_OCTET_STREAM : MediaType.valueOf(document.data.getContentType());
         return new MediaObject(mediaType, document.file);
     }
     
 	public MediaObject getImage(Long userId, String tempKey, String size) throws ApiException {
-    	String storageKey = StorageKeyCache.get(tempKey, userId);
+		String storageKey = StorageKeyCache.getPrivate(tempKey, userId);
+        if (storageKey == null) {
+            throw new ApiException(ApiStatus.INVALID_OR_EXPIRED_STORAGE_KEY, "Invalid storage key or storage key has expired");
+        }
         DocumentData document = storageEngine.downloadImage(storageKey, size);
         MediaType mediaType = document.data.getContentType() == null ? MediaType.APPLICATION_OCTET_STREAM : MediaType.valueOf(document.data.getContentType());
         return new MediaObject(mediaType, document.file);
 	}
+
+    public MediaObject getPublicImage(String tempKey, String size) throws ApiException {
+        String storageKey = StorageKeyCache.getPublic(tempKey);
+        if (storageKey == null) {
+            throw new ApiException(ApiStatus.INVALID_OR_EXPIRED_STORAGE_KEY, "Invalid storage key or storage key has expired");
+        }
+        DocumentData document = storageEngine.downloadImage(storageKey, size);
+        MediaType mediaType = document.data.getContentType() == null ? MediaType.APPLICATION_OCTET_STREAM : MediaType.valueOf(document.data.getContentType());
+        return new MediaObject(mediaType, document.file);
+    }
     
     @Transactional 
     public Document fetchDocument(Long userId, ApiDocument ad) throws ApiException {
     	if (ad == null) {
     		return null;
-    	} else {
-        	String storageKey = StorageKeyCache.get(ad.storageKey, userId);
+		} else {
+			String storageKey = StorageKeyCache.getPrivate(ad.storageKey, userId);
         	
         	if (storageKey == null) {
         		throw new ApiException(ApiStatus.INVALID_OR_EXPIRED_STORAGE_KEY, "Invalid storage key or storage key has expired");

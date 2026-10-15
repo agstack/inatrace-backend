@@ -10,6 +10,7 @@ import com.abelium.inatrace.components.codebook.processing_evidence_type.Process
 import com.abelium.inatrace.components.codebook.processingevidencefield.ProcessingEvidenceFieldService;
 import com.abelium.inatrace.components.codebook.semiproduct.SemiProductService;
 import com.abelium.inatrace.components.common.BaseService;
+import com.abelium.inatrace.components.common.StorageKeyCache;
 import com.abelium.inatrace.components.common.api.ApiActivityProof;
 import com.abelium.inatrace.components.common.api.ApiCertification;
 import com.abelium.inatrace.components.company.CompanyApiTools;
@@ -341,12 +342,7 @@ public class StockOrderService extends BaseService {
 
         // Get the top level Stock order for the provided QR tag (the Stock order that is
         // not used as an input transaction in other Processing orders)
-        StockOrder topLevelStockOrder = em.createNamedQuery("StockOrder.getTopLevelStockOrdersForQrTag", StockOrder.class)
-                .setParameter("qrTag", qrTag)
-                .getResultList()
-                .stream()
-                .findFirst()
-                .orElse(null);
+        StockOrder topLevelStockOrder = findTopLevelStockOrderForQrTag(qrTag);
 
         if (topLevelStockOrder != null) {
 
@@ -367,11 +363,11 @@ public class StockOrderService extends BaseService {
                 ApiHistoryTimeline historyTimeline = new ApiHistoryTimeline();
                 apiQRTagPublic.setHistoryTimeline(historyTimeline);
 
-                // Set holding company IDs that are participating in this Stock order chain
-                Set<Long> participatingCompaniesIds = new HashSet<>();
-
                 // Get the history for the selected Stock order
                 ApiStockOrderHistory stockOrderHistory = getStockOrderAggregatedHistoryList(topLevelStockOrder.getId(), language, null, false);
+
+                // Set holding company IDs that are participating in this Stock order chain.
+                Set<Long> participatingCompaniesIds = getParticipatingCompanyIds(stockOrderHistory);
 
                 // Map the Stock order history timeline to the public QR code tag data
                 historyTimeline.setItems(stockOrderHistory.getTimelineItems()
@@ -384,11 +380,6 @@ public class StockOrderService extends BaseService {
 
                                 ApiFacility apiFacility = processing.getProcessingOrder().getTargetStockOrders()
                                         .stream().findAny().map(ApiStockOrder::getFacility).orElse(null);
-
-                                // Add the facility company ID in the participating companies IDs for this Sto order chain
-                                if (apiFacility != null) {
-                                    participatingCompaniesIds.add(apiFacility.getCompany().getId());
-                                }
 
                                 // If processing item has no public timeline label defined, skip that processing
                                 if (StringUtils.isNotBlank(processing.getProcessingOrder().getProcessingAction().getPublicTimelineLabel())) {
@@ -495,7 +486,11 @@ public class StockOrderService extends BaseService {
                             .setParameter("companyIDs", participatingCompaniesIds)
                             .getResultList()
                             .stream()
-                            .map(cc -> CompanyApiTools.toApiCertification(null, cc))
+                            .map(cc -> {
+                                try (StorageKeyCache.PublicScope ignored = StorageKeyCache.forPublicQrCertificate(qrTag, cc.getId())) {
+                                    return CompanyApiTools.toApiCertification(null, cc);
+                                }
+                            })
                             .collect(Collectors.toList());
                     apiQRTagPublic.setCertificates(apiCertificates);
                 }
@@ -503,6 +498,58 @@ public class StockOrderService extends BaseService {
         }
 
         return apiQRTagPublic;
+    }
+
+    /**
+     * Confirms that a certificate capability still belongs to a company visible in the current public QR history.
+     */
+    @Transactional
+    public void validatePublicQrCertificate(String qrTag, Long certificationId, String expectedStorageKey) throws ApiException {
+        if (StringUtils.isBlank(qrTag) || certificationId == null || StringUtils.isBlank(expectedStorageKey)) {
+            throw invalidPublicCertificate();
+        }
+
+        CompanyCertification certification = em.find(CompanyCertification.class, certificationId);
+        StockOrder topLevelStockOrder = findTopLevelStockOrderForQrTag(qrTag);
+        if (certification == null || certification.getCompany() == null || certification.getCertificate() == null
+                || !Objects.equals(certification.getCertificate().getStorageKey(), expectedStorageKey)
+                || topLevelStockOrder == null) {
+            throw invalidPublicCertificate();
+        }
+
+        Set<Long> participatingCompanyIds = getParticipatingCompanyIds(
+                getStockOrderAggregatedHistoryList(topLevelStockOrder.getId(), Language.EN, null, false));
+        if (!participatingCompanyIds.contains(certification.getCompany().getId())) {
+            throw invalidPublicCertificate();
+        }
+    }
+
+    private StockOrder findTopLevelStockOrderForQrTag(String qrTag) {
+        return em.createNamedQuery("StockOrder.getTopLevelStockOrdersForQrTag", StockOrder.class)
+                .setParameter("qrTag", qrTag)
+                .getResultList()
+                .stream()
+                .findFirst()
+                .orElse(null);
+    }
+
+    private Set<Long> getParticipatingCompanyIds(ApiStockOrderHistory stockOrderHistory) {
+        return stockOrderHistory.getTimelineItems().stream()
+                .map(ApiStockOrderHistoryTimelineItem::getProcessingOrder)
+                .filter(Objects::nonNull)
+                .flatMap(processingOrder -> processingOrder.getTargetStockOrders().stream())
+                .map(ApiStockOrder::getFacility)
+                .filter(Objects::nonNull)
+                .map(ApiFacility::getCompany)
+                .filter(Objects::nonNull)
+                .map(ApiBaseEntity::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+    }
+
+    private ApiException invalidPublicCertificate() {
+        return new ApiException(ApiStatus.INVALID_OR_EXPIRED_STORAGE_KEY,
+                "Invalid storage key or storage key has expired");
     }
 
     private List<ApiPayment> getProducerPayments(ApiStockOrderHistory stockOrderHistory, List<Company> producers) {
