@@ -988,21 +988,23 @@ public class DashboardService extends BaseService {
                     TranslateTools.getTranslatedValue(messageSource, "export.dashboard.column.label.process", language),
                     getProcessingActionTranslationName(queryRequest.getProcessActionId(), language));
         }
-        queryRequest.getEvidenceFields().forEach(evidenceField -> {
-            if (evidenceField.getStringValue() != null) {
-                additionalFiltersMap.put(
-                        getEvidenceFieldTranslationName(evidenceField.getEvidenceField().getFieldName(), language),
-                        evidenceField.getStringValue());
-            } else if (evidenceField.getNumericValue() != null) {
-                additionalFiltersMap.put(
-                        getEvidenceFieldTranslationName(evidenceField.getEvidenceField().getFieldName(), language),
-                        evidenceField.getNumericValue().toString());
-            } else if (evidenceField.getInstantValue() != null) {
-                additionalFiltersMap.put(
-                        getEvidenceFieldTranslationName(evidenceField.getEvidenceField().getFieldName(), language),
-                        evidenceField.getInstantValue().toString());
-            }
-        });
+        if (queryRequest.getEvidenceFields() != null) {
+            queryRequest.getEvidenceFields().forEach(evidenceField -> {
+                if (evidenceField.getStringValue() != null) {
+                    additionalFiltersMap.put(
+                            getEvidenceFieldTranslationName(evidenceField.getEvidenceField().getFieldName(), language),
+                            evidenceField.getStringValue());
+                } else if (evidenceField.getNumericValue() != null) {
+                    additionalFiltersMap.put(
+                            getEvidenceFieldTranslationName(evidenceField.getEvidenceField().getFieldName(), language),
+                            evidenceField.getNumericValue().toString());
+                } else if (evidenceField.getInstantValue() != null) {
+                    additionalFiltersMap.put(
+                            getEvidenceFieldTranslationName(evidenceField.getEvidenceField().getFieldName(), language),
+                            evidenceField.getInstantValue().toString());
+                }
+            });
+        }
 
         return additionalFiltersMap;
     }

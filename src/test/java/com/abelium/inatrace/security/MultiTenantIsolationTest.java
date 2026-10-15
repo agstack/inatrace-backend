@@ -5,6 +5,7 @@ import com.abelium.inatrace.components.common.TokenService;
 import com.abelium.inatrace.db.entities.common.User;
 import com.abelium.inatrace.db.entities.company.Company;
 import com.abelium.inatrace.db.entities.company.CompanyUser;
+import com.abelium.inatrace.db.entities.codebook.ProcessingEvidenceField;
 import com.abelium.inatrace.db.entities.processingaction.ProcessingAction;
 import com.abelium.inatrace.db.entities.stockorder.StockOrder;
 import com.abelium.inatrace.db.entities.stockorder.enums.OrderType;
@@ -60,6 +61,9 @@ class MultiTenantIsolationTest extends AbstractMySqlIntegrationTest {
     /** Quantity of the seeded delivery; distinctive so it can be spotted in a response body. */
     private static final BigDecimal DELIVERY_QUANTITY = new BigDecimal("1234.50");
     private static final LocalDate DELIVERY_DATE = LocalDate.of(2025, 6, 17);
+    private static final String EVIDENCE_FIELD_NAME = "quality-39";
+    private static final String EVIDENCE_FIELD_LABEL = "Quality 39";
+    private static final String EVIDENCE_FIELD_VALUE = "Specialty";
 
     @Autowired private MockMvc mockMvc;
     @Autowired private EntityManager em;
@@ -101,6 +105,11 @@ class MultiTenantIsolationTest extends AbstractMySqlIntegrationTest {
         action.setType(ProcessingActionType.PROCESSING);
         action.setPrefix("PERFORMANCE-39");
         em.persist(action);
+
+        ProcessingEvidenceField evidenceField = new ProcessingEvidenceField();
+        evidenceField.setFieldName(EVIDENCE_FIELD_NAME);
+        evidenceField.setLabel(EVIDENCE_FIELD_LABEL);
+        em.persist(evidenceField);
 
         em.flush();
 
@@ -250,8 +259,8 @@ class MultiTenantIsolationTest extends AbstractMySqlIntegrationTest {
     }
 
     @Test
-    @DisplayName("Characterization: omitting optional evidence fields currently breaks a valid performance export")
-    void processingPerformanceExportWithoutEvidenceFieldsIsCharacterizedAsServerError() throws Exception {
+    @DisplayName("Omitting optional evidence fields still exports processing performance")
+    void processingPerformanceExportWithoutEvidenceFieldsIsExportable() throws Exception {
         MvcResult result = mockMvc.perform(post("/api/dashboard/processing-performance-data/export")
                         .contentType("application/json")
                         .content("{\"companyId\":" + acmeId + ",\"processActionId\":" + acmeProcessingActionId
@@ -259,10 +268,26 @@ class MultiTenantIsolationTest extends AbstractMySqlIntegrationTest {
                         .cookie(aliceSession))
                 .andReturn();
 
-        // The calculation route accepts this payload. The export route later dereferences the
-        // optional list while constructing display filters; the pending #39 finding documents the
-        // resulting 500 and the required null-as-empty fix.
-        assertEquals(500, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+        assertEquals(200, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+        assertTrue(result.getResponse().getContentAsByteArray().length > 0,
+                "An export without optional evidence fields should contain a file");
+    }
+
+    @Test
+    @DisplayName("Processing-performance exports include supplied evidence-filter columns")
+    void processingPerformanceExportWithEvidenceFieldsIncludesFilterColumn() throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/dashboard/processing-performance-data/export")
+                        .contentType("application/json")
+                        .content("{\"companyId\":" + acmeId + ",\"processActionId\":" + acmeProcessingActionId
+                                + ",\"evidenceFields\":[{\"evidenceField\":{\"fieldName\":\"" + EVIDENCE_FIELD_NAME
+                                + "\"},\"stringValue\":\"" + EVIDENCE_FIELD_VALUE
+                                + "\"}],\"aggregationType\":\"DAY\",\"exportType\":\"CSV\"}")
+                        .cookie(aliceSession))
+                .andReturn();
+
+        String csv = result.getResponse().getContentAsString();
+        assertEquals(200, result.getResponse().getStatus(), csv);
+        assertTrue(csv.contains(EVIDENCE_FIELD_LABEL), "The CSV should keep the evidence-filter column: " + csv);
     }
 
     private String processingPerformanceRequest() {
@@ -280,8 +305,8 @@ class MultiTenantIsolationTest extends AbstractMySqlIntegrationTest {
         assertEquals(403, result.getResponse().getStatus(), body);
         assertFalse(body.contains(DELIVERY_QUANTITY.toPlainString()),
                 "A foreign dashboard response disclosed Acme data: " + body);
-        assertEquals(0, result.getResponse().getContentAsByteArray().length,
-                "A refused dashboard response must not return export bytes");
+        assertTrue(result.getResponse().getContentType().startsWith("application/json"),
+                "A refused dashboard request must return an API error, not export content");
     }
 
     // ---------------------------------------------------------------- fixture helpers
