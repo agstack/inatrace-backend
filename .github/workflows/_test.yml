@@ -1,0 +1,47 @@
+# Reusable: runs every test. Called by ci.yml (phases 1 and 2) and release.yml (phase 3).
+name: "Reusable: test"
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit to test (defaults to the triggering commit)
+        type: string
+        default: ''
+      revision:
+        description: Version to build with (defaults to the pom default)
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+# Explicit bash runs steps with -eo pipefail (the implicit default has no pipefail).
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: actions/setup-java@v6
+        with:
+          java-version: '17'
+          distribution: temurin
+          cache: maven
+
+      - name: Release script tests
+        run: python3 -m unittest discover -s .github/scripts
+
+      - name: Maven verify
+        # Integration tests start MySQL through Testcontainers on the runner's Docker.
+        env:
+          REVISION: ${{ inputs.revision }}
+        run: mvn -B --no-transfer-progress ${REVISION:+-Drevision="$REVISION"} verify

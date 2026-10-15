@@ -1,0 +1,39 @@
+# Infrastructure for local development. The backend itself runs from your IDE or with
+# `mvn spring-boot:run`; see docs/getting-started.md.
+#
+#   docker compose -f compose-dev.yaml up -d       # start MySQL and Mailpit
+#   docker compose -f compose-dev.yaml down        # stop, keeping the data
+#   docker compose -f compose-dev.yaml down -v     # stop and erase the data
+name: inatrace-dev
+
+services:
+  mysql:
+    image: mysql:8.4.11
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: inatrace
+      MYSQL_USER: inatrace
+      MYSQL_PASSWORD: inatrace
+    ports:
+      - "127.0.0.1:3306:3306"
+    volumes:
+      - mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uinatrace", "-pinatrace"]
+      interval: 5s
+      retries: 30
+
+  # Catches the e-mails the backend sends (SMTP on 1025) and shows them at
+  # http://localhost:8025.
+  mail:
+    image: axllent/mailpit:v1.31.3
+    environment:
+      # Accept any SMTP credentials, so the mail settings need no real account.
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+
+volumes:
+  mysql:

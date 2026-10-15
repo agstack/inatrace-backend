@@ -156,3 +156,6 @@ $RECYCLE.BIN/
 
 # application.properties file
 src/main/resources/application.properties
+
+# Python bytecode (release scripts)
+__pycache__/

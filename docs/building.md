@@ -8,24 +8,33 @@ To build an executable `jar` run the following command in the project root direc
 mvn clean install
 ```
 
+The version comes from the `revision` property, `dev-SNAPSHOT` by default. CI sets it
+from the release tag; to set it yourself, add `-Drevision=<version>`.
+
 ## Docker image
 
-### Base
+Official images are published to `ghcr.io/agstack/inatrace-backend` by CI. See
+[RELEASE.md](../RELEASE.md) for the tags and the release process.
 
-`eclipse-temurin:17-jre`
-
-Since only the major version is specified, the build process will always pull the latest minor and patch versions automatically.
-
-### Command syntax
-
-To build and tag a Docker image run `docker-build.sh` in the project root directory. The script runs `mvn clean package` then builds and tags a Docker image with the resulting `jar`.
+### Building
 
 ```
-./docker-build.sh <repo name (local or remote)> <tag> [push]
+docker build --build-arg REVISION=<version> -t inatrace-backend .
 ```
 
-### Example
+The build compiles the project in a Maven container, so it needs neither Java nor Maven
+on the host. The image is based on `eclipse-temurin:17-jre` and runs as a non-root user.
+
+### Running
+
+The image contains no configuration. Mount an `application.properties` based on
+`src/main/resources/application.properties.template` at
+`/app/config/application.properties`, and a volume for uploaded files at
+`/data/storage`, with `INATrace.fileStorage.root = /data/storage`:
 
 ```
-./docker-build.sh inatrace-be 2.4.0 push
+docker run -p 8080:8080 \
+  -v ./application.properties:/app/config/application.properties:ro \
+  -v inatrace-storage:/data/storage \
+  inatrace-backend
 ```

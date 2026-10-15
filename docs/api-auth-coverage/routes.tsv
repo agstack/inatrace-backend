@@ -1,6 +1,6 @@
 # Registered Spring MVC API routes at backend commit 018a7f8.
 # Format: HTTP_METHOD<TAB>/api/path<TAB>Controller#handlerMethod.
-# Regenerate for review with: mvn -q -DargLine=-Dapi.version=1.43 -Dtest=ApiRouteInventoryTest -Dapi.inventory.dump=true test
+# Regenerate for review with: mvn -q -Dtest=ApiRouteInventoryTest -Dapi.inventory.dump=true test
 # This is an inventory, not evidence that authorization has been tested.
 DELETE	/api/chain/facility-type/{id}	FacilityTypeController#deleteFacilityType
 DELETE	/api/chain/facility/{id}	FacilityController#deleteFacility
