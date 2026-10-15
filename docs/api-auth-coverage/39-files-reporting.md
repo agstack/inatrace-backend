@@ -27,7 +27,7 @@ document to a tenant-owned resource is covered by the relevant domain area.
 | GET | `/api/dashboard/deliveries-aggregated-data` | Enrolled company user only; foreign tenant is 403, anonymous is 401 | `dashboardOfForeignCompanyIsRejected`, `ownCompanyDashboardIsReadable`, `dashboardEndpointsRejectAnonymousRequests` | Verified |
 | GET | `/api/dashboard/deliveries-aggregated-data/export` | Enrolled company user only; foreign export has no delivery marker or file bytes | `deliveriesCsvExportOfForeignCompanyIsRejected`, `ownCompanyDeliveriesCsvIsExportable`, `dashboardEndpointsRejectAnonymousRequests` | Verified |
 | POST | `/api/dashboard/processing-performance-data` | Enrolled company user only; foreign tenant is 403, anonymous is 401 | `processingPerformanceOfForeignCompanyIsRejected`, `ownCompanyProcessingPerformanceIsReadableAndExportable`, `dashboardEndpointsRejectAnonymousRequests` | Verified |
-| POST | `/api/dashboard/processing-performance-data/export` | Enrolled company user only; foreign tenant is 403, anonymous is 401 | `processingPerformanceExportOfForeignCompanyIsRejected`, `ownCompanyProcessingPerformanceIsReadableAndExportable`, `dashboardEndpointsRejectAnonymousRequests` | Verified with finding below |
+| POST | `/api/dashboard/processing-performance-data/export` | Enrolled company user only; foreign tenant is 403, anonymous is 401; omitted optional evidence filters are equivalent to an empty filter list | `processingPerformanceExportOfForeignCompanyIsRejected`, `ownCompanyProcessingPerformanceIsReadableAndExportable`, `processingPerformanceExportWithoutEvidenceFieldsIsExportable`, `processingPerformanceExportWithEvidenceFieldsIncludesFilterColumn`, `dashboardEndpointsRejectAnonymousRequests` | Verified |
 
 ## Historical routes removed before this coverage
 
@@ -39,14 +39,14 @@ The issue count is 14, while Spring registers 12 effective operations. Commit
 | POST `/api/chain/csv/payments/company/{id}` | `/api/chain/payment/export/company/{id}` — covered by #35 |
 | POST `/api/chain/csv/purchases/company/{id}` | `/api/chain/stock-order/export/deliveries/company/{companyId}` — covered by #35 |
 
-## Finding: optional evidence fields break a valid performance export
+## Follow-up fixed: omitted evidence fields in performance exports
 
-The performance export route returns HTTP 500 when `evidenceFields` is omitted
-from an otherwise valid request. The calculation route accepts the same
-optional field as absent. This is not an authorization bypass: tenant access
-is checked before the failure. The current behavior is characterized by
-`processingPerformanceExportWithoutEvidenceFieldsIsCharacterizedAsServerError`.
+The performance export route previously returned HTTP 500 when `evidenceFields`
+was omitted from an otherwise valid request, even though the calculation route
+already treated the optional field as absent. `DashboardService` now treats a
+missing list as an empty filter list while building export metadata. The
+regression test `processingPerformanceExportWithoutEvidenceFieldsIsExportable`
+requires HTTP 200 and non-empty CSV bytes for that request.
 
-No production fix is included in this coverage branch. The diagnosis and
-proposed regression fix are recorded in the workspace plan
-`plans/issues-to-be-fixed/39-processing-performance-export-null-evidence-fields.md`.
+This is not an authorization-policy change: tenant access is still checked
+before calculation and export generation.

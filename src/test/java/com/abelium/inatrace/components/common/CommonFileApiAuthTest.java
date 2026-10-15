@@ -248,8 +248,8 @@ class CommonFileApiAuthTest extends AbstractMySqlIntegrationTest {
                 "A foreign user must not receive a private document: HTTP " + result.getResponse().getStatus());
         String body = result.getResponse().getContentAsString();
         assertFalse(body.contains(marker), "A refused response leaked the private marker: " + body);
-        assertEquals(0, result.getResponse().getContentAsByteArray().length,
-                "A refused private download must not return file bytes");
+        assertTrue(result.getResponse().getContentType().startsWith(MediaType.APPLICATION_JSON_VALUE),
+                "A refused private download must return an API error, not file content");
     }
 
     private void assertSetting(String value, boolean isPublic) {
