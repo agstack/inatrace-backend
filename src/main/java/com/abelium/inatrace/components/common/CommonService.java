@@ -8,6 +8,7 @@ import com.abelium.inatrace.components.common.api.ApiCountry;
 import com.abelium.inatrace.components.common.api.ApiDocument;
 import com.abelium.inatrace.db.entities.common.Country;
 import com.abelium.inatrace.db.entities.common.Document;
+import com.abelium.inatrace.db.entities.common.User;
 import com.abelium.inatrace.tools.*;
 import com.abelium.inatrace.types.DocumentType;
 import com.abelium.inatrace.types.MediaObject;
@@ -47,18 +48,23 @@ public class CommonService extends BaseService {
         		CommonApiTools::toApiCountry);
     }
 
+    @Transactional
     public ApiDocument uploadDocument(Long userId, byte[] file, String name, String contentType, Long size, DocumentType type) throws ApiException {
         if (file == null) {
             throw new ApiException(ApiStatus.REQUEST_BODY_ERROR, "Uploading file failed. File is null.");
         }
+        User user = findAuthenticatedUser(userId);
         Document document = storageEngine.uploadDocument(file, name, contentType, size, type);
+        document.setUploadedBy(user);
         return CommonApiTools.toApiDocument(document, userId);
     }
     
+	@Transactional
 	public ApiDocument uploadImage(Long userId, byte[] file, String name, String contentType, long size, boolean resize) throws ApiException {
         if (file == null) {
             throw new ApiException(ApiStatus.REQUEST_BODY_ERROR, "Uploading image failed. File is null.");
         }
+        User user = findAuthenticatedUser(userId);
         
         // First filter; we'll check type later with Tika library
         if (!MediaType.IMAGE_JPEG_VALUE.equals(contentType) && !MediaType.IMAGE_PNG_VALUE.equals(contentType)) {
@@ -78,8 +84,17 @@ public class CommonService extends BaseService {
         } else {
             document = storageEngine.uploadDocument(file, name, fileType, size, DocumentType.IMAGE);
         }
+        document.setUploadedBy(user);
         return CommonApiTools.toApiDocument(document, userId);        
 	}
+
+    private User findAuthenticatedUser(Long userId) throws ApiException {
+        User user = em.find(User.class, userId);
+        if (user == null) {
+            throw new ApiException(ApiStatus.AUTH_ERROR, "Invalid authenticated user.");
+        }
+        return user;
+    }
 
     public MediaObject getDocument(Long userId, String tempKey, EnumSet<DocumentType> allowedTypes) throws ApiException {
     	String storageKey = StorageKeyCache.get(tempKey, userId);

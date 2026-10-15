@@ -11,6 +11,15 @@ import jakarta.persistence.*;
 public class Document extends CreationTimestampEntity {
 
     /**
+     * Authenticated user that originally uploaded this document.  It is nullable because
+     * documents created before upload provenance was introduced (and system-generated
+     * documents) have no user-owned source.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "uploadedBy_id")
+    private User uploadedBy;
+
+    /**
      * Storage key on storage engine (e.g. file name on system)
      */
     @Column(unique = true, length = Lengths.DEFAULT)
@@ -79,6 +88,14 @@ public class Document extends CreationTimestampEntity {
 
     public void setSize(Long size) {
         this.size = size;
+    }
+
+    public User getUploadedBy() {
+        return uploadedBy;
+    }
+
+    public void setUploadedBy(User uploadedBy) {
+        this.uploadedBy = uploadedBy;
     }
 
 }
