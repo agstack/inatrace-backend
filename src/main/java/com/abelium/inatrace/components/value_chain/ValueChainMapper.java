@@ -57,39 +57,29 @@ public final class ValueChainMapper {
 		}
 
 		// Map facility types
-		if (!entity.getFacilityTypes().isEmpty()) {
-			apiValueChain.setFacilityTypes(entity.getFacilityTypes().stream()
-					.map(vcFacilityType -> FacilityTypeMapper.toApiFacilityType(vcFacilityType.getFacilityType()))
-					.collect(Collectors.toList()));
-		}
+		apiValueChain.setFacilityTypes(entity.getFacilityTypes().stream()
+				.map(vcFacilityType -> FacilityTypeMapper.toApiFacilityType(vcFacilityType.getFacilityType()))
+				.collect(Collectors.toList()));
 
 		// Map measure unit types
-		if (!entity.getMeasureUnitTypes().isEmpty()) {
-			apiValueChain.setMeasureUnitTypes(entity.getMeasureUnitTypes().stream()
-					.map(vcMeasureUnitType -> MeasureUnitTypeMapper.toApiMeasureUnitTypeBase(
-							vcMeasureUnitType.getMeasureUnitType())).collect(Collectors.toList()));
-		}
+		apiValueChain.setMeasureUnitTypes(entity.getMeasureUnitTypes().stream()
+				.map(vcMeasureUnitType -> MeasureUnitTypeMapper.toApiMeasureUnitTypeBase(
+						vcMeasureUnitType.getMeasureUnitType())).collect(Collectors.toList()));
 
 		// Map processing evidence types
-		if (!entity.getProcEvidenceTypes().isEmpty()) {
-			apiValueChain.setProcessingEvidenceTypes(entity.getProcEvidenceTypes().stream()
-					.map(vcProcEvidenceType -> ProcessingEvidenceTypeMapper.toApiProcessingEvidenceTypeBase(
-							vcProcEvidenceType.getProcessingEvidenceType(), language)).collect(Collectors.toList()));
-		}
+		apiValueChain.setProcessingEvidenceTypes(entity.getProcEvidenceTypes().stream()
+				.map(vcProcEvidenceType -> ProcessingEvidenceTypeMapper.toApiProcessingEvidenceTypeBase(
+						vcProcEvidenceType.getProcessingEvidenceType(), language)).collect(Collectors.toList()));
 
 		// Map processing evidence fields
-		if (!entity.getProcessingEvidenceFields().isEmpty()) {
-			apiValueChain.setProcessingEvidenceFields(entity.getProcessingEvidenceFields().stream()
-					.map(vcProcEvidenceField -> ProcessingEvidenceFieldMapper.toApiProcessingEvidenceField(
-							vcProcEvidenceField.getProcessingEvidenceField(), language)).collect(Collectors.toList()));
-		}
+		apiValueChain.setProcessingEvidenceFields(entity.getProcessingEvidenceFields().stream()
+				.map(vcProcEvidenceField -> ProcessingEvidenceFieldMapper.toApiProcessingEvidenceField(
+						vcProcEvidenceField.getProcessingEvidenceField(), language)).collect(Collectors.toList()));
 
 		// Map semi-products
-		if (!entity.getSemiProducts().isEmpty()) {
-			apiValueChain.setSemiProducts(entity.getSemiProducts().stream()
-					.map(vcSemiProduct -> SemiProductMapper.toValueChainApiSemiProduct(vcSemiProduct.getSemiProduct(), language))
-					.collect(Collectors.toList()));
-		}
+		apiValueChain.setSemiProducts(entity.getSemiProducts().stream()
+				.map(vcSemiProduct -> SemiProductMapper.toValueChainApiSemiProduct(vcSemiProduct.getSemiProduct(), language))
+				.collect(Collectors.toList()));
 
 		// Map product type
 		if (entity.getProductType() != null) {

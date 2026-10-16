@@ -305,22 +305,24 @@ public class ProductApiTools {
         }
 
 		// Update the data sharing agreements
-		p.getDataSharingAgreements().removeIf(pdsa -> pu.getDataSharingAgreements().stream().noneMatch(item -> pdsa.getId().equals(item.getId())));
-		for (ApiProductDataSharingAgreement apiDataSharingAgreement : pu.getDataSharingAgreements()) {
+		if (pu.getDataSharingAgreements() != null) {
+			p.getDataSharingAgreements().removeIf(pdsa -> pu.getDataSharingAgreements().stream().noneMatch(item -> pdsa.getId().equals(item.getId())));
+			for (ApiProductDataSharingAgreement apiDataSharingAgreement : pu.getDataSharingAgreements()) {
 
-			ProductDataSharingAgreement productDataSharingAgreement;
-			if (apiDataSharingAgreement.getId() == null) {
-				productDataSharingAgreement = new ProductDataSharingAgreement();
-				productDataSharingAgreement.setProduct(p);
-				p.getDataSharingAgreements().add(productDataSharingAgreement);
-			} else {
-				productDataSharingAgreement = p.getDataSharingAgreements().stream()
-						.filter(pdsa -> pdsa.getId().equals(apiDataSharingAgreement.getId())).findAny().orElseThrow();
+				ProductDataSharingAgreement productDataSharingAgreement;
+				if (apiDataSharingAgreement.getId() == null) {
+					productDataSharingAgreement = new ProductDataSharingAgreement();
+					productDataSharingAgreement.setProduct(p);
+					p.getDataSharingAgreements().add(productDataSharingAgreement);
+				} else {
+					productDataSharingAgreement = p.getDataSharingAgreements().stream()
+							.filter(pdsa -> pdsa.getId().equals(apiDataSharingAgreement.getId())).findAny().orElseThrow();
+				}
+
+				productDataSharingAgreement.setDescription(apiDataSharingAgreement.getDescription());
+				productDataSharingAgreement.setDocument(
+						commonEngine.fetchDocument(authUser.getUserId(), apiDataSharingAgreement.getDocument()));
 			}
-
-			productDataSharingAgreement.setDescription(apiDataSharingAgreement.getDescription());
-			productDataSharingAgreement.setDocument(
-					commonEngine.fetchDocument(authUser.getUserId(), apiDataSharingAgreement.getDocument()));
 		}
 	}
 
