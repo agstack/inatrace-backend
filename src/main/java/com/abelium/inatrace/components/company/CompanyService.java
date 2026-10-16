@@ -65,6 +65,8 @@ import java.util.zip.ZipOutputStream;
 @Service
 public class CompanyService extends BaseService {
 
+	private static final double SQUARE_METRES_PER_HECTARE = 10_000d;
+
 	@Autowired
 	private CompanyApiTools companyApiTools;
 
@@ -1279,66 +1281,67 @@ public class CompanyService extends BaseService {
 		UserCustomer userCustomer = fetchUserCustomer(id);
 		PermissionsUtil.checkUserIfCompanyEnrolled(userCustomer.getCompany().getUsers().stream().toList(), authUser);
 
-		// Try to read the GeoJSON into Feature collection
-        try {
+		FeatureCollection featureCollection;
+		try {
+			featureCollection = FeatureCollection.fromJson(new String(file.getBytes()));
+		} catch (IOException e) {
+			logger.error("Error while reading GeoJSON file", e);
+			throw new ApiException(ApiStatus.ERROR, "Error while reading GeoJSON file");
+		} catch (RuntimeException e) {
+			logger.warn("Invalid GeoJSON file uploaded");
+			throw new ApiException(ApiStatus.INVALID_REQUEST, "Invalid GeoJSON file");
+		}
 
-	        FeatureCollection featureCollection = FeatureCollection.fromJson(new String(file.getBytes()));
+		if (!CollectionUtils.isEmpty(featureCollection.features())) {
+			int plotIndex = 1;
+			int pointIndex = 1;
+			for (Feature feature : featureCollection.features()) {
+				if (feature.geometry() instanceof Polygon) {
 
-			if (!CollectionUtils.isEmpty(featureCollection.features())) {
-				int plotIndex = 1;
-				int pointIndex = 1;
-				for (Feature feature : featureCollection.features()) {
-					if (feature.geometry() instanceof Polygon) {
+					Polygon polygon = (Polygon) feature.geometry();
 
-						Polygon polygon = (Polygon) feature.geometry();
+					ApiPlot apiPlot = new ApiPlot();
+					apiPlot.setPlotName("Plot " + plotIndex++);
 
-						ApiPlot apiPlot = new ApiPlot();
-						apiPlot.setPlotName("Plot " + plotIndex++);
+					double polygonSizeInHa = TurfMeasurement.area(feature) / SQUARE_METRES_PER_HECTARE;
+					apiPlot.setSize(Math.floor(polygonSizeInHa * 100) / 100);
+					apiPlot.setUnit("ha");
 
-						double polygonSizeInHa = TurfMeasurement.area(feature) / 1000;
-						apiPlot.setSize(Math.floor(polygonSizeInHa * 100) / 100);
-						apiPlot.setUnit("ha");
+					List<Point> polygonCoordinates = polygon.coordinates().get(0);
 
-						List<Point> polygonCoordinates = polygon.coordinates().get(0);
-
-						apiPlot.setCoordinates(polygonCoordinates.stream().map(lngLat -> {
-							ApiPlotCoordinate coordinate = new ApiPlotCoordinate();
-							coordinate.setLongitude(lngLat.longitude());
-							coordinate.setLatitude(lngLat.latitude());
-							return coordinate;
-						}).collect(Collectors.toList()));
-
-						ApiProductType apiProductType = new ApiProductType();
-						apiProductType.setId(userCustomer.getProductTypes().stream().toList().get(0).getProductType().getId());
-						apiPlot.setCrop(apiProductType);
-
-						createUserCustomerPlot(id, authUser, Language.EN, apiPlot);
-
-					} else if (feature.geometry() instanceof Point) {
-
-						Point point = (Point) feature.geometry();
-
-						ApiPlot apiPlot = new ApiPlot();
-						apiPlot.setPlotName("Point " + pointIndex++);
-
+					apiPlot.setCoordinates(polygonCoordinates.stream().map(lngLat -> {
 						ApiPlotCoordinate coordinate = new ApiPlotCoordinate();
-						coordinate.setLongitude(point.longitude());
-						coordinate.setLatitude(point.latitude());
-						apiPlot.setCoordinates(List.of(coordinate));
+						coordinate.setLongitude(lngLat.longitude());
+						coordinate.setLatitude(lngLat.latitude());
+						return coordinate;
+					}).collect(Collectors.toList()));
 
-						ApiProductType apiProductType = new ApiProductType();
-						apiProductType.setId(userCustomer.getProductTypes().stream().toList().get(0).getProductType().getId());
-						apiPlot.setCrop(apiProductType);
+					ApiProductType apiProductType = new ApiProductType();
+					apiProductType.setId(userCustomer.getProductTypes().stream().toList().get(0).getProductType().getId());
+					apiPlot.setCrop(apiProductType);
 
-						createUserCustomerPlot(id, authUser, Language.EN, apiPlot);
+					createUserCustomerPlot(id, authUser, Language.EN, apiPlot);
+
+				} else if (feature.geometry() instanceof Point) {
+
+					Point point = (Point) feature.geometry();
+
+					ApiPlot apiPlot = new ApiPlot();
+					apiPlot.setPlotName("Point " + pointIndex++);
+
+					ApiPlotCoordinate coordinate = new ApiPlotCoordinate();
+					coordinate.setLongitude(point.longitude());
+					coordinate.setLatitude(point.latitude());
+					apiPlot.setCoordinates(List.of(coordinate));
+
+					ApiProductType apiProductType = new ApiProductType();
+					apiProductType.setId(userCustomer.getProductTypes().stream().toList().get(0).getProductType().getId());
+					apiPlot.setCrop(apiProductType);
+
+					createUserCustomerPlot(id, authUser, Language.EN, apiPlot);
 					}
 				}
 			}
-
-        } catch (IOException e) {
-			logger.error("Error while reading GeoJSON file", e);
-			throw new ApiException(ApiStatus.ERROR, "Error while reading GeoJSON file");
-        }
     }
 
 	@Transactional
