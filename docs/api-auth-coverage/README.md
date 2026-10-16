@@ -27,7 +27,7 @@ authorization coverage**.
 | Supply Chain #35 | 9 | 51 | 51 | pending #35 PR |
 | Products and consumer labels #36 | 2 | 36 | 34 | pending #36 PR |
 | Public #37 | 1 | 13 | 13 | [37-public.md](37-public.md) — policy decision pending |
-| Codebooks #38 | 9 | 44 | 41 | pending #38 PR |
+| Codebooks #38 | 9 | 44 | 41 | [38-codebooks.md](38-codebooks.md) |
 | Files, settings and reporting #39 | 2 | 14 | 12 | [39-files-reporting.md](39-files-reporting.md) — one export finding pending a separate fix |
 | **Total** | **25 current** | **203 historical** | **196** | |
 
