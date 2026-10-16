@@ -30,19 +30,19 @@ public class ApiValueChain extends ApiBaseEntity {
 	@Schema(description = "value chain status")
 	private ValueChainStatus valueChainStatus;
 
-	@Schema(description = "list of supported facility types")
+	@Schema(description = "List of supported facility types. Omit on update to preserve associations; send an empty list to clear them.")
 	private List<ApiFacilityType> facilityTypes;
 
-	@Schema(description = "list of supported measuring unit types")
+	@Schema(description = "List of supported measuring unit types. Omit on update to preserve associations; send an empty list to clear them.")
 	private List<ApiMeasureUnitType> measureUnitTypes;
 
-	@Schema(description = "list of supported processing evidence types")
+	@Schema(description = "List of supported processing evidence types. Omit on update to preserve associations; send an empty list to clear them.")
 	private List<ApiProcessingEvidenceType> processingEvidenceTypes;
 
-	@Schema(description = "list of supported processing evidence fields")
+	@Schema(description = "List of supported processing evidence fields. Omit on update to preserve associations; send an empty list to clear them.")
 	private List<ApiProcessingEvidenceField> processingEvidenceFields;
 
-	@Schema(description = "list of supported semi-products")
+	@Schema(description = "List of supported semi-products. Omit on update to preserve associations; send an empty list to clear them.")
 	private List<ApiSemiProduct> semiProducts;
 
 	@Schema(description = "Selected product type")

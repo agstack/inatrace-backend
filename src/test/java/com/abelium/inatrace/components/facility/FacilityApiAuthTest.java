@@ -3,19 +3,23 @@ package com.abelium.inatrace.components.facility;
 import com.abelium.inatrace.components.common.TokenService;
 import com.abelium.inatrace.db.entities.codebook.FacilityType;
 import com.abelium.inatrace.db.entities.codebook.ProductType;
+import com.abelium.inatrace.db.entities.codebook.SemiProduct;
 import com.abelium.inatrace.db.entities.common.Address;
 import com.abelium.inatrace.db.entities.common.Country;
 import com.abelium.inatrace.db.entities.common.User;
 import com.abelium.inatrace.db.entities.company.Company;
 import com.abelium.inatrace.db.entities.company.CompanyUser;
 import com.abelium.inatrace.db.entities.facility.Facility;
+import com.abelium.inatrace.db.entities.facility.FacilityFinalProduct;
 import com.abelium.inatrace.db.entities.facility.FacilityLocation;
+import com.abelium.inatrace.db.entities.facility.FacilitySemiProduct;
 import com.abelium.inatrace.db.entities.facility.FacilityTranslation;
 import com.abelium.inatrace.db.entities.stockorder.StockOrder;
 import com.abelium.inatrace.db.entities.product.Product;
 import com.abelium.inatrace.db.entities.product.ProductCompany;
 import com.abelium.inatrace.db.entities.product.FinalProduct;
 import com.abelium.inatrace.db.entities.value_chain.ValueChain;
+import com.abelium.inatrace.db.entities.value_chain.FacilityValueChain;
 import com.abelium.inatrace.db.entities.value_chain.enums.ValueChainStatus;
 import com.abelium.inatrace.support.AbstractMySqlIntegrationTest;
 import com.abelium.inatrace.types.CompanyStatus;
@@ -198,6 +202,88 @@ class FacilityApiAuthTest extends AbstractMySqlIntegrationTest {
         em.clear();
         assertEquals(finalProduct.getId(), em.find(Facility.class, facilityId)
                 .getFacilityFinalProducts().iterator().next().getFinalProduct().getId());
+    }
+
+    @Test
+    void omittedOptionalAssociationListsPreserveFacilityRelationsAndEmptyListsClearThem() throws Exception {
+        Facility facility = em.find(Facility.class, facilityId);
+        FinalProduct finalProduct = new FinalProduct();
+        finalProduct.setName("OPTIONAL-FACILITY-FINAL-50");
+        finalProduct.setDescription("Optional collection contract");
+        em.persist(finalProduct);
+        FacilityFinalProduct association = new FacilityFinalProduct();
+        association.setFacility(facility);
+        association.setFinalProduct(finalProduct);
+        em.persist(association);
+        facility.getFacilityFinalProducts().add(association);
+
+        SemiProduct semiProduct = new SemiProduct();
+        semiProduct.setName("OPTIONAL-FACILITY-SEMI-50");
+        semiProduct.setDescription("Optional collection contract");
+        em.persist(semiProduct);
+        FacilitySemiProduct semiProductAssociation = new FacilitySemiProduct(facility, semiProduct);
+        em.persist(semiProductAssociation);
+        facility.getFacilitySemiProducts().add(semiProductAssociation);
+
+        ProductType productType = new ProductType();
+        productType.setCode("OPTIONAL_FACILITY_VALUE_CHAIN_50");
+        productType.setName("Optional facility value chain type");
+        em.persist(productType);
+        ValueChain valueChain = new ValueChain();
+        valueChain.setName("OPTIONAL-FACILITY-VALUE-CHAIN-50");
+        valueChain.setDescription("Optional collection contract");
+        valueChain.setValueChainStatus(ValueChainStatus.ENABLED);
+        valueChain.setCreatedBy(em.find(User.class, ownerId));
+        valueChain.setProductType(productType);
+        em.persist(valueChain);
+        FacilityValueChain valueChainAssociation = new FacilityValueChain();
+        valueChainAssociation.setFacility(facility);
+        valueChainAssociation.setValueChain(valueChain);
+        em.persist(valueChainAssociation);
+        facility.getFacilityValueChains().add(valueChainAssociation);
+        em.flush();
+        em.clear();
+
+        String omittedLists = facilityBody(facilityId, "OPTIONAL-FACILITY-OMIT-50", false);
+        MvcResult preserved = mockMvc.perform(put("/api/chain/facility").cookie(ownerSession)
+                .contentType(MediaType.APPLICATION_JSON).content(omittedLists)).andReturn();
+        assertEquals(200, preserved.getResponse().getStatus(), preserved.getResponse().getContentAsString());
+        em.flush();
+        em.clear();
+        assertAssociationCounts(1, 1, 1);
+
+        String nullAssociationLists = facilityBody(facilityId, "OPTIONAL-FACILITY-NULL-50", false)
+                .replace("\"translations\"", "\"facilitySemiProductList\":null,\"facilityFinalProducts\":null,"
+                        + "\"facilityValueChains\":null,\"translations\"");
+        MvcResult preservedByNull = mockMvc.perform(put("/api/chain/facility").cookie(ownerSession)
+                .contentType(MediaType.APPLICATION_JSON).content(nullAssociationLists)).andReturn();
+        assertEquals(200, preservedByNull.getResponse().getStatus(), preservedByNull.getResponse().getContentAsString());
+        em.flush();
+        em.clear();
+        assertAssociationCounts(1, 1, 1);
+
+        MvcResult cleared = mockMvc.perform(put("/api/chain/facility").cookie(ownerSession)
+                .contentType(MediaType.APPLICATION_JSON).content(facilityBody(facilityId, "OPTIONAL-FACILITY-CLEAR-50")))
+                .andReturn();
+        assertEquals(200, cleared.getResponse().getStatus(), cleared.getResponse().getContentAsString());
+        em.flush();
+        em.clear();
+        assertAssociationCounts(0, 0, 0);
+
+        long before = facilityCount();
+        MvcResult created = mockMvc.perform(put("/api/chain/facility").cookie(ownerSession)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(facilityBody(null, "OPTIONAL-FACILITY-CREATE-50", false)))
+                .andReturn();
+        assertEquals(200, created.getResponse().getStatus(), created.getResponse().getContentAsString());
+        assertEquals(before + 1, facilityCount());
+    }
+
+    private void assertAssociationCounts(int semiProducts, int finalProducts, int valueChains) {
+        Facility facility = em.find(Facility.class, facilityId);
+        assertEquals(semiProducts, facility.getFacilitySemiProducts().size());
+        assertEquals(finalProducts, facility.getFacilityFinalProducts().size());
+        assertEquals(valueChains, facility.getFacilityValueChains().size());
     }
 
     private Long seedConnectedPublicSeller() {
@@ -434,13 +520,19 @@ class FacilityApiAuthTest extends AbstractMySqlIntegrationTest {
     }
 
     private String facilityBody(Long id, String name) {
+        return facilityBody(id, name, true);
+    }
+
+    private String facilityBody(Long id, String name, boolean includeAssociationLists) {
         String idField = id == null ? "" : "\"id\":" + id + ",";
+        String associationLists = includeAssociationLists
+                ? "\"facilitySemiProductList\":[],\"facilityFinalProducts\":[],\"facilityValueChains\":[],"
+                : "";
         return """
                 {%s"company":{"id":%d},"isCollectionFacility":true,"isPublic":false,
                  "facilityLocation":{"address":{"address":"Acme facility address","country":{"id":%d}}},
-                 "facilityType":{"id":%d},"facilitySemiProductList":[],"facilityFinalProducts":[],
-                 "facilityValueChains":[],"translations":[{"language":"EN","name":"%s"}]}
-                """.formatted(idField, companyId, countryId, facilityTypeId, name);
+                 "facilityType":{"id":%d},%s"translations":[{"language":"EN","name":"%s"}]}
+                """.formatted(idField, companyId, countryId, facilityTypeId, associationLists, name);
     }
 
     private long facilityCount() {

@@ -495,6 +495,9 @@ public class FacilityService extends BaseService {
 	}
 
 	private void updateFacilitySemiProducts(ApiFacility apiFacility, Facility entity) throws ApiException {
+		if (apiFacility.getFacilitySemiProductList() == null) {
+			return;
+		}
 
 		entity.getFacilitySemiProducts().clear();
 
@@ -508,6 +511,9 @@ public class FacilityService extends BaseService {
 	}
 
 	private void updateFacilityFinalProducts(ApiFacility apiFacility, Facility entity) throws ApiException {
+		if (apiFacility.getFacilityFinalProducts() == null) {
+			return;
+		}
 
 		entity.getFacilityFinalProducts().clear();
 
@@ -521,6 +527,9 @@ public class FacilityService extends BaseService {
 	}
 
 	private void updateFacilityValueChains(ApiFacility apiFacility, Facility entity) throws ApiException {
+		if (apiFacility.getFacilityValueChains() == null) {
+			return;
+		}
 
 		entity.getFacilityValueChains().clear();
 

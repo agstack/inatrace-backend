@@ -10,6 +10,7 @@ import com.abelium.inatrace.db.entities.product.FinalProduct;
 import com.abelium.inatrace.db.entities.product.KnowledgeBlog;
 import com.abelium.inatrace.db.entities.product.Product;
 import com.abelium.inatrace.db.entities.product.ProductCompany;
+import com.abelium.inatrace.db.entities.product.ProductDataSharingAgreement;
 import com.abelium.inatrace.db.entities.product.ProductLabel;
 import com.abelium.inatrace.db.entities.product.ProductLabelBatch;
 import com.abelium.inatrace.db.entities.product.ProductLabelContent;
@@ -384,6 +385,63 @@ class ProductAndLabelApiTest extends AbstractMySqlIntegrationTest {
         assertTrue(em.find(ProductLabel.class, labelId) == null);
         assertStatus(delete("/api/product/" + productId + "/finalProduct/" + finalProductId).cookie(ownerSession), 200);
         assertTrue(em.find(FinalProduct.class, finalProductId) == null);
+    }
+
+    @Test
+    void omittedDataSharingAgreementsPreserveProductAgreementsAndEmptyListClearsThem() throws Exception {
+        Product product = em.find(Product.class, productId);
+        ProductDataSharingAgreement agreementToRemove = dataSharingAgreement(product, "Agreement to remove");
+        ProductDataSharingAgreement agreementToKeep = dataSharingAgreement(product, "Agreement to keep");
+        product.getDataSharingAgreements().add(agreementToRemove);
+        product.getDataSharingAgreements().add(agreementToKeep);
+        em.flush();
+        em.clear();
+
+        long productsBefore = count(Product.class);
+        assertStatus(post("/api/product/create").contentType(MediaType.APPLICATION_JSON).cookie(ownerSession)
+                .content("{\"company\":{\"id\":" + ownerCompanyId + "},\"valueChain\":{\"id\":" + valueChainId
+                        + "},\"name\":\"OPTIONAL-PRODUCT-CREATE-50\"}"), 200);
+        assertEquals(productsBefore + 1, count(Product.class));
+
+        assertStatus(put("/api/product/").contentType(MediaType.APPLICATION_JSON).cookie(ownerSession)
+                .content("{\"id\":" + productId + ",\"name\":\"OPTIONAL-PRODUCT-OMIT-50\"}"), 200);
+        em.flush();
+        em.clear();
+        assertEquals(2, em.find(Product.class, productId).getDataSharingAgreements().size());
+
+        assertStatus(put("/api/product/").contentType(MediaType.APPLICATION_JSON).cookie(ownerSession)
+                .content("{\"id\":" + productId + ",\"name\":\"OPTIONAL-PRODUCT-NULL-50\","
+                        + "\"dataSharingAgreements\":null}"), 200);
+        em.flush();
+        em.clear();
+        assertEquals(2, em.find(Product.class, productId).getDataSharingAgreements().size());
+
+        assertStatus(put("/api/product/").contentType(MediaType.APPLICATION_JSON).cookie(ownerSession)
+                .content("{\"id\":" + productId + ",\"name\":\"OPTIONAL-PRODUCT-REPLACE-50\","
+                        + "\"dataSharingAgreements\":[{\"id\":" + agreementToKeep.getId()
+                        + ",\"description\":\"Retained by replacement\"}]}"), 200);
+        em.flush();
+        em.clear();
+        Product replaced = em.find(Product.class, productId);
+        assertEquals(1, replaced.getDataSharingAgreements().size());
+        ProductDataSharingAgreement retained = replaced.getDataSharingAgreements().iterator().next();
+        assertEquals(agreementToKeep.getId(), retained.getId());
+        assertEquals("Retained by replacement", retained.getDescription());
+
+        assertStatus(put("/api/product/").contentType(MediaType.APPLICATION_JSON).cookie(ownerSession)
+                .content("{\"id\":" + productId + ",\"name\":\"OPTIONAL-PRODUCT-CLEAR-50\","
+                        + "\"dataSharingAgreements\":[]}"), 200);
+        em.flush();
+        em.clear();
+        assertTrue(em.find(Product.class, productId).getDataSharingAgreements().isEmpty());
+    }
+
+    private ProductDataSharingAgreement dataSharingAgreement(Product product, String description) {
+        ProductDataSharingAgreement agreement = new ProductDataSharingAgreement();
+        agreement.setProduct(product);
+        agreement.setDescription(description);
+        em.persist(agreement);
+        return agreement;
     }
 
     private void assertStatus(MockHttpServletRequestBuilder request, int expected) throws Exception {

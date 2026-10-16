@@ -55,13 +55,13 @@ public class ApiFacility extends ApiBaseEntity {
 	@Schema(description = "Facility type")
 	private ApiFacilityType facilityType;
 
-	@Schema(description = "List of semi product ID's for this facility")
+	@Schema(description = "List of semi product IDs for this facility. Omit on update to preserve associations; send an empty list to clear them.")
 	private List<ApiSemiProduct> facilitySemiProductList;
 
-	@Schema(description = "List of final product ID's for this facility")
+	@Schema(description = "List of final product IDs for this facility. Omit on update to preserve associations; send an empty list to clear them.")
 	private List<ApiFinalProduct> facilityFinalProducts;
 
-	@Schema(description = "List of value chains for this facility")
+	@Schema(description = "List of value chains for this facility. Omit on update to preserve associations; send an empty list to clear them.")
 	private List<ApiValueChain> facilityValueChains;
 
 	@Schema(description = "List of facility translations")

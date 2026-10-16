@@ -206,6 +206,9 @@ public class ValueChainService extends BaseService {
 	}
 
 	private void updateVCFacilityTypes(ValueChain entity, ApiValueChain apiValueChain) throws ApiException {
+		if (apiValueChain.getFacilityTypes() == null) {
+			return;
+		}
 
 		Map<Long, ValueChainFacilityType> currentVCFacilities = entity.getFacilityTypes().stream().collect(
 				Collectors.toMap(vcFT -> vcFT.getFacilityType().getId(), vcFT -> vcFT));
@@ -222,6 +225,9 @@ public class ValueChainService extends BaseService {
 	}
 
 	private void updateVCMeasureUnitTypes(ValueChain entity, ApiValueChain apiValueChain) throws ApiException {
+		if (apiValueChain.getMeasureUnitTypes() == null) {
+			return;
+		}
 
 		Map<Long, ValueChainMeasureUnitType> currentVCMeasureUnits = entity.getMeasureUnitTypes().stream().collect(
 				Collectors.toMap(vcMUT -> vcMUT.getMeasureUnitType().getId(), vcMUT -> vcMUT));
@@ -239,6 +245,9 @@ public class ValueChainService extends BaseService {
 	}
 
 	private void updateVCProcEvidenceTypes(ValueChain entity, ApiValueChain apiValueChain) throws ApiException {
+		if (apiValueChain.getProcessingEvidenceTypes() == null) {
+			return;
+		}
 
 		Map<Long, ValueChainProcEvidenceType> currentVCProcEvidenceTypes = entity.getProcEvidenceTypes().stream()
 				.collect(Collectors.toMap(vcPET -> vcPET.getProcessingEvidenceType().getId(), vcPET -> vcPET));
@@ -256,6 +265,9 @@ public class ValueChainService extends BaseService {
 	}
 
 	private void updateVCProcEvidenceFields(ValueChain entity, ApiValueChain apiValueChain) throws ApiException {
+		if (apiValueChain.getProcessingEvidenceFields() == null) {
+			return;
+		}
 
 		Map<Long, ValueChainProcessingEvidenceField> currentVCProcEvidenceFields = entity.getProcessingEvidenceFields().stream()
 				.collect(Collectors.toMap(vcPEF -> vcPEF.getProcessingEvidenceField().getId(), vcPEF -> vcPEF));
@@ -273,6 +285,9 @@ public class ValueChainService extends BaseService {
 	}
 
 	private void updateVCSemiProducts(ValueChain entity, ApiValueChain apiValueChain) throws ApiException {
+		if (apiValueChain.getSemiProducts() == null) {
+			return;
+		}
 
 		Map<Long, ValueChainSemiProduct> currentVCSemiProducts = entity.getSemiProducts().stream()
 				.collect(Collectors.toMap(vcSP -> vcSP.getSemiProduct().getId(), vcSP -> vcSP));
