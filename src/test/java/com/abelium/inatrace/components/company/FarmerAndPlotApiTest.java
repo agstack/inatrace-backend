@@ -21,6 +21,9 @@ import com.abelium.inatrace.types.Gender;
 import com.abelium.inatrace.types.UserCustomerType;
 import com.abelium.inatrace.types.UserRole;
 import com.abelium.inatrace.types.UserStatus;
+import com.mapbox.geojson.Feature;
+import com.mapbox.geojson.FeatureCollection;
+import com.mapbox.turf.TurfMeasurement;
 import jakarta.persistence.EntityManager;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
@@ -45,6 +48,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -397,6 +401,92 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 				"a refused upload must not have created a plot");
 	}
 
+	@Test
+	@DisplayName("GeoJSON polygon areas are converted from square metres to truncated hectares")
+	void geoDataUploadConvertsPolygonAreaToHectares() throws Exception {
+
+		long before = plotCount(acmeFarmerId);
+		String geoJson = "{\"type\":\"FeatureCollection\",\"features\":["
+				+ "{\"type\":\"Feature\",\"properties\":{},\"geometry\":{\"type\":\"Polygon\",\"coordinates\":["
+				+ "[[30.0600,-1.9400],[30.0610,-1.9400],[30.0610,-1.9410],[30.0600,-1.9410],[30.0600,-1.9400]]]}}"
+				+ ",{\"type\":\"Feature\",\"properties\":{},\"geometry\":{\"type\":\"Point\",\"coordinates\":[30.0620,-1.9420]}}]}";
+
+		Feature polygon = FeatureCollection.fromJson(geoJson).features().get(0);
+		double expectedHectares = Math.floor((TurfMeasurement.area(polygon) / 10_000d) * 100) / 100;
+
+		MockMultipartFile upload = new MockMultipartFile(
+				"file", "boundary.geojson", "application/geo+json", geoJson.getBytes(StandardCharsets.UTF_8));
+
+		MvcResult result = mockMvc.perform(multipart("/api/company/userCustomers/" + acmeFarmerId + "/uploadGeoData")
+						.file(upload)
+						.cookie(aliceSession))
+				.andReturn();
+
+		assertEquals(200, result.getResponse().getStatus(), body(result));
+		assertEquals(before + 2, plotCount(acmeFarmerId),
+				"the polygon and point from the GeoJSON upload should both be recorded");
+
+		em.flush();
+		em.clear();
+
+		Plot polygonPlot = importedPlot("Plot 1");
+		assertEquals("ha", polygonPlot.getUnit());
+		assertEquals(expectedHectares, polygonPlot.getSize(), 0.000001,
+				"a GeoJSON area in square metres must be converted to hectares before persistence");
+		assertEquals(5, polygonPlot.getCoordinates().size(),
+				"the closed polygon ring should be preserved");
+		assertEquals(coffeeProductTypeId, polygonPlot.getCrop().getId());
+
+		Plot pointPlot = importedPlot("Point 1");
+		assertEquals(1, pointPlot.getCoordinates().size(),
+				"point uploads must remain point plots and must not receive an area calculation");
+		assertEquals(30.0620, pointPlot.getCoordinates().get(0).getLongitude(), 0.000001);
+		assertEquals(-1.9420, pointPlot.getCoordinates().get(0).getLatitude(), 0.000001);
+		assertNull(pointPlot.getSize(), "point uploads must not receive a polygon area");
+		assertNull(pointPlot.getUnit(), "point uploads must not be labelled as hectares");
+	}
+
+	@Test
+	@DisplayName("Malformed GeoJSON is rejected without creating a partial plot import")
+	void malformedGeoDataIsRejectedWithoutCreatingPlots() throws Exception {
+
+		long before = plotCount(acmeFarmerId);
+		MockMultipartFile upload = new MockMultipartFile(
+				"file", "broken.geojson", "application/geo+json",
+				"{ definitely-not-geojson".getBytes(StandardCharsets.UTF_8));
+
+		MvcResult result = mockMvc.perform(multipart("/api/company/userCustomers/" + acmeFarmerId + "/uploadGeoData")
+						.file(upload)
+						.cookie(aliceSession))
+				.andReturn();
+
+		assertEquals(400, result.getResponse().getStatus(),
+				"malformed GeoJSON must be rejected as an invalid request: " + body(result));
+		assertEquals(before, plotCount(acmeFarmerId),
+				"a rejected GeoJSON file must not create any plots");
+	}
+
+	@Test
+	@DisplayName("Unsupported GeoJSON geometries are ignored without creating plots")
+	void unsupportedGeoDataGeometryDoesNotCreatePlots() throws Exception {
+
+		long before = plotCount(acmeFarmerId);
+		MockMultipartFile upload = new MockMultipartFile(
+				"file", "line.geojson", "application/geo+json",
+				("{\"type\":\"FeatureCollection\",\"features\":[{\"type\":\"Feature\",\"properties\":{},"
+						+ "\"geometry\":{\"type\":\"LineString\",\"coordinates\":[[30.0600,-1.9400],[30.0610,-1.9410]]}}]}")
+						.getBytes(StandardCharsets.UTF_8));
+
+		MvcResult result = mockMvc.perform(multipart("/api/company/userCustomers/" + acmeFarmerId + "/uploadGeoData")
+						.file(upload)
+						.cookie(aliceSession))
+				.andReturn();
+
+		assertEquals(200, result.getResponse().getStatus(), body(result));
+		assertEquals(before, plotCount(acmeFarmerId),
+				"the importer currently creates plots only for Polygon and Point features");
+	}
+
 	// ------------------------------------------------------------------ the bulk export
 
 	@Test
@@ -530,6 +620,14 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 	private long plotCount(Long farmerId) {
 		return em.createQuery("select count(p) from Plot p where p.farmer.id = :farmerId", Long.class)
 				.setParameter("farmerId", farmerId)
+				.getSingleResult();
+	}
+
+	private Plot importedPlot(String name) {
+		return em.createQuery("select p from Plot p join fetch p.coordinates where p.farmer.id = :farmerId "
+						+ "and p.plotName = :name", Plot.class)
+				.setParameter("farmerId", acmeFarmerId)
+				.setParameter("name", name)
 				.getSingleResult();
 	}
 
