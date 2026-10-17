@@ -16,7 +16,10 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 
 @Entity
-@Table(indexes = { @Index(columnList = "token" ) })
+@Table(indexes = {
+        @Index(columnList = "token"),
+        @Index(name = "IDX_AUTH_TOKEN_EXPIRATION", columnList = "expiration")
+})
 public class AuthenticationToken extends BaseEntity {
     
     @Version

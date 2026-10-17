@@ -24,6 +24,7 @@ import com.abelium.inatrace.tools.PasswordTools;
 import com.abelium.inatrace.tools.Queries;
 import com.abelium.inatrace.tools.QueryTools;
 import com.abelium.inatrace.types.*;
+import jakarta.persistence.LockModeType;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Predicate;
@@ -48,6 +49,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Lazy
@@ -136,7 +138,18 @@ public class UserService extends BaseService {
 			throw new ApiException(ApiStatus.AUTH_ERROR, "Invalid credentials");
 		}
 		checkUserMayStartSession(user);
-		if (!passwordEncoder.matches(loginRequest.password, user.getPassword())) {
+		String validatedPassword = user.getPassword();
+		String validatedEmail = user.getEmail();
+		if (!passwordEncoder.matches(loginRequest.password, validatedPassword)) {
+			throw new ApiException(ApiStatus.AUTH_ERROR, "Invalid credentials");
+		}
+		// Concurrent logins share this lock, while a password reset takes the exclusive lock.
+		// Refresh after locking so a login that verified an old password before a reset cannot
+		// create a session after that reset commits.
+		em.refresh(user, LockModeType.PESSIMISTIC_READ);
+		checkUserMayStartSession(user);
+		if (!Objects.equals(validatedPassword, user.getPassword())
+				|| !Objects.equals(validatedEmail, user.getEmail())) {
 			throw new ApiException(ApiStatus.AUTH_ERROR, "Invalid credentials");
 		}
 		return loginUser(user);
@@ -167,18 +180,11 @@ public class UserService extends BaseService {
 		// login applied one layer up; a future caller must not be able to repeat that.
 		checkUserMayStartSession(user);
 
-		AuthenticationToken authenticationToken = Queries.getUniqueBy(em, AuthenticationToken.class, 
-				AuthenticationToken::getUser, user);
 		String accessToken = tokenEngine.createAccessToken(user);
 		String refreshToken = tokenEngine.createRefreshToken(user);
-		
-		if (authenticationToken != null) {
-			authenticationToken.updateToken(refreshToken, tokenEngine.getRefreshTokenExpirationSec());
-		} else {
-			authenticationToken = new AuthenticationToken(user);
-			authenticationToken.updateToken(refreshToken, tokenEngine.getRefreshTokenExpirationSec());
-			em.persist(authenticationToken);
-		}
+		AuthenticationToken authenticationToken = new AuthenticationToken(user);
+		authenticationToken.updateToken(refreshToken, tokenEngine.getRefreshTokenExpirationSec());
+		em.persist(authenticationToken);
 		
 		HttpHeaders responseHeaders = new HttpHeaders();
 		responseHeaders.add(HttpHeaders.SET_COOKIE, tokenEngine.createAccessCookie(accessToken)); 
@@ -477,8 +483,24 @@ public class UserService extends BaseService {
         if (!PasswordTools.isPasswordComplex(request.password)) {
             throw new ApiException(ApiStatus.VALIDATION_ERROR, "Invalid password");
         }
-        confirmationToken.setStatus(Status.DISABLED);
-        confirmationToken.getUser().setPassword(passwordEncoder.encode(request.password));
+		User user = confirmationToken.getUser();
+		// Serialize with logins and other resets, then re-read the reset token under lock.
+		// The lock order is always user before confirmation token.
+		em.refresh(user, LockModeType.PESSIMISTIC_WRITE);
+		em.refresh(confirmationToken, LockModeType.PESSIMISTIC_WRITE);
+		if (!confirmationToken.isValidPasswordResetToken()) {
+			throw new ApiException(ApiStatus.AUTH_ERROR, "Invalid password reset token");
+		}
+		confirmationToken.setStatus(Status.DISABLED);
+		user.setPassword(passwordEncoder.encode(request.password));
+		// Bump the version too: a concurrent logout holding an older entity must not
+		// overwrite the revocation using a stale optimistic-lock version.
+		em.createQuery("update AuthenticationToken t set t.status = :disabled, "
+				+ "t.entityVersion = t.entityVersion + 1 where t.user.id = :userId and t.status = :active")
+				.setParameter("disabled", Status.DISABLED)
+				.setParameter("active", Status.ACTIVE)
+				.setParameter("userId", user.getId())
+				.executeUpdate();
 
         // The password is changed either way; the session is only granted to an account that could
         // have logged in with it. An account still awaiting approval gets a plain success and has
