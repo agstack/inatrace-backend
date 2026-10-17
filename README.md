@@ -52,19 +52,10 @@ documentation site. Read it for background, verify before relying on it.
 Project INATrace welcomes contribution from everyone. See CONTRIBUTING.md for help getting started.
 Questions and discussion go to the [INATrace mailing list](https://lists.agstack.org/g/inatrace).
 
-## License 
+## License
 
 Copyright (c) 2023 Anteja ECG d.o.o., GIZ - Deutsche Gesellschaft für Internationale Zusammenarbeit GmbH, Sunesis ltd.
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as published
-by the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
+This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+If a copy of the MPL was not distributed with this file, you can obtain one at
+https://mozilla.org/MPL/2.0/. The full text is in [LICENSE](LICENSE).
