@@ -38,6 +38,49 @@ When accessing secured endpoints, the token has to be provided in the `Cookie` r
 |----------------|----------------------------|
 | Cookie         | inatrace-accessToken=`JWT` |
 
+Login also sets an `inatrace-refreshToken` cookie after the access cookie. Each
+login has a separate refresh session: another login to the same account does
+not replace it. `POST /api/user/refresh_authentication` accepts that refresh
+cookie and returns an access cookie; the refresh token remains reusable until
+it expires or is revoked. The authenticated `POST /api/user/logout` revokes
+the refresh token presented by that request and clears its cookies. A password
+reset revokes the account's previous refresh tokens before issuing a new session
+to an active account. Revocation is enforced when refreshing; access JWTs remain
+valid until expiration unless the user's
+status no longer permits access; logout/reset do not revoke an access JWT.
+Token lifetimes are controlled by the deployment's authentication settings.
+
+New JWTs include a `token_use` claim identifying access or refresh. Protected
+endpoints accept only access JWTs with the access purpose; untyped legacy JWTs
+and refresh JWTs cannot be used as access tokens. The refresh endpoint continues
+to accept an existing untyped refresh token only while its stored session is
+active and unexpired and its user is active. It then issues a typed access JWT.
+
+### Deployment and cleanup
+
+Before deploying independent refresh sessions, inspect the existing
+`AuthenticationToken` schema for a unique index on `user_id`; such a custom
+constraint is incompatible with multiple sessions and must be addressed in a
+reviewed migration. The checked-in mapping has always used `ManyToOne` and
+does not declare that uniqueness. The migration for the expiration index
+preserves existing token rows. Deploy all backend instances together: older
+versions assume a unique token row per user and do not enforce JWT purpose, so
+they must not serve requests alongside the new version. Plan rollback against
+the current data and security implications; do not simply restore an old binary
+or delete session rows.
+
+Legacy access JWTs do not contain the required purpose and stop authenticating
+after deployment. Existing web and mobile clients do not automatically use the
+refresh endpoint, so affected users will need to sign in again. The mobile app
+does not consistently recognize a server-side 401 as an expired session; plan
+user communication and account for pending offline data before the rollout.
+Other clients with a still-valid legacy refresh session may exchange it for a
+new access JWT. No cookie name, endpoint or response body changes are required.
+
+Expired refresh rows older than seven days are removed in batches of at most
+1,000 every five minutes, starting one hour after startup. Monitor database
+growth and cleanup capacity in deployments with sustained high login volume.
+
 ## Endpoints
 
 A complete list of endpoints is available [here](https://github.com/agstack/inatrace-backend/tree/main/src/main/java/com/abelium/inatrace/components).

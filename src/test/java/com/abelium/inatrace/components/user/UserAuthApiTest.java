@@ -1,12 +1,17 @@
 package com.abelium.inatrace.components.user;
 
 import com.abelium.inatrace.support.AbstractMySqlIntegrationTest;
+import com.abelium.inatrace.components.common.TokenService;
+import com.abelium.inatrace.db.entities.auth.AuthenticationToken;
 import com.abelium.inatrace.db.entities.auth.ConfirmationToken;
 import com.abelium.inatrace.db.entities.common.User;
 import com.abelium.inatrace.types.ConfirmationTokenType;
 import com.abelium.inatrace.types.Language;
 import com.abelium.inatrace.types.UserRole;
 import com.abelium.inatrace.types.UserStatus;
+import com.auth0.jwt.JWT;
+import com.auth0.jwt.JWTCreator;
+import com.auth0.jwt.algorithms.Algorithm;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.apache.commons.lang3.tuple.Pair;
@@ -14,6 +19,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.HttpEntity;
@@ -31,6 +37,15 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -80,6 +95,15 @@ class UserAuthApiTest extends AbstractMySqlIntegrationTest {
 	@Autowired
 	private PasswordEncoder passwordEncoder;
 
+	@Autowired
+	private TokenService tokenService;
+
+	@Autowired
+	private AuthenticationTokenCleanup tokenCleanup;
+
+	@Value("${INATrace.auth.jwtSigningKey}")
+	private String jwtSigningKey;
+
 	/**
 	 * These endpoints answer 401 a great deal, and the JDK's {@code HttpURLConnection} -- which
 	 * {@code TestRestTemplate} reaches for by default -- responds to a 401 by trying to repeat the
@@ -94,6 +118,33 @@ class UserAuthApiTest extends AbstractMySqlIntegrationTest {
 	}
 
 	// ---------------------------------------------------------------- login
+
+	@Test
+	@DisplayName("bursts of 50 and 100 logins work with and without an existing refresh session")
+	void concurrentLoginsHaveIndependentRefreshSessions() throws Exception {
+		for (boolean existingSession : List.of(true, false)) {
+			User user = seedUser(UserStatus.ACTIVE, UserRole.USER);
+			try {
+				String previousCookies = existingSession ? bothCookiesFor(user) : null;
+				List<ResponseEntity<String>> responses = concurrentLogins(user.getEmail(), existingSession ? 50 : 100);
+				HashSet<String> refreshCookies = new HashSet<>();
+				for (ResponseEntity<String> response : responses) {
+					assertEquals(HttpStatus.OK, response.getStatusCode(), "concurrent login must succeed");
+					String access = cookieNamed(response, "inatrace-accessToken");
+					String refresh = cookieNamed(response, "inatrace-refreshToken");
+					assertTrue(refreshCookies.add(refresh), "each login must receive a distinct refresh token");
+					assertEquals(HttpStatus.OK, exchange(HttpMethod.POST, "/api/user/refresh_authentication",
+							null, access + "; " + refresh).getStatusCode(), "each session must refresh");
+				}
+				if (previousCookies != null) {
+					assertEquals(HttpStatus.OK, exchange(HttpMethod.POST, "/api/user/refresh_authentication",
+							null, previousCookies).getStatusCode(), "existing session must remain valid");
+				}
+			} finally {
+				cleanupAuthUser(user.getId());
+			}
+		}
+	}
 
 	@Test
 	@DisplayName("login refuses an email that belongs to nobody")
@@ -164,6 +215,18 @@ class UserAuthApiTest extends AbstractMySqlIntegrationTest {
 
 		assertEquals(HttpStatus.OK, response.getStatusCode());
 		List<String> cookies = setCookies(response);
+		assertEquals(2, cookies.size(), "the mobile login expects exactly the two auth cookies");
+		assertTrue(cookies.get(0).startsWith("inatrace-accessToken="), "access cookie must remain first");
+		assertTrue(cookies.get(1).startsWith("inatrace-refreshToken="), "refresh cookie must remain second");
+		assertTrue(cookies.get(0).contains("Max-Age=" + tokenService.getAccessTokenExpirationSec()));
+		assertTrue(cookies.get(1).contains("Max-Age=" + tokenService.getRefreshTokenExpirationSec()));
+		assertTrue(cookies.stream().allMatch(c -> c.contains("Path=/")));
+		String access = cookieNamed(response, "inatrace-accessToken").split("=", 2)[1];
+		String refresh = cookieNamed(response, "inatrace-refreshToken").split("=", 2)[1];
+		assertNotNull(JWT.decode(access).getExpiresAt(), "mobile reads the JWT expiry");
+		assertEquals("access", JWT.decode(access).getClaim("token_use").asString());
+		assertEquals("refresh", JWT.decode(refresh).getClaim("token_use").asString());
+		assertTrue(response.getBody() != null && response.getBody().contains("\"status\":\"OK\""));
 		assertTrue(cookies.stream().anyMatch(c -> c.startsWith("inatrace-accessToken=")),
 				"login should set the access cookie");
 		assertTrue(cookies.stream().anyMatch(c -> c.startsWith("inatrace-refreshToken=")),
@@ -199,6 +262,53 @@ class UserAuthApiTest extends AbstractMySqlIntegrationTest {
 		assertNotNull(response.getBody());
 		assertTrue(response.getBody().contains(user.getEmail()),
 				"the profile should be the profile of the user who logged in");
+	}
+
+	@Test
+	@DisplayName("a refresh JWT cannot authenticate protected reads or writes, before or after logout")
+	void refreshJwtCannotActAsAccessJwt() {
+		User user = seedUser(UserStatus.ACTIVE, UserRole.USER);
+		try {
+			ResponseEntity<String> login = login(user.getEmail(), PASSWORD);
+			String access = cookieNamed(login, "inatrace-accessToken");
+			String refresh = cookieNamed(login, "inatrace-refreshToken");
+			String disguisedRefresh = asAccessCookie(refresh);
+			assertEquals(HttpStatus.OK, get("/api/user/profile", access).getStatusCode());
+			assertEquals(HttpStatus.UNAUTHORIZED, get("/api/user/profile", disguisedRefresh).getStatusCode());
+			assertEquals(HttpStatus.UNAUTHORIZED, exchange(HttpMethod.PUT, "/api/user/profile",
+					Map.of("name", "ShouldNotPersist"), disguisedRefresh).getStatusCode());
+			assertEquals("Test", nameOf(user.getId()));
+			assertEquals(HttpStatus.UNAUTHORIZED, refresh("inatrace-refreshToken=" + access.split("=", 2)[1]).getStatusCode(),
+					"an access token must not identify a refresh session");
+			assertEquals(HttpStatus.OK, exchange(HttpMethod.POST, "/api/user/logout", null,
+					access + "; " + refresh).getStatusCode());
+			assertEquals(HttpStatus.UNAUTHORIZED, refresh(refresh).getStatusCode());
+			assertEquals(HttpStatus.UNAUTHORIZED, get("/api/user/profile", disguisedRefresh).getStatusCode());
+			assertEquals(HttpStatus.OK, get("/api/user/profile", access).getStatusCode(),
+					"logout does not revoke an already-issued access JWT");
+		} finally {
+			cleanupAuthUser(user.getId());
+		}
+	}
+
+	@Test
+	@DisplayName("access authentication rejects untyped, unknown-purpose, expired and forged JWTs")
+	void accessAuthenticationRejectsInvalidOrLegacyJwt() {
+		User user = seedUser(UserStatus.ACTIVE, UserRole.USER);
+		try {
+			Map<String, String> invalidTokens = Map.of(
+					"untyped legacy", signedJwt(user, null, 300, jwtSigningKey),
+					"unknown purpose", signedJwt(user, "other", 300, jwtSigningKey),
+					"expired", signedJwt(user, "access", -1, jwtSigningKey),
+					"invalid signature", signedJwt(user, "access", 300, "wrong-test-signing-key"));
+			for (Map.Entry<String, String> token : invalidTokens.entrySet()) {
+				assertEquals(HttpStatus.UNAUTHORIZED,
+						get("/api/user/profile", "inatrace-accessToken=" + token.getValue()).getStatusCode(),
+						token.getKey() + " JWT must be rejected");
+			}
+		} finally {
+			cleanupAuthUser(user.getId());
+		}
 	}
 
 	@Test
@@ -298,6 +408,73 @@ class UserAuthApiTest extends AbstractMySqlIntegrationTest {
 		assertEquals(HttpStatus.OK, response.getStatusCode());
 		assertTrue(setCookies(response).stream().anyMatch(c -> c.startsWith("inatrace-accessToken=")),
 				"a refresh should mint a fresh access cookie");
+		String freshAccess = cookieNamed(response, "inatrace-accessToken");
+		assertEquals("access", JWT.decode(freshAccess.split("=", 2)[1]).getClaim("token_use").asString());
+		assertEquals(HttpStatus.OK, get("/api/user/profile", freshAccess).getStatusCode());
+	}
+
+	@Test
+	@DisplayName("a later login and logout leave another refresh session valid")
+	void refreshSessionsAreIndependent() {
+		User user = seedUser(UserStatus.ACTIVE, UserRole.USER);
+		try {
+			String first = bothCookiesFor(user);
+			String second = bothCookiesFor(user);
+			assertEquals(HttpStatus.OK, refresh(first).getStatusCode());
+			assertEquals(HttpStatus.OK, refresh(second).getStatusCode());
+			assertEquals(HttpStatus.OK, refresh(first).getStatusCode(), "refresh stays reusable");
+			assertEquals(HttpStatus.OK, exchange(HttpMethod.POST, "/api/user/logout", null, first).getStatusCode());
+			assertEquals(HttpStatus.UNAUTHORIZED, refresh(first).getStatusCode());
+			assertEquals(HttpStatus.OK, refresh(second).getStatusCode());
+		} finally {
+			cleanupAuthUser(user.getId());
+		}
+	}
+
+	@Test
+	@DisplayName("a legacy refresh JWT remains usable after a new login")
+	void legacyRefreshTokenRemainsValid() {
+		User user = seedUser(UserStatus.ACTIVE, UserRole.USER);
+		try {
+			String legacy = seedLegacyRefresh(user.getId());
+			ResponseEntity<String> login = login(user.getEmail(), PASSWORD);
+			assertEquals(HttpStatus.OK, login.getStatusCode());
+			assertEquals(HttpStatus.UNAUTHORIZED, get("/api/user/profile", asAccessCookie(legacy)).getStatusCode());
+			ResponseEntity<String> refreshed = refresh(legacy);
+			assertEquals(HttpStatus.OK, refreshed.getStatusCode());
+			String freshAccess = cookieNamed(refreshed, "inatrace-accessToken");
+			assertEquals(HttpStatus.OK, get("/api/user/profile", freshAccess).getStatusCode());
+			assertEquals(HttpStatus.OK, exchange(HttpMethod.POST, "/api/user/logout", null,
+					freshAccess + "; " + legacy).getStatusCode());
+			assertEquals(HttpStatus.UNAUTHORIZED, refresh(legacy).getStatusCode());
+			assertEquals(HttpStatus.UNAUTHORIZED, get("/api/user/profile", asAccessCookie(legacy)).getStatusCode());
+		} finally {
+			cleanupAuthUser(user.getId());
+		}
+	}
+
+	@Test
+	@DisplayName("cleanup removes only refresh sessions long past expiration")
+	void cleanupKeepsUnexpiredAndRecentlyExpiredSessions() {
+		User user = seedUser(UserStatus.ACTIVE, UserRole.USER);
+		try {
+			Long old = seedRefreshWithExpiration(user.getId(), Instant.now().minus(8, ChronoUnit.DAYS));
+			Long recent = seedRefreshWithExpiration(user.getId(), Instant.now().minus(1, ChronoUnit.DAYS));
+			Long active = seedRefreshWithExpiration(user.getId(), Instant.now().plus(1, ChronoUnit.DAYS));
+			long unrelated = tx().execute(s -> em.createQuery(
+					"select count(t) from AuthenticationToken t where t.user.id <> :uid and t.expiration < :cutoff",
+					Long.class).setParameter("uid", user.getId())
+					.setParameter("cutoff", Instant.now().minus(7, ChronoUnit.DAYS)).getSingleResult());
+			assertEquals(0, unrelated, "do not run global cleanup when another test owns eligible rows");
+			tokenCleanup.removeExpiredSessions();
+			tx().executeWithoutResult(s -> {
+				assertTrue(em.find(AuthenticationToken.class, old) == null, "old expiry should be removed");
+				assertNotNull(em.find(AuthenticationToken.class, recent), "recent expiry should be retained");
+				assertNotNull(em.find(AuthenticationToken.class, active), "active session should be retained");
+			});
+		} finally {
+			cleanupAuthUser(user.getId());
+		}
 	}
 
 	@Test
@@ -402,6 +579,82 @@ class UserAuthApiTest extends AbstractMySqlIntegrationTest {
 				"the new password should work");
 		assertEquals(HttpStatus.UNAUTHORIZED, login(user.getEmail(), PASSWORD).getStatusCode(),
 				"the old password should not");
+	}
+
+	@Test
+	@DisplayName("password reset revokes prior refresh sessions but issues a usable new one")
+	void resetRevokesPreviousRefreshSessions() {
+		User user = seedUser(UserStatus.ACTIVE, UserRole.USER);
+		try {
+			String first = bothCookiesFor(user);
+			String second = bothCookiesFor(user);
+			String legacy = seedLegacyRefresh(user.getId());
+			assertEquals(HttpStatus.OK, refresh(legacy).getStatusCode());
+			String token = seedToken(user.getId(), ConfirmationTokenType.PASSWORD_RESET);
+			ResponseEntity<String> reset = exchange(HttpMethod.POST, "/api/user/reset_password",
+					Map.of("token", token, "password", OTHER_PASSWORD), null);
+			assertEquals(HttpStatus.OK, reset.getStatusCode());
+			assertTrue(setCookies(reset).get(0).startsWith("inatrace-accessToken="));
+			assertEquals(HttpStatus.UNAUTHORIZED, refresh(first).getStatusCode());
+			assertEquals(HttpStatus.UNAUTHORIZED, refresh(second).getStatusCode());
+			assertEquals(HttpStatus.UNAUTHORIZED, refresh(legacy).getStatusCode());
+			assertEquals(HttpStatus.UNAUTHORIZED, get("/api/user/profile", asAccessCookie(legacy)).getStatusCode());
+			String firstRefresh = first.substring(first.indexOf("inatrace-refreshToken="));
+			assertEquals(HttpStatus.UNAUTHORIZED, get("/api/user/profile", asAccessCookie(firstRefresh)).getStatusCode());
+			assertEquals(HttpStatus.OK, get("/api/user/profile", first.split("; ", 2)[0]).getStatusCode(),
+					"reset does not revoke an already-issued access JWT");
+			String replacement = cookieNamed(reset, "inatrace-refreshToken");
+			assertEquals(HttpStatus.OK, refresh(replacement).getStatusCode());
+		} finally {
+			cleanupAuthUser(user.getId());
+		}
+	}
+
+	@Test
+	@DisplayName("an old-password login racing a reset cannot leave a valid refresh session")
+	void oldPasswordLoginRacingResetCannotSurvive() throws Exception {
+		for (int attempt = 0; attempt < 4; attempt++) {
+			User user = seedUser(UserStatus.ACTIVE, UserRole.USER);
+			ExecutorService executor = Executors.newFixedThreadPool(2);
+			CountDownLatch ready = new CountDownLatch(2);
+			CountDownLatch start = new CountDownLatch(1);
+			try {
+				String resetToken = seedToken(user.getId(), ConfirmationTokenType.PASSWORD_RESET);
+				Future<ResponseEntity<String>> login = executor.submit(() -> {
+					ready.countDown();
+					if (!start.await(20, TimeUnit.SECONDS)) throw new IllegalStateException("start timed out");
+					return login(user.getEmail(), PASSWORD);
+				});
+				Future<ResponseEntity<String>> reset = executor.submit(() -> {
+					ready.countDown();
+					if (!start.await(20, TimeUnit.SECONDS)) throw new IllegalStateException("start timed out");
+					return exchange(HttpMethod.POST, "/api/user/reset_password",
+							Map.of("token", resetToken, "password", OTHER_PASSWORD), null);
+				});
+				assertTrue(ready.await(20, TimeUnit.SECONDS));
+				start.countDown();
+				ResponseEntity<String> loginResponse = login.get(45, TimeUnit.SECONDS);
+				ResponseEntity<String> resetResponse = reset.get(45, TimeUnit.SECONDS);
+				assertEquals(HttpStatus.OK, resetResponse.getStatusCode());
+				assertTrue(loginResponse.getStatusCode() == HttpStatus.OK
+						|| loginResponse.getStatusCode() == HttpStatus.UNAUTHORIZED,
+						"old login must either finish before reset or be refused");
+				if (loginResponse.getStatusCode() == HttpStatus.OK) {
+					assertEquals(HttpStatus.UNAUTHORIZED,
+							refresh(cookieNamed(loginResponse, "inatrace-refreshToken")).getStatusCode(),
+							"a session created before reset must be revoked");
+				}
+				assertEquals(HttpStatus.OK,
+						refresh(cookieNamed(resetResponse, "inatrace-refreshToken")).getStatusCode());
+				assertEquals(HttpStatus.UNAUTHORIZED, login(user.getEmail(), PASSWORD).getStatusCode());
+				assertEquals(HttpStatus.OK, login(user.getEmail(), OTHER_PASSWORD).getStatusCode());
+			} finally {
+				start.countDown();
+				executor.shutdownNow();
+				assertTrue(executor.awaitTermination(20, TimeUnit.SECONDS));
+				cleanupAuthUser(user.getId());
+			}
+		}
 	}
 
 	@Test
@@ -510,6 +763,74 @@ class UserAuthApiTest extends AbstractMySqlIntegrationTest {
 		return new TransactionTemplate(txManager);
 	}
 
+	private List<ResponseEntity<String>> concurrentLogins(String email, int count) throws Exception {
+		ExecutorService executor = Executors.newFixedThreadPool(count);
+		CountDownLatch ready = new CountDownLatch(count);
+		CountDownLatch start = new CountDownLatch(1);
+		try {
+			List<Future<ResponseEntity<String>>> futures = new ArrayList<>();
+			for (int i = 0; i < count; i++) {
+				futures.add(executor.submit(() -> {
+					ready.countDown();
+					if (!start.await(20, TimeUnit.SECONDS)) {
+						throw new IllegalStateException("timed out waiting for concurrent logins");
+					}
+					return login(email, PASSWORD);
+				}));
+			}
+			assertTrue(ready.await(20, TimeUnit.SECONDS), "login workers should be ready");
+			start.countDown();
+			List<ResponseEntity<String>> responses = new ArrayList<>();
+			for (Future<ResponseEntity<String>> future : futures) {
+				responses.add(future.get(45, TimeUnit.SECONDS));
+			}
+			return responses;
+		} finally {
+			start.countDown();
+			executor.shutdownNow();
+			assertTrue(executor.awaitTermination(20, TimeUnit.SECONDS), "login workers should finish");
+		}
+	}
+
+	private void cleanupAuthUser(Long userId) {
+		tx().executeWithoutResult(s -> {
+			em.createQuery("delete from AuthenticationToken t where t.user.id = :uid")
+					.setParameter("uid", userId).executeUpdate();
+			em.createQuery("delete from ConfirmationToken t where t.user.id = :uid")
+					.setParameter("uid", userId).executeUpdate();
+			User user = em.find(User.class, userId);
+			if (user != null) {
+				em.remove(user);
+			}
+		});
+	}
+
+	private Long seedRefreshWithExpiration(Long userId, Instant expiration) {
+		return tx().execute(s -> {
+			AuthenticationToken session = new AuthenticationToken(em.find(User.class, userId));
+			session.setToken(UUID.randomUUID().toString());
+			session.setExpiration(expiration);
+			em.persist(session);
+			em.flush();
+			return session.getId();
+		});
+	}
+
+	private String seedLegacyRefresh(Long userId) {
+		return tx().execute(s -> {
+			User managed = em.find(User.class, userId);
+			String raw = signedJwt(managed, null, tokenService.getRefreshTokenExpirationSec(), jwtSigningKey);
+			AuthenticationToken session = new AuthenticationToken(managed);
+			try {
+				session.updateToken(raw, tokenService.getRefreshTokenExpirationSec());
+			} catch (Exception e) {
+				throw new IllegalStateException("could not create legacy token", e);
+			}
+			em.persist(session);
+			return "inatrace-refreshToken=" + raw;
+		});
+	}
+
 	/** Creates a committed user, so the request thread can see it. Emails are unique per call. */
 	private User seedUser(UserStatus status, UserRole role) {
 		String email = "u-" + UUID.randomUUID() + "@test.invalid";
@@ -581,6 +902,29 @@ class UserAuthApiTest extends AbstractMySqlIntegrationTest {
 	private ResponseEntity<String> login(String email, String password) {
 		return exchange(HttpMethod.POST, "/api/user/login",
 				Map.of("username", email, "password", password), null);
+	}
+
+	private ResponseEntity<String> refresh(String cookie) {
+		return exchange(HttpMethod.POST, "/api/user/refresh_authentication", null, cookie);
+	}
+
+	private String asAccessCookie(String refreshCookie) {
+		return "inatrace-accessToken=" + refreshCookie.split("=", 2)[1];
+	}
+
+	/** Issue a JWT directly to characterize old and invalid tokens independently of the service. */
+	private String signedJwt(User user, String purpose, int expirationSeconds, String key) {
+		Instant now = Instant.now();
+		JWTCreator.Builder builder = JWT.create().withSubject(user.getEmail())
+				.withIssuedAt(now.minusSeconds(120))
+				.withNotBefore(now.minusSeconds(120))
+				.withExpiresAt(now.plusSeconds(expirationSeconds))
+				.withClaim("nme", user.getName())
+				.withClaim("snm", user.getSurname())
+				.withClaim("rle", user.getRole().toString())
+				.withClaim("dbi", user.getId());
+		if (purpose != null) builder.withClaim("token_use", purpose);
+		return builder.sign(Algorithm.HMAC256(key));
 	}
 
 	/** Logs the user in and returns the access cookie as a Cookie header value. */

@@ -4,6 +4,7 @@ import com.abelium.inatrace.db.entities.common.User;
 import com.abelium.inatrace.security.service.CustomUserDetails;
 import com.abelium.inatrace.types.UserRole;
 import com.auth0.jwt.JWT;
+import com.auth0.jwt.JWTCreator;
 import com.auth0.jwt.JWTVerifier;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.interfaces.DecodedJWT;
@@ -20,11 +21,16 @@ import java.sql.Date;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Optional;
+import java.util.UUID;
 
 @Lazy
 @Service
 public class TokenService extends BaseService {
 	 protected final Logger logger = LoggerFactory.getLogger(TokenService.class);
+
+	private static final String TOKEN_USE_CLAIM = "token_use";
+	private static final String ACCESS_TOKEN_USE = "access";
+	private static final String REFRESH_TOKEN_USE = "refresh";
 
     @Value("${INATrace.auth.accessTokenCookieName}")
     private String accessTokenCookieName;
@@ -51,7 +57,10 @@ public class TokenService extends BaseService {
     }
     
 	public CustomUserDetails validateToken(String token) {
+		// Legacy access and refresh JWTs are indistinguishable: accepting untyped JWTs
+		// here would also accept a refresh token after its stored session is revoked.
 		JWTVerifier verifier = JWT.require(Algorithm.HMAC256(jwtSigningKey))
+			.withClaim(TOKEN_USE_CLAIM, ACCESS_TOKEN_USE)
 			.build();
 		try {
 			DecodedJWT dct = verifier.verify(token);
@@ -68,18 +77,18 @@ public class TokenService extends BaseService {
 	}
 
     public String createAccessToken(User user) {
-    	return createToken(user, accessTokenExpirationSec);
+		return createToken(user, accessTokenExpirationSec, ACCESS_TOKEN_USE, null);
     }
     	    	
     public String createRefreshToken(User user) {
-    	return createToken(user, refreshTokenExpirationSec);
+        return createToken(user, refreshTokenExpirationSec, REFRESH_TOKEN_USE, UUID.randomUUID().toString());
     }
-	
-    public String createToken(User user, int expirationSec) {
+
+    private String createToken(User user, int expirationSec, String purpose, String tokenId) {
     	Instant now = Instant.now();
     	Instant exp = now.plusSeconds(expirationSec);
     	
-    	String token = JWT.create().withSubject(user.getEmail()) // username
+		JWTCreator.Builder builder = JWT.create().withSubject(user.getEmail()) // username
 		   .withExpiresAt(Date.from(exp))
 		   .withIssuedAt(Date.from(now))
 		   .withNotBefore(Date.from(now))
@@ -87,8 +96,11 @@ public class TokenService extends BaseService {
 		   .withClaim("snm", user.getSurname())
 		   .withClaim("rle", user.getRole().toString())
 		   .withClaim("dbi", user.getId())
-		   .sign(Algorithm.HMAC256(jwtSigningKey));
-    	return token;
+		   .withClaim(TOKEN_USE_CLAIM, purpose);
+		if (tokenId != null) {
+			builder.withJWTId(tokenId);
+		}
+		return builder.sign(Algorithm.HMAC256(jwtSigningKey));
     }
     
     public String createAccessCookie(String accessToken) {
