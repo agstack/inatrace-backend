@@ -49,7 +49,7 @@ documentation site. Read it for background, verify before relying on it.
 
 ## Contribution
 
-Project INATrace welcomes contribution from everyone. See CONTRIBUTING.md for help getting started, and [CONTRIBUTORS.md](CONTRIBUTORS.md) for the people who have built it.
+Project INATrace welcomes contribution from everyone. See [CONTRIBUTING.md](CONTRIBUTING.md) for help getting started, and [CONTRIBUTORS.md](CONTRIBUTORS.md) for the people who have built it.
 Questions and discussion go to the [INATrace mailing list](https://lists.agstack.org/g/inatrace).
 
 ## License 
