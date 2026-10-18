@@ -1,5 +1,6 @@
 package com.abelium.inatrace.components.common;
 
+import com.abelium.inatrace.configuration.ApiRequestObservability;
 import com.abelium.inatrace.db.entities.common.User;
 import com.abelium.inatrace.security.service.CustomUserDetails;
 import com.abelium.inatrace.types.UserRole;
@@ -71,7 +72,7 @@ public class TokenService extends BaseService {
 					UserRole.valueOf(dct.getClaim("rle").asString()));
 			return cud;
 		} catch (Exception e) {
-			logger.debug("JWT validation failed", e);
+			logger.debug("JWT validation failed request_id={}", ApiRequestObservability.requestId());
 		}
 		return null;
 	}

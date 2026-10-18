@@ -1,5 +1,8 @@
 package com.abelium.inatrace.components.currencies;
 
+import com.abelium.inatrace.configuration.ApiRequestObservability;
+import com.abelium.inatrace.configuration.SafeExceptionLog;
+
 import com.abelium.inatrace.components.codebook.currencies.CurrencyTypeService;
 import com.abelium.inatrace.components.common.BaseService;
 import com.abelium.inatrace.components.currencies.api.ApiCurrencyRatesResponse;
@@ -99,14 +102,14 @@ public class CurrencyService extends BaseService {
     }
 
     public void fetchRates(Date date) {
-
+        String requestId = ApiRequestObservability.requestId();
         String isoDate = DateTimeFormatter.ISO_LOCAL_DATE.format(date.toInstant().atZone(ZoneId.of("GMT")));
         WebClient webClient = WebClient.create("http://api.exchangeratesapi.io/v1/" + isoDate + "?access_key=" + apiKey + "&base=EUR");
         ApiCurrencyRatesResponse apiCurrencyRatesResponse = webClient
                 .get()
                 .accept(MediaType.APPLICATION_JSON)
                 .retrieve().bodyToMono(ApiCurrencyRatesResponse.class)
-                .doOnError(e -> logger.error("Failed to fetch exchange rate data: {}", e.getMessage()))
+                .doOnError(e -> SafeExceptionLog.error(logger, "Failed to fetch exchange rate data", e, requestId))
                 .onErrorReturn(new ApiCurrencyRatesResponse())
                 .block();
         if (apiCurrencyRatesResponse != null && apiCurrencyRatesResponse.isSuccess()) {
