@@ -1,5 +1,7 @@
 package com.abelium.inatrace.components.stockorder;
 
+import com.abelium.inatrace.configuration.SafeExceptionLog;
+
 import com.abelium.inatrace.api.ApiBaseEntity;
 import com.abelium.inatrace.api.ApiPaginatedList;
 import com.abelium.inatrace.api.ApiPaginatedRequest;
@@ -1816,7 +1818,7 @@ public class StockOrderService extends BaseService {
         try {
            return mapper.writer().writeValueAsBytes(rootFeatureCollection);
         } catch (JsonProcessingException e) {
-            logger.error("Error while generating geoJson file", e);
+            SafeExceptionLog.error(logger, "Error while generating geoJson file", e);
             throw new ApiException(ApiStatus.ERROR, "Error while generating geojson file");
         }
     }

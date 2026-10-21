@@ -1,0 +1,2 @@
+# Java sources already use both LF and CRLF; treat CR at end of line as valid.
+*.java whitespace=cr-at-eol
