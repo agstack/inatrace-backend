@@ -38,7 +38,7 @@ The Docker image contains no configuration: mount the file at
 
 ## Security
 
-- `INATrace.auth.jwtSigningKey`: `sign` (Key for signing JWT tokens)
+- `INATrace.auth.jwtSigningKey`: *(no default)* Key for signing JWT tokens. Use a random secret of at least 32 bytes, for example the output of `openssl rand -base64 48`, and a different one for each installation. The backend refuses to start if the key is missing or shorter than 32 bytes.
 - `INATrace.requestLog.token`: `token` (Key for authorizing log requests)
 
 ## Storage

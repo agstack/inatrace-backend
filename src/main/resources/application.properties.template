@@ -108,6 +108,8 @@ INATrace.auth.accessTokenCookieName = inatrace-accessToken
 INATrace.auth.accessTokenExpirationSec = 3600
 INATrace.auth.refreshTokenCookieName = inatrace-refreshToken
 INATrace.auth.refreshTokenExpirationSec = 300
+# Random secret of at least 32 bytes, unique per installation (e.g. `openssl rand -base64 48`).
+# The backend refuses to start without it.
 INATrace.auth.jwtSigningKey = 
 # BCrypt work factor. Keep this at 10 or higher outside of test profiles.
 INATrace.auth.bcryptStrength = 10

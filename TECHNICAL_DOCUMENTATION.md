@@ -94,7 +94,7 @@ each component.
 - **INATRACE_EMAILCONFIRMATION_URL**: Specifies the URL to use for email confirmation links
 - **INATRACE_PASSWORDRESET_URL**: Specifies the URL to use for password reset links
 - **INATRACE_EXCHANGERATE_APIKEY**: Specifies the API key for the Exchange Rates API
-- **INATRACE_AUTH_JWTSIGNINGKEY**: Specifies the signing key for JWT tokens
+- **INATRACE_AUTH_JWTSIGNINGKEY**: Specifies the signing key for JWT tokens (random, at least 32 bytes; required)
 - **INATRACE_REQUESTLOG_TOKEN**: Specifies the token to use for public request logging
 - **BEYCO_OAUTH2_CLIENTID**: Specifies the OAuth2 client ID for Beyco API authentication
 - **BEYCO_OAUTH2_CLIENTSECRET**: Specifies the OAuth2 client secret for Beyco API authentication
