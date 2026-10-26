@@ -194,6 +194,9 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 				.andReturn();
 
 		assertEquals(200, result.getResponse().getStatus(), body(result));
+		assertTrue(result.getResponse().getContentType().startsWith(MediaType.APPLICATION_JSON_VALUE),
+				"Farmer lists must retain their JSON response contract");
+		assertTrue(body(result).contains("\"status\":\"OK\""), body(result));
 		assertTrue(body(result).contains(FARMER_SURNAME),
 				"Acme's own farmer should be listed for Acme: " + body(result));
 	}
@@ -263,6 +266,12 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 				.andReturn();
 
 		assertEquals(200, result.getResponse().getStatus(), body(result));
+		assertTrue(result.getResponse().getContentType().startsWith(MediaType.APPLICATION_JSON_VALUE),
+				"Plot lists must retain their JSON response contract");
+		assertTrue(body(result).contains("\"status\":\"OK\""), body(result));
+		assertTrue(body(result).contains("\"plotName\":\"" + PLOT_NAME + "\""), body(result));
+		assertTrue(body(result).contains("\"geoId\":\"" + PLOT_GEO_ID + "\""), body(result));
+		assertTrue(body(result).contains("\"coordinates\":"), body(result));
 		assertTrue(body(result).contains(PLOT_NAME), body(result));
 		assertTrue(body(result).contains(PLOT_GEO_ID), body(result));
 	}

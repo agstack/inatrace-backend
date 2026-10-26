@@ -8,6 +8,13 @@ Resources are annotated with Swagger annotations. After the application is start
 
 Both live at the root of the server rather than under `/api`. Every endpoint the application itself defines is published under `/api` — `PrefixedApiRequestHandler` adds that prefix to the mappings in the `com.abelium` packages — but springdoc's own endpoints are not touched by it. `http://localhost:8080/api/swagger-ui.html` does not exist.
 
+The reviewed API contract is stored in `docs/api-contract/openapi.json`. The
+test suite exports the normalized runtime document and its provenance manifest
+to `target/api-contract/`, then compares it to that baseline. Normal verification
+never updates the reviewed file. For an intentionally reviewed API change, run
+`mvn -Dapi.contract.update=true -Dtest=OpenApiContractTest test`, inspect the
+baseline diff, and include the consumer compatibility review in the change.
+
 ### Postman
 
 Using Postman, you can create a collection from the Swagger definition.

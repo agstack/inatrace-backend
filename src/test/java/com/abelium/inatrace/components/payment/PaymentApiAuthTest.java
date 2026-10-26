@@ -316,6 +316,9 @@ class PaymentApiAuthTest extends AbstractMySqlIntegrationTest {
         MvcResult allowed = mockMvc.perform(get(path).cookie(ownerSession)).andReturn();
         String body = allowed.getResponse().getContentAsString();
         assertEquals(200, allowed.getResponse().getStatus(), path + ": " + body);
+        assertTrue(allowed.getResponse().getContentType().startsWith(MediaType.APPLICATION_JSON_VALUE),
+                path + " must retain its JSON response contract");
+        assertTrue(body.contains("\"status\":\"OK\""), path + ": " + body);
         assertTrue(body.contains(marker), path + ": " + body);
     }
 
