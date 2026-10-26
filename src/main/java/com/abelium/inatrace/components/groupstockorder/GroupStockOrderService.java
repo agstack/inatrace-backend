@@ -77,9 +77,11 @@ public class GroupStockOrderService extends BaseService {
                 "SO.deliveryTime, PO.updateTimestamp, SO.isAvailable, FP.name, P.name "
         );
 
-        // Add ORDER BY query string to sort on requested field and direction
+        // Add ORDER BY query string to sort on requested field and direction.
+        // The column comes from the request, so it is mapped to a known alias instead of being
+        // appended as is.
         queryString.append("ORDER BY ");
-        queryString.append(request.sortBy);
+        queryString.append(orderByColumn(request.sortBy));
         queryString.append(" ");
         queryString.append(request.sort.toString());
 
@@ -98,6 +100,20 @@ public class GroupStockOrderService extends BaseService {
                 () -> query.setFirstResult(request.offset).setMaxResults(request.limit).getResultList(),
                 () -> count
         );
+    }
+
+    /**
+     * Maps the requested sort key to one of the aliases defined in the SELECT clause. Unknown
+     * values fall back to the default sort ({@code id}, the internal LOT number).
+     */
+    static String orderByColumn(String sortBy) {
+        if (sortBy == null) {
+            return "id";
+        }
+        return switch (sortBy) {
+            case "date", "id", "noOfSacs", "deliveryTime", "updateTimestamp" -> sortBy;
+            default -> "id";
+        };
     }
 
 }
