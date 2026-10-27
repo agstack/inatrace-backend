@@ -20,6 +20,7 @@ import jakarta.persistence.TypedQuery;
 import jakarta.transaction.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Duration;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Date;
@@ -37,6 +38,12 @@ public class CurrencyService extends BaseService {
 
     @Value("${INAtrace.exchangerate.apiKey}")
     private String apiKey;
+
+    @Value("${INAtrace.exchangerate.baseURL:http://api.exchangeratesapi.io/v1}")
+    private String baseURL;
+
+    @Value("${INAtrace.exchangerate.requestTimeoutMs:30000}")
+    private long requestTimeoutMs;
 
     public BigDecimal convertFromEur(String to, BigDecimal value) {
         return value.multiply(em.createNamedQuery("CurrencyPair.latestRate", BigDecimal.class).setParameter(CURRENCY, to).getResultList().get(0));
@@ -104,15 +111,19 @@ public class CurrencyService extends BaseService {
     public void fetchRates(Date date) {
         String requestId = ApiRequestObservability.requestId();
         String isoDate = DateTimeFormatter.ISO_LOCAL_DATE.format(date.toInstant().atZone(ZoneId.of("GMT")));
-        WebClient webClient = WebClient.create("http://api.exchangeratesapi.io/v1/" + isoDate + "?access_key=" + apiKey + "&base=EUR");
+        WebClient webClient = WebClient.create(baseURL);
         ApiCurrencyRatesResponse apiCurrencyRatesResponse = webClient
                 .get()
+                .uri(builder -> builder.pathSegment(isoDate).queryParam("access_key", apiKey).queryParam("base", "EUR").build())
                 .accept(MediaType.APPLICATION_JSON)
                 .retrieve().bodyToMono(ApiCurrencyRatesResponse.class)
-                .doOnError(e -> SafeExceptionLog.error(logger, "Failed to fetch exchange rate data", e, requestId))
+                .timeout(Duration.ofMillis(requestTimeoutMs))
+                .doOnError(e -> SafeExceptionLog.error(logger, "Failed to fetch historical exchange rates", e, requestId))
                 .onErrorReturn(new ApiCurrencyRatesResponse())
                 .block();
-        if (apiCurrencyRatesResponse != null && apiCurrencyRatesResponse.isSuccess()) {
+        if (validRates(apiCurrencyRatesResponse)
+                && date.toInstant().atZone(ZoneId.of("GMT")).toLocalDate().equals(
+                        apiCurrencyRatesResponse.getDate().toInstant().atZone(ZoneId.of("GMT")).toLocalDate())) {
             Map<String, BigDecimal> rates = apiCurrencyRatesResponse.getRates();
             Date current = apiCurrencyRatesResponse.getDate();
 
@@ -131,6 +142,12 @@ public class CurrencyService extends BaseService {
                 }
             }
         }
+    }
+
+    public static boolean validRates(ApiCurrencyRatesResponse response) {
+        return response != null && response.isSuccess() && "EUR".equals(response.getBase()) && response.getDate() != null
+                && response.getRates() != null && !response.getRates().isEmpty()
+                && response.getRates().values().stream().allMatch(rate -> rate != null && rate.signum() > 0);
     }
 
     private TypedQuery<BigDecimal> rateAtDateQuery(String currency, Date date) {
