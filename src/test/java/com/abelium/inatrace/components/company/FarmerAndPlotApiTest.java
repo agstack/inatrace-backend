@@ -2,6 +2,13 @@ package com.abelium.inatrace.components.company;
 
 import com.abelium.inatrace.support.AbstractMySqlIntegrationTest;
 import com.abelium.inatrace.components.common.TokenService;
+import com.abelium.inatrace.components.agstack.AgStackClientService;
+import com.abelium.inatrace.components.agstack.AgStackClientTokenManager;
+import com.sun.net.httpserver.HttpServer;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import org.slf4j.LoggerFactory;
 import com.abelium.inatrace.db.entities.codebook.ProductType;
 import com.abelium.inatrace.db.entities.common.Address;
 import com.abelium.inatrace.db.entities.common.BankInformation;
@@ -36,14 +43,17 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -104,6 +114,7 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 	@Autowired private MockMvc mockMvc;
 	@Autowired private EntityManager em;
 	@Autowired private TokenService tokenService;
+	@Autowired private CompanyService companyService;
 
 	@Value("${INATrace.auth.accessTokenCookieName}")
 	private String accessCookieName;
@@ -324,6 +335,93 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 
 		assertRefused(result, "refreshing the GeoID of another tenant's plot");
 		assertDoesNotLeak(result, PLOT_NAME, PLOT_GEO_ID);
+	}
+
+	@Test
+	void geoIdRefreshRecoversAfterProviderFailureAndRejectsForeignTenant() throws Exception {
+		AtomicInteger calls = new AtomicInteger();
+		AtomicInteger loginCalls = new AtomicInteger();
+		HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		server.createContext("/login", exchange -> {
+			loginCalls.incrementAndGet();
+			byte[] body = ("{\"access_token\":\"test-token-" + loginCalls.get() + "\"}")
+					.getBytes(StandardCharsets.UTF_8);
+			exchange.getResponseHeaders().set("Content-Type", "application/json");
+			exchange.sendResponseHeaders(200, body.length);
+			try (var output = exchange.getResponseBody()) { output.write(body); }
+		});
+		server.createContext("/register-field-boundary", exchange -> {
+			boolean fail = calls.incrementAndGet() == 1;
+			byte[] body = (fail ? "{\"error\":\"synthetic-error\"}" : "{\"Geo Id\":\"recovered-geo\"}")
+					.getBytes(StandardCharsets.UTF_8);
+			exchange.getResponseHeaders().set("Content-Type", "application/json");
+			exchange.sendResponseHeaders(fail ? 401 : 200, body.length);
+			try (var output = exchange.getResponseBody()) { output.write(body); }
+		});
+		server.start();
+		String url = "http://127.0.0.1:" + server.getAddress().getPort();
+		AgStackClientTokenManager tokens = new AgStackClientTokenManager();
+		ReflectionTestUtils.setField(tokens, "baseURL", url);
+		ReflectionTestUtils.setField(tokens, "email", "synthetic@example.test");
+		ReflectionTestUtils.setField(tokens, "password", "synthetic-password");
+		AgStackClientService client = new AgStackClientService(tokens);
+		ReflectionTestUtils.setField(client, "baseURL", url);
+		Object previousClient = ReflectionTestUtils.getField(companyService, "agStackClientService");
+		Logger logger = (Logger) LoggerFactory.getLogger(CompanyService.class);
+		ListAppender<ILoggingEvent> logs = new ListAppender<>();
+		logs.start();
+		logger.addAppender(logs);
+		try {
+			ReflectionTestUtils.setField(companyService, "agStackClientService", client);
+			Plot plot = em.find(Plot.class, acmePlotId);
+			plot.setGeoId(null);
+			em.flush();
+			em.clear();
+			String path = "/api/company/userCustomers/" + acmeFarmerId + "/plots/" + acmePlotId + "/updateGeoID";
+			assertRefused(mockMvc.perform(post(path).cookie(bobSession)).andReturn(), "foreign plot");
+			assertEquals(0, calls.get());
+			assertEquals(0, loginCalls.get());
+			MvcResult failedRefresh = mockMvc.perform(post(path).cookie(aliceSession)).andReturn();
+			assertEquals(200, failedRefresh.getResponse().getStatus());
+			assertFalse(body(failedRefresh).contains("synthetic-error"));
+			for (String marker : List.of("synthetic-error", "synthetic@example.test", "synthetic-password", "test-token-1")) {
+				assertFalse(body(failedRefresh).contains(marker));
+				assertTrue(logs.list.stream().noneMatch(event -> event.getFormattedMessage().contains(marker)));
+			}
+			em.flush();
+			em.clear();
+			assertNull(em.find(Plot.class, acmePlotId).getGeoId());
+			assertEquals(200, mockMvc.perform(post(path).cookie(aliceSession)).andReturn().getResponse().getStatus());
+			em.flush();
+			em.clear();
+			assertEquals("recovered-geo", em.find(Plot.class, acmePlotId).getGeoId());
+			assertEquals(2, calls.get());
+			assertEquals(2, loginCalls.get(), "401 must cause a new login on the next request");
+
+			calls.set(0);
+			long before = plotCount(acmeFarmerId);
+			String createPath = "/api/company/userCustomers/" + acmeFarmerId + "/plots/add";
+			MvcResult failedCreate = mockMvc.perform(post(createPath).cookie(aliceSession)
+					.contentType(MediaType.APPLICATION_JSON).content(newPolygonPlotJson("Failed boundary"))).andReturn();
+			assertEquals(200, failedCreate.getResponse().getStatus());
+			em.flush();
+			em.clear();
+			assertEquals(before + 1, plotCount(acmeFarmerId));
+			assertNull(importedPlot("Failed boundary").getGeoId());
+			MvcResult successfulCreate = mockMvc.perform(post(createPath).cookie(aliceSession)
+					.contentType(MediaType.APPLICATION_JSON).content(newPolygonPlotJson("Successful boundary"))).andReturn();
+			assertEquals(200, successfulCreate.getResponse().getStatus());
+			em.flush();
+			em.clear();
+			assertEquals(before + 2, plotCount(acmeFarmerId));
+			assertEquals("recovered-geo", importedPlot("Successful boundary").getGeoId());
+			assertEquals(2, calls.get());
+		} finally {
+			logger.detachAppender(logs);
+			logs.stop();
+			ReflectionTestUtils.setField(companyService, "agStackClientService", previousClient);
+			server.stop(0);
+		}
 	}
 
 	@Test
@@ -772,6 +870,13 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 				+ "{\"latitude\":-1.9500000,\"longitude\":30.0700000},"
 				+ "{\"latitude\":-1.9510000,\"longitude\":30.0710000}"
 				+ "]}";
+	}
+
+	private String newPolygonPlotJson(String plotName) {
+		return newPlotJson(plotName).replace(
+				"{\"latitude\":-1.9510000,\"longitude\":30.0710000}]}",
+				"{\"latitude\":-1.9510000,\"longitude\":30.0710000},"
+						+ "{\"latitude\":-1.9520000,\"longitude\":30.0720000}]}");
 	}
 
 	/** A real access cookie, issued the way the login endpoint issues it. */

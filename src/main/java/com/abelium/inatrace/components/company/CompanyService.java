@@ -1440,20 +1440,19 @@ public class CompanyService extends BaseService {
 			if (!CollectionUtils.isEmpty(response.getMatchedGeoIDs())) {
                 // On errors API returns additional message
                 if (response.getMessage() != null) {
-                    logger.error(response.getMessage());
+                    logger.warn("AgStack reported a matched plot boundary");
                 }
 				return response.getMatchedGeoIDs().stream().findFirst().orElse(null);
 			} else {
                 // On errors API returns additional message
                 if (response.getGeoID() == null && response.getMessage() != null) {
-                    logger.error(response.getMessage());
+                    logger.warn("AgStack did not return a plot GeoID");
                 }
 				return response.getGeoID();
 			}
 
 		} catch (Exception e) {
-            logger.error(e.getMessage());
-			logger.error("Error while generating plot geoid");
+			logger.error("Error while generating plot geoid (type={})", e.getClass().getSimpleName());
 		}
 
 		return null;
