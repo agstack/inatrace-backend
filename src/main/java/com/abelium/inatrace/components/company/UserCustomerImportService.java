@@ -329,15 +329,11 @@ public class UserCustomerImportService extends BaseService {
                 successful++;
             }
 
-            // Agriculteurs existants (ajout de parcelles)
+            // Farmers already on file: their plots are attached to the farmer that is already
+            // there. A failure here is reported to the caller rather than dropped, so an import
+            // never claims to have succeeded while losing plots.
             for (ApiUserCustomer duplicate : duplicates) {
-                try {
-                    companyService.addPlotsToExistingFarmer(duplicate);
-                } catch (Exception e) {
-                    logger.error("Failed to add plots to farmer: "
-                            + duplicate.getFarmerCompanyInternalId(), e);
-                    // Gérer l'erreur si nécessaire
-                }
+                companyService.addPlotsToExistingFarmer(duplicate);
             }
             response.setDuplicates(duplicates);
         }
