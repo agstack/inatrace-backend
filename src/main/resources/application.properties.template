@@ -149,6 +149,9 @@ beyco.oauth2.clientSecret =
 beyco.oauth2.url =
 
 beyco.integration.url =
+# Connection and response deadlines in milliseconds.
+beyco.integration.connectTimeoutMs = 30000
+beyco.integration.readTimeoutMs = 30000
 
 # AgStack integration
 INATrace.agstack.email =
