@@ -105,6 +105,8 @@ each component.
 - **INATRACE_AGSTACK_LOGINBASEURL**: Specifies the base URL for the AgStack login API
 - **INATRACE_AGSTACK_EMAIL**: Specifies the email address to use for AgStack authentication
 - **INATRACE_AGSTACK_PASSWORD**: Specifies the password to use for AgStack authentication
+- **INATRACE_GEOID_BASEURL**: Specifies the base URL of the FAO GeoID registry used to resolve the GeoID column of a farmer import, e.g. `https://data.apps.fao.org/geoid`; leave empty to skip the lookup
+- **INATRACE_GEOID_TIMEOUTSECONDS**: Specifies how long a GeoID lookup may take before the import falls back to the row's own coordinates (default 15)
 
 ### 3.2 Frontend Configuration
 - **ENVIRONMENT_NAME**: Specifies the name of the environment in which the application is running (TEST, PROD, or DEMO)

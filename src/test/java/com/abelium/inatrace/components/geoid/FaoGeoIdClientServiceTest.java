@@ -60,7 +60,6 @@ class FaoGeoIdClientServiceTest {
 
 		service = new FaoGeoIdClientService();
 		ReflectionTestUtils.setField(service, "baseURL", "http://127.0.0.1:" + server.getAddress().getPort());
-		ReflectionTestUtils.setField(service, "enabled", true);
 		ReflectionTestUtils.setField(service, "timeoutSeconds", 5L);
 	}
 
@@ -92,8 +91,8 @@ class FaoGeoIdClientServiceTest {
 	}
 
 	@Test
-	void disabledRegistry_isNotCalledAtAll() {
-		ReflectionTestUtils.setField(service, "enabled", false);
+	void unconfiguredRegistry_isNotCalledAtAll() {
+		ReflectionTestUtils.setField(service, "baseURL", "");
 		requests.set(0);
 
 		assertNull(service.resolveGeoJson(VALID_GEOID));

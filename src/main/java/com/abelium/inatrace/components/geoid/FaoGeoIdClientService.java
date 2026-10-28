@@ -1,5 +1,6 @@
 package com.abelium.inatrace.components.geoid;
 
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,6 +20,9 @@ import java.util.regex.Pattern;
  * identifier back to the same boundary. This client only <em>resolves</em>
  * ({@code GET /{geoid}} &rarr; GeoJSON). Minting new GeoIDs publishes farmer boundaries to a public
  * registry and is deliberately not done here.</p>
+ *
+ * <p>The integration is optional: with {@code INATrace.geoid.baseURL} left empty no request is ever
+ * made and the farmer import falls back to the coordinates the import row carried.</p>
  */
 @Service
 public class FaoGeoIdClientService {
@@ -29,11 +33,8 @@ public class FaoGeoIdClientService {
 	private static final Pattern GEOID_FORMAT = Pattern.compile(
 			"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", Pattern.CASE_INSENSITIVE);
 
-	@Value("${INATrace.geoid.baseURL:https://data.apps.fao.org/geoid}")
+	@Value("${INATrace.geoid.baseURL:}")
 	private String baseURL;
-
-	@Value("${INATrace.geoid.enabled:true}")
-	private boolean enabled;
 
 	@Value("${INATrace.geoid.timeoutSeconds:15}")
 	private long timeoutSeconds;
@@ -46,14 +47,14 @@ public class FaoGeoIdClientService {
 	/**
 	 * Resolves a GeoID to its GeoJSON Feature.
 	 *
-	 * @return the GeoJSON, or {@code null} when the registry is disabled, the identifier is
+	 * @return the GeoJSON, or {@code null} when the registry is not configured, the identifier is
 	 *         malformed or unknown, or the registry could not be reached. Callers fall back to any
 	 *         coordinates the row carried rather than failing the import.
 	 */
 	public String resolveGeoJson(String geoId) {
 
-		if (!enabled) {
-			logger.debug("GeoID resolution is disabled; ignoring {}", geoId);
+		if (StringUtils.isBlank(baseURL)) {
+			logger.debug("GeoID registry is not configured; ignoring {}", geoId);
 			return null;
 		}
 		if (!isGeoIdFormat(geoId)) {
