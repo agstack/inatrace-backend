@@ -56,14 +56,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Real, end-to-end verification that a genuine farmer-import upload - through the actual HTTP
- * endpoints, against the live "inatrace_local" database - accepts valid plot geodata and rejects
- * invalid geodata, using the real shipped "other countries" template as the base file (same one
- * verified column-for-column in {@link FarmerImportTemplateAssetTest}).
+ * End-to-end verification that a genuine farmer-import upload - through the real HTTP endpoints,
+ * against the MySQL that {@link AbstractMySqlIntegrationTest} starts - accepts valid plot geodata and
+ * rejects invalid geodata, using the real shipped "other countries" template as the base file (the
+ * same one verified column-for-column in {@link FarmerImportTemplateAssetTest}).
  *
  * <p>All fixture data (country/user/company/product type/value chain and anything the import
- * creates) is tagged with a unique run id and removed in {@link #cleanup()}, so this test leaves
- * the shared local database exactly as it found it.
+ * creates) is tagged with a unique run id and removed in {@link #cleanup()}, so the tests that
+ * share the container do not see each other's farmers.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")

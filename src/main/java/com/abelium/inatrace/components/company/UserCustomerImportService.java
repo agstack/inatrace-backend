@@ -121,15 +121,12 @@ public class UserCustomerImportService extends BaseService {
         // Rows are grouped into one farmer only when they share a non-blank company-internal ID.
         // The ID column is optional and is empty in most real files, so rows without one are each
         // their own farmer - keying the map on null would merge the whole file into a single farmer.
-        Map<String, ApiUserCustomer> farmersMap = new HashMap<>(); // Clé: internalId
+        Map<String, ApiUserCustomer> farmersMap = new HashMap<>();
         List<ApiUserCustomer> farmers = new ArrayList<>();
 
         // A GeoID always resolves to the same boundary, so resolve each distinct one only once per
         // file rather than once per row that references it.
         Map<String, List<ApiPlot>> geoIdCache = new HashMap<>();
-
-        //Save the table of internal id of new farmers
-//        List<String> tabInternalId = new ArrayList<>();
 
         // company product types (first two)
         List<ApiProductType> companyProductTypes = readCompanyProductTypes(companyId, language);
@@ -195,9 +192,8 @@ public class UserCustomerImportService extends BaseService {
                 String internalId = getStringOrNumeric(row.getCell(0));
                 boolean groupable = internalId != null && !internalId.isBlank();
 
-                // Vérifier si l'agriculteur est déjà dans la map
+                // A farmer already seen in this file gains the plot of this row instead of a twin
                 if (groupable && farmersMap.containsKey(internalId)) {
-                    // Ajouter la nouvelle parcelle à l'agriculteur existant
                     ApiUserCustomer existingFarmer = farmersMap.get(internalId);
                     addPlotsToFarmer(existingFarmer,
                             createUserGeoData(row, companyProductTypes.get(0).getId(), geoIdCache));
@@ -323,7 +319,7 @@ public class UserCustomerImportService extends BaseService {
         int successful = 0;
 
         if (response.getValidationErrors().isEmpty()) {
-            // Nouveaux agriculteurs
+            // Farmers that are new to the company
             for (ApiUserCustomer apiUserCustomer : toAdd) {
                 companyService.addUserCustomer(companyId, apiUserCustomer, authUser, language);
                 successful++;
