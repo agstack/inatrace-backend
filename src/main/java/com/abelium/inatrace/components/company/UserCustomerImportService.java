@@ -381,12 +381,21 @@ public class UserCustomerImportService extends BaseService {
             Gender gender = toGender(koboFarmer.get(KoboExportReader.Concept.GENDER));
 
             if (country == null || gender == null) {
-                ApiUserCustomerImportRowValidationError rowValidation =
-                        new ApiUserCustomerImportRowValidationError(koboFarmer.getRowNum());
-                rowValidation.getColumnValidationErrors().add(new ApiUserCustomerImportColumnValidationError(
-                        "row " + (koboFarmer.getRowNum() + 1),
-                        UserCustomerImportCellErrorType.INVALID_VALUE));
-                response.getValidationErrors().add(rowValidation);
+                response.getValidationErrors().add(
+                        rowError(koboFarmer.getRowNum(), UserCustomerImportCellErrorType.INVALID_VALUE));
+                continue;
+            }
+
+            List<ApiPlot> plots;
+            try {
+                plots = koboPlots(koboFarmer, firstProductType.getId());
+            } catch (ApiException e) {
+                // The row is rejected rather than imported without its plots; because the response
+                // then carries validation errors, nothing at all from this file is persisted.
+                logger.warn("Row {} of the KoboToolbox export carries unreadable geo data: {}",
+                        koboFarmer.getRowNum() + 1, e.getMessage());
+                response.getValidationErrors().add(
+                        rowError(koboFarmer.getRowNum(), UserCustomerImportCellErrorType.INVALID_GEODATA));
                 continue;
             }
 
@@ -413,7 +422,7 @@ public class UserCustomerImportService extends BaseService {
             apiUserCustomer.getFarm().setFarmPlantInformationList(new ArrayList<>());
             apiUserCustomer.getFarm().setOrganic(false);
 
-            apiUserCustomer.setPlots(koboPlots(koboFarmer, firstProductType.getId()));
+            apiUserCustomer.setPlots(plots);
             nameFarmerPlots(apiUserCustomer);
 
             farmers.add(apiUserCustomer);
@@ -424,8 +433,17 @@ public class UserCustomerImportService extends BaseService {
         return response;
     }
 
+    /** A validation error against a whole row, for sheets that have no per-cell addresses to point at. */
+    private ApiUserCustomerImportRowValidationError rowError(int rowNum, UserCustomerImportCellErrorType errorType) {
+
+        ApiUserCustomerImportRowValidationError rowValidation = new ApiUserCustomerImportRowValidationError(rowNum);
+        rowValidation.getColumnValidationErrors().add(
+                new ApiUserCustomerImportColumnValidationError("row " + (rowNum + 1), errorType));
+        return rowValidation;
+    }
+
     /** Converts the plots of one Kobo submission, preferring the surveyed size over the computed area. */
-    private List<ApiPlot> koboPlots(KoboExportReader.KoboFarmer koboFarmer, Long productTypeId) {
+    private List<ApiPlot> koboPlots(KoboExportReader.KoboFarmer koboFarmer, Long productTypeId) throws ApiException {
 
         List<ApiPlot> plots = new ArrayList<>();
 
@@ -883,7 +901,8 @@ public class UserCustomerImportService extends BaseService {
      * Geo Data cell carried, so a registry outage never costs an import. Either way the GeoID
      * itself is kept on the plot.</p>
      */
-    private List<ApiPlot> createUserGeoData(Row row, Long productTypeId, Map<String, List<ApiPlot>> geoIdCache) {
+    private List<ApiPlot> createUserGeoData(Row row, Long productTypeId, Map<String, List<ApiPlot>> geoIdCache)
+            throws ApiException {
 
         String countryCode = getString(row.getCell(15));
         String geoId = emptyCell(row.getCell(GEO_ID_COLUMN)) ? null : row.getCell(GEO_ID_COLUMN).getStringCellValue().trim();
@@ -912,44 +931,50 @@ public class UserCustomerImportService extends BaseService {
         return plots;
     }
 
-    /** Resolves a GeoID to plots, at most once per distinct identifier per imported file. */
+    /**
+     * Resolves a GeoID to plots, at most once per distinct identifier per imported file. Returns an
+     * empty list when the registry is not configured, does not know the identifier, or cannot be
+     * reached - the caller then falls back to the row's own Geo Data cell.
+     */
     private List<ApiPlot> resolveGeoId(String geoId, Long productTypeId, Map<String, List<ApiPlot>> geoIdCache) {
 
-        return geoIdCache.computeIfAbsent(geoId, id -> {
+        List<ApiPlot> cached = geoIdCache.get(geoId);
+        if (cached != null) {
+            return cached;
+        }
 
-            if (faoGeoIdClientService == null) {
-                return List.of();
-            }
+        List<ApiPlot> resolved = List.of();
+        String geoJson = faoGeoIdClientService == null ? null : faoGeoIdClientService.resolveGeoJson(geoId);
 
-            String geoJson = faoGeoIdClientService.resolveGeoJson(id);
-            if (geoJson == null || geoJson.isBlank()) {
-                return List.of();
-            }
-
+        if (geoJson != null && !geoJson.isBlank()) {
             try {
-                List<ApiPlot> resolved = buildPlots(geoJson, null, productTypeId);
-                resolved.forEach(plot -> plot.setGeoId(id));
-                return resolved;
-            } catch (IllegalArgumentException e) {
-                logger.warn("GeoID {} resolved to geometry that could not be read: {}", id, e.getMessage());
-                return List.of();
+                resolved = buildPlots(geoJson, null, productTypeId);
+                resolved.forEach(plot -> plot.setGeoId(geoId));
+            } catch (ApiException e) {
+                // The registry, not the user, produced this geometry, so the row falls back to its
+                // own Geo Data cell rather than being rejected over something it cannot fix.
+                logger.warn("GeoID {} resolved to geometry that could not be read: {}", geoId, e.getMessage());
+                resolved = List.of();
             }
-        });
+        }
+
+        geoIdCache.put(geoId, resolved);
+        return resolved;
     }
 
     /**
-     * Parses a geo data value in any supported format into plots. Row validation has already
-     * rejected malformed values, so a failure here means an internal inconsistency rather than bad
-     * user input, and is logged instead of thrown.
+     * Parses a geo data value in any supported format into plots.
+     *
+     * @throws ApiException when the value is not geo data the importer can read; the row is then
+     *                      rejected rather than imported without its plots
      */
-    private List<ApiPlot> buildPlots(String geoData, String countryCode, Long productTypeId) {
+    private List<ApiPlot> buildPlots(String geoData, String countryCode, Long productTypeId) throws ApiException {
 
         List<GeoDataParser.ParsedPlot> parsedPlots;
         try {
             parsedPlots = GeoDataParser.parse(geoData, countryCode);
         } catch (IllegalArgumentException e) {
-            logger.error("Unexpected invalid geodata reached createUserGeoData: " + geoData, e);
-            return new ArrayList<>();
+            throw new ApiException(ApiStatus.INVALID_REQUEST, "Could not read the geo data: " + e.getMessage());
         }
 
         ApiProductType productType = new ApiProductType();
