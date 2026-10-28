@@ -474,7 +474,7 @@ public class UserCustomerImportService extends BaseService {
     }
 
     /** Accepts the gender wordings the supported form languages produce. */
-    private Gender toGender(String value) {
+    static Gender toGender(String value) {
 
         if (value == null) {
             return null;
@@ -489,7 +489,7 @@ public class UserCustomerImportService extends BaseService {
     }
 
     /** Accepts the yes/no wordings the supported form languages produce. */
-    private Boolean toBoolean(String value) {
+    static Boolean toBoolean(String value) {
 
         if (value == null) {
             return null;
