@@ -476,6 +476,37 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 	}
 
 	@Test
+	@DisplayName("Malformed GeoJSON does not disclose the uploaded filename or payload in logs")
+	void malformedGeoDataDoesNotDiscloseUploadedContentInLogs() throws Exception {
+		ch.qos.logback.classic.Logger root = (ch.qos.logback.classic.Logger)
+				org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+		ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> appender =
+				new ch.qos.logback.core.read.ListAppender<>();
+		appender.start();
+		root.addAppender(appender);
+		try {
+			MockMultipartFile upload = new MockMultipartFile("file", "private-filename-marker.geojson",
+					"application/geo+json", "{ coordinates: private-coordinate-marker"
+					.getBytes(StandardCharsets.UTF_8));
+			MvcResult result = mockMvc.perform(multipart("/api/company/userCustomers/" + acmeFarmerId + "/uploadGeoData")
+					.file(upload).cookie(aliceSession)).andReturn();
+			assertEquals(400, result.getResponse().getStatus());
+			for (ch.qos.logback.classic.spi.ILoggingEvent event : appender.list) {
+				assertFalse(event.getFormattedMessage().contains("private-filename-marker"));
+				assertFalse(event.getFormattedMessage().contains("private-coordinate-marker"));
+				if (event.getThrowableProxy() != null) {
+					String throwable = ch.qos.logback.classic.spi.ThrowableProxyUtil.asString(event.getThrowableProxy());
+					assertFalse(throwable.contains("private-filename-marker"));
+					assertFalse(throwable.contains("private-coordinate-marker"));
+				}
+			}
+		} finally {
+			root.detachAppender(appender);
+			appender.stop();
+		}
+	}
+
+	@Test
 	@DisplayName("Unsupported GeoJSON geometries are ignored without creating plots")
 	void unsupportedGeoDataGeometryDoesNotCreatePlots() throws Exception {
 

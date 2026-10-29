@@ -1,5 +1,8 @@
 package com.abelium.inatrace.components.codebook.currencies;
 
+import com.abelium.inatrace.configuration.ApiRequestObservability;
+import com.abelium.inatrace.configuration.SafeExceptionLog;
+
 import com.abelium.inatrace.api.ApiPaginatedResponse;
 import com.abelium.inatrace.components.codebook.currencies.api.ApiCurrencyType;
 import com.abelium.inatrace.components.common.BaseService;
@@ -62,12 +65,13 @@ public class CurrencyTypeService extends BaseService {
 
     @Transactional
     public void updateCurrencies() {
+        String requestId = ApiRequestObservability.requestId();
         WebClient webClientSymbols = WebClient.create("http://api.exchangeratesapi.io/v1/symbols?access_key=" + apiKey);
         ApiCurrencySymbolsResponse apiCurrencySymbolsResponse = webClientSymbols
                 .get()
                 .accept(MediaType.APPLICATION_JSON)
                 .retrieve().bodyToMono(ApiCurrencySymbolsResponse.class)
-                .doOnError(e -> logger.error("Failed to fetch exchange rate data: {}", e.getMessage()))
+                .doOnError(e -> SafeExceptionLog.error(logger, "Failed to fetch exchange rate data", e, requestId))
                 .onErrorReturn(new ApiCurrencySymbolsResponse())
                 .block();
         if (apiCurrencySymbolsResponse != null && apiCurrencySymbolsResponse.isSuccess()) {
@@ -88,7 +92,7 @@ public class CurrencyTypeService extends BaseService {
                 .get()
                 .accept(MediaType.APPLICATION_JSON)
                 .retrieve().bodyToMono(ApiCurrencyRatesResponse.class)
-                .doOnError(e -> logger.error("Failed to fetch exchange rate data: {}", e.getMessage()))
+                .doOnError(e -> SafeExceptionLog.error(logger, "Failed to fetch exchange rate data", e, requestId))
                 .onErrorReturn(new ApiCurrencyRatesResponse())
                 .block();
         if (apiCurrencyResponse != null && apiCurrencyResponse.isSuccess()) {
