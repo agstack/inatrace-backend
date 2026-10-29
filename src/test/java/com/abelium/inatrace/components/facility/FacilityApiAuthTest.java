@@ -184,6 +184,9 @@ class FacilityApiAuthTest extends AbstractMySqlIntegrationTest {
         Product connectedProduct = em.createQuery(
                 "SELECT p FROM Product p WHERE p.name = :name", Product.class)
                 .setParameter("name", "Connected facility product").getSingleResult();
+        // The facility company is associated with the product, but does not own it.
+        // This distinguishes the association path from the separate ownership check.
+        connectedProduct.setCompany(em.find(Company.class, rivalCompanyId));
         FinalProduct finalProduct = new FinalProduct();
         finalProduct.setName("CONNECTED-FINAL-35");
         finalProduct.setDescription("Shared through product association");
