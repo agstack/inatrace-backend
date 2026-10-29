@@ -155,3 +155,5 @@ INATrace.agstack.email =
 INATrace.agstack.password =
 INATrace.agstack.baseURL =
 INATrace.agstack.loginBaseURL =
+# Maximum time for each login or boundary request, in milliseconds.
+INATrace.agstack.requestTimeoutMs = 30000
