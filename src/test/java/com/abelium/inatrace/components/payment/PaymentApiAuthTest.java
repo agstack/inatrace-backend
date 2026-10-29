@@ -69,6 +69,7 @@ class PaymentApiAuthTest extends AbstractMySqlIntegrationTest {
     private Long rivalPurchaseId;
     private Long paymentId;
     private Long bulkPaymentId;
+    private Long ownerId;
     private Cookie ownerSession;
     private Cookie strangerSession;
 
@@ -134,6 +135,7 @@ class PaymentApiAuthTest extends AbstractMySqlIntegrationTest {
         purchaseId = purchase.getId();
         paymentId = payment.getId();
         bulkPaymentId = bulk.getId();
+        ownerId = owner.getId();
         ownerSession = cookie(owner);
         strangerSession = cookie(stranger);
         em.flush();
@@ -238,6 +240,11 @@ class PaymentApiAuthTest extends AbstractMySqlIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON).content(body)).andReturn();
         assertEquals(200, allowed.getResponse().getStatus(), allowed.getResponse().getContentAsString());
         assertEquals(before + 1, paymentCount());
+        em.clear();
+        Payment created = em.createQuery("SELECT p FROM Payment p WHERE p.receiptNumber = :receipt", Payment.class)
+                .setParameter("receipt", "ACME-NEW-PAYMENT-ONLY").getSingleResult();
+        assertNotNull(created.getUpdatedBy());
+        assertEquals(ownerId, created.getUpdatedBy().getId());
     }
 
     @Test
@@ -340,6 +347,10 @@ class PaymentApiAuthTest extends AbstractMySqlIntegrationTest {
         assertEquals(MediaType.APPLICATION_OCTET_STREAM_VALUE, allowed.getResponse().getContentType());
         try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(allowed.getResponse().getContentAsByteArray()))) {
             assertEquals(marker, workbook.getSheetAt(0).getRow(1).getCell(path.contains("bulk-payment") ? 1 : 8).getStringCellValue());
+            if (path.contains("bulk-payment")) {
+                assertEquals("USD", workbook.getSheetAt(0).getRow(1).getCell(3).getStringCellValue());
+                assertEquals(731.25, workbook.getSheetAt(0).getRow(1).getCell(2).getNumericCellValue(), 0.001);
+            }
         }
 
         MvcResult refused = mockMvc.perform(get(path).cookie(strangerSession)).andReturn();
