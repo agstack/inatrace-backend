@@ -125,6 +125,9 @@ class ProcessingActionApiAuthTest extends AbstractMySqlIntegrationTest {
             MvcResult allowed = mockMvc.perform(get(path).cookie(ownerSession)).andReturn();
             String ownerBody = allowed.getResponse().getContentAsString();
             assertEquals(200, allowed.getResponse().getStatus(), path + ": " + ownerBody);
+            assertTrue(allowed.getResponse().getContentType().startsWith(MediaType.APPLICATION_JSON_VALUE),
+                    path + " must retain its JSON response contract");
+            assertTrue(ownerBody.contains("\"status\":\"OK\""), path + ": " + ownerBody);
             assertTrue(ownerBody.contains(MARKER), path + ": " + ownerBody);
 
             MvcResult refused = mockMvc.perform(get(path).cookie(strangerSession)).andReturn();

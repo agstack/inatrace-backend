@@ -1,5 +1,8 @@
 package com.abelium.inatrace.components.currencies;
 
+import com.abelium.inatrace.configuration.ApiRequestObservability;
+import com.abelium.inatrace.configuration.SafeExceptionLog;
+
 import com.abelium.inatrace.components.codebook.currencies.CurrencyTypeService;
 import com.abelium.inatrace.components.common.BaseService;
 import com.abelium.inatrace.components.currencies.api.ApiCurrencyRatesResponse;
@@ -106,7 +109,7 @@ public class CurrencyService extends BaseService {
     }
 
     public void fetchRates(Date date) {
-
+        String requestId = ApiRequestObservability.requestId();
         String isoDate = DateTimeFormatter.ISO_LOCAL_DATE.format(date.toInstant().atZone(ZoneId.of("GMT")));
         WebClient webClient = WebClient.create(baseURL);
         ApiCurrencyRatesResponse apiCurrencyRatesResponse = webClient
@@ -115,7 +118,7 @@ public class CurrencyService extends BaseService {
                 .accept(MediaType.APPLICATION_JSON)
                 .retrieve().bodyToMono(ApiCurrencyRatesResponse.class)
                 .timeout(Duration.ofMillis(requestTimeoutMs))
-                .doOnError(e -> logger.warn("Failed to fetch historical exchange rates (type={})", e.getClass().getSimpleName()))
+                .doOnError(e -> SafeExceptionLog.error(logger, "Failed to fetch historical exchange rates", e, requestId))
                 .onErrorReturn(new ApiCurrencyRatesResponse())
                 .block();
         if (validRates(apiCurrencyRatesResponse)

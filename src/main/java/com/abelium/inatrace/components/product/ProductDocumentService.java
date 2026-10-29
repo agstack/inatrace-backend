@@ -1,5 +1,7 @@
 package com.abelium.inatrace.components.product;
 
+import com.abelium.inatrace.configuration.SafeExceptionLog;
+
 import com.abelium.inatrace.api.ApiStatus;
 import com.abelium.inatrace.api.errors.ApiException;
 import com.abelium.inatrace.components.common.BaseService;
@@ -88,7 +90,7 @@ public class ProductDocumentService extends BaseService {
 			document = putOverlay(document, overlayPdf);
 			return new MediaObject(MediaType.APPLICATION_PDF, document);
 		} catch (Exception e) {
-			logger.error("Error creating instructions document", e);
+			SafeExceptionLog.error(logger, "Error creating instructions document", e);
 			throw new ApiException(ApiStatus.ERROR, "Error creating instructions document");
 		}
     }

@@ -17,6 +17,7 @@ import com.abelium.inatrace.components.processingaction.api.ApiProcessingActionO
 import com.abelium.inatrace.components.product.FinalProductService;
 import com.abelium.inatrace.components.value_chain.ValueChainService;
 import com.abelium.inatrace.components.value_chain.api.ApiValueChain;
+import com.abelium.inatrace.configuration.SafeExceptionLog;
 import com.abelium.inatrace.db.entities.codebook.SemiProduct;
 import com.abelium.inatrace.db.entities.company.Company;
 import com.abelium.inatrace.db.entities.processingaction.*;
@@ -500,7 +501,7 @@ public class ProcessingActionService extends BaseService {
 								requiredEvidenceField.getRequiredOnQuote() != null && requiredEvidenceField.getRequiredOnQuote());
 						processingActionPEF.setProcessingAction(entity);
 					} catch (ApiException e) {
-						e.printStackTrace();
+						logEvidenceFailure("Unable to update processing evidence field", e);
 					}
 					entity.getProcessingEvidenceFields().add(processingActionPEF);
 				}
@@ -540,11 +541,19 @@ public class ProcessingActionService extends BaseService {
 						processingActionProcessingEvidenceType.setRequiredOneOfGroupIdForQuote(requiredDocumentType.getRequiredOneOfGroupIdForQuote());
 						processingActionProcessingEvidenceType.setProcessingAction(entity);
 					} catch (ApiException e) {
-						e.printStackTrace();
+						logEvidenceFailure("Unable to update processing evidence type", e);
 					}
 					entity.getRequiredDocumentTypes().add(processingActionProcessingEvidenceType);
 				}
 		);
+	}
+
+	private void logEvidenceFailure(String event, ApiException exception) {
+		if (exception.getHttpStatus() != null && exception.getHttpStatus().is4xxClientError()) {
+			SafeExceptionLog.warn(logger, event, exception);
+		} else {
+			SafeExceptionLog.error(logger, event, exception);
+		}
 	}
 
 	private void updateSupportedFacilities(ApiProcessingAction apiProcessingAction, ProcessingAction entity) throws ApiException {

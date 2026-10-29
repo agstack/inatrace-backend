@@ -1,5 +1,7 @@
 package com.abelium.inatrace.components.company;
 
+import com.abelium.inatrace.configuration.SafeExceptionLog;
+
 import com.abelium.inatrace.api.*;
 import com.abelium.inatrace.api.errors.ApiException;
 import com.abelium.inatrace.components.agstack.AgStackClientService;
@@ -1285,7 +1287,7 @@ public class CompanyService extends BaseService {
 		try {
 			featureCollection = FeatureCollection.fromJson(new String(file.getBytes()));
 		} catch (IOException e) {
-			logger.error("Error while reading GeoJSON file", e);
+			SafeExceptionLog.error(logger, "Error while reading GeoJSON file", e);
 			throw new ApiException(ApiStatus.ERROR, "Error while reading GeoJSON file");
 		} catch (RuntimeException e) {
 			logger.warn("Invalid GeoJSON file uploaded");
@@ -1440,20 +1442,19 @@ public class CompanyService extends BaseService {
 			if (!CollectionUtils.isEmpty(response.getMatchedGeoIDs())) {
                 // On errors API returns additional message
                 if (response.getMessage() != null) {
-                    logger.error(response.getMessage());
+                    logger.warn("Boundary registration returned a message");
                 }
 				return response.getMatchedGeoIDs().stream().findFirst().orElse(null);
 			} else {
                 // On errors API returns additional message
                 if (response.getGeoID() == null && response.getMessage() != null) {
-                    logger.error(response.getMessage());
+                    logger.warn("Boundary registration returned a message");
                 }
 				return response.getGeoID();
 			}
 
 		} catch (Exception e) {
-            logger.error(e.getMessage());
-			logger.error("Error while generating plot geoid");
+			SafeExceptionLog.error(logger, "Error while generating plot geoid", e);
 		}
 
 		return null;

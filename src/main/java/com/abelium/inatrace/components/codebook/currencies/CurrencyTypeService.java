@@ -1,5 +1,8 @@
 package com.abelium.inatrace.components.codebook.currencies;
 
+import com.abelium.inatrace.configuration.ApiRequestObservability;
+import com.abelium.inatrace.configuration.SafeExceptionLog;
+
 import com.abelium.inatrace.api.ApiPaginatedResponse;
 import com.abelium.inatrace.components.codebook.currencies.api.ApiCurrencyType;
 import com.abelium.inatrace.components.common.BaseService;
@@ -70,6 +73,7 @@ public class CurrencyTypeService extends BaseService {
 
     @Transactional
     public void updateCurrencies() {
+        String requestId = ApiRequestObservability.requestId();
         WebClient webClientSymbols = WebClient.create(baseURL);
         ApiCurrencySymbolsResponse apiCurrencySymbolsResponse = webClientSymbols
                 .get()
@@ -77,7 +81,7 @@ public class CurrencyTypeService extends BaseService {
                 .accept(MediaType.APPLICATION_JSON)
                 .retrieve().bodyToMono(ApiCurrencySymbolsResponse.class)
                 .timeout(Duration.ofMillis(requestTimeoutMs))
-                .doOnError(e -> logger.warn("Failed to fetch currency symbols (type={})", e.getClass().getSimpleName()))
+                .doOnError(e -> SafeExceptionLog.error(logger, "Failed to fetch currency symbols", e, requestId))
                 .onErrorReturn(new ApiCurrencySymbolsResponse())
                 .block();
         if (apiCurrencySymbolsResponse != null && apiCurrencySymbolsResponse.isSuccess()
@@ -103,7 +107,7 @@ public class CurrencyTypeService extends BaseService {
                 .accept(MediaType.APPLICATION_JSON)
                 .retrieve().bodyToMono(ApiCurrencyRatesResponse.class)
                 .timeout(Duration.ofMillis(requestTimeoutMs))
-                .doOnError(e -> logger.warn("Failed to fetch current exchange rates (type={})", e.getClass().getSimpleName()))
+                .doOnError(e -> SafeExceptionLog.error(logger, "Failed to fetch current exchange rates", e, requestId))
                 .onErrorReturn(new ApiCurrencyRatesResponse())
                 .block();
         if (CurrencyService.validRates(apiCurrencyResponse)) {

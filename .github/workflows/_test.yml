@@ -45,3 +45,12 @@ jobs:
         env:
           REVISION: ${{ inputs.revision }}
         run: mvn -B --no-transfer-progress ${REVISION:+-Drevision="$REVISION"} verify
+
+      - name: Upload OpenAPI contract artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-contract-v1
+          path: target/api-contract/
+          retention-days: 14
+          if-no-files-found: warn

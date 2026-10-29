@@ -277,7 +277,7 @@ class CurrencyProviderContractTest extends AbstractMySqlIntegrationTest {
             assertEquals(endpoint.equals("symbols") ? 2 : 0, countRates());
             assertEquals(2, requests.size());
             assertEquals(1, logs.list.stream().filter(event ->
-                    event.getFormattedMessage().contains("type=TimeoutException")).count());
+                    event.getFormattedMessage().contains("type=java.util.concurrent.TimeoutException")).count());
         } finally {
             logger.detachAppender(logs);
             logs.stop();
