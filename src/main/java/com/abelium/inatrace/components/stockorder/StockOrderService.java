@@ -1474,7 +1474,6 @@ public class StockOrderService extends BaseService {
         stockOrder.setIsOpenOrder(stockOrder.getOrderType() == OrderType.GENERAL_ORDER && stockOrder.getTotalQuantity().compareTo(stockOrder.getFulfilledQuantity()) > 0);
     }
 
-    @Transactional
     private void checkPurchaseOrderUserCustomerCompany(Long userCustomerId, Facility facility) throws ApiException {
         UserCustomer userCustomer = fetchEntity(userCustomerId, UserCustomer.class);
         if (userCustomer.getCompany() == null
@@ -1484,6 +1483,7 @@ public class StockOrderService extends BaseService {
         }
     }
 
+    @Transactional
     public void deleteStockOrder(Long id, CustomUserDetails user) throws ApiException {
 
         StockOrder stockOrder = fetchEntity(id, StockOrder.class);
