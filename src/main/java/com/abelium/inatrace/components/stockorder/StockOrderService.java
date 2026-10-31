@@ -11,6 +11,8 @@ import com.abelium.inatrace.components.codebook.measure_unit_type.MeasureUnitTyp
 import com.abelium.inatrace.components.codebook.processing_evidence_type.ProcessingEvidenceTypeService;
 import com.abelium.inatrace.components.codebook.processingevidencefield.ProcessingEvidenceFieldService;
 import com.abelium.inatrace.components.codebook.semiproduct.SemiProductService;
+import com.abelium.inatrace.components.codebook.semiproduct.SemiProductMapper;
+import com.abelium.inatrace.components.codebook.semiproduct.api.ApiSemiProduct;
 import com.abelium.inatrace.components.common.BaseService;
 import com.abelium.inatrace.components.common.StorageKeyCache;
 import com.abelium.inatrace.components.common.api.ApiActivityProof;
@@ -30,6 +32,7 @@ import com.abelium.inatrace.components.stockorder.mappers.StockOrderMapper;
 import com.abelium.inatrace.components.transaction.api.ApiTransaction;
 import com.abelium.inatrace.components.transaction.mappers.TransactionMapper;
 import com.abelium.inatrace.db.entities.common.*;
+import com.abelium.inatrace.db.entities.codebook.SemiProduct;
 import com.abelium.inatrace.db.entities.company.Company;
 import com.abelium.inatrace.db.entities.company.CompanyCertification;
 import com.abelium.inatrace.db.entities.company.CompanyCustomer;
@@ -79,6 +82,7 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.ZoneOffset;
+import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -89,6 +93,8 @@ public class StockOrderService extends BaseService {
     private static final String CUPPING_SCORE_FIELD_NAME = "CUPPING_SCORE";
     private static final String CUPPING_FLAVOUR_FIELD_NAME = "CUPPING_FLAVOUR";
     private static final String ROASTING_PROFILE_FIELD_NAME = "ROASTING_PROFILE";
+    private static final int DELIVERY_EXPORT_LIMIT = 10_000;
+    private static final int EXPORT_TRANSLATION_BATCH_SIZE = 500;
 
     private final FacilityService facilityService;
 
@@ -179,8 +185,7 @@ public class StockOrderService extends BaseService {
 
         // If company or quote company ID is provided, validate that the request user is enrolled in this company
         if (queryRequest.companyId != null) {
-            Company company = companyQueries.fetchCompany(queryRequest.companyId);
-            PermissionsUtil.checkUserIfCompanyEnrolled(company.getUsers().stream().toList(), user);
+            checkCompanyEnrollment(queryRequest.companyId, user);
         } else if (queryRequest.quoteCompanyId != null) {
             Company company = companyQueries.fetchCompany(queryRequest.quoteCompanyId);
             PermissionsUtil.checkUserIfCompanyEnrolled(company.getUsers().stream().toList(), user);
@@ -196,6 +201,11 @@ public class StockOrderService extends BaseService {
                         request,
                         queryRequest
                 ), stockOrder -> StockOrderMapper.toApiStockOrder(stockOrder, user.getUserId(), language));
+    }
+
+    private void checkCompanyEnrollment(Long companyId, CustomUserDetails user) throws ApiException {
+        Company company = companyQueries.fetchCompany(companyId);
+        PermissionsUtil.checkUserIfCompanyEnrolled(company.getUsers().stream().toList(), user);
     }
 
     private StockOrder stockOrderQueryObject(ApiPaginatedRequest request,
@@ -1823,31 +1833,52 @@ public class StockOrderService extends BaseService {
         }
     }
 
+    private record DeliveryExportRow(LocalDate date, String identifier, Long farmerId, String farmerName,
+                                     String farmerSurname, Long semiProductId, BigDecimal quantity,
+                                     BigDecimal grossQuantity, BigDecimal tare, BigDecimal damagedWeight,
+                                     Long unitId, String unitLabel, BigDecimal price, BigDecimal damagedPrice,
+                                     BigDecimal cost, BigDecimal balance, String currency,
+                                     PreferredWayOfPayment paymentMethod) { }
+
+    private List<DeliveryExportRow> findDeliveryExportRows(Long companyId) {
+        List<Object[]> rows = em.createQuery("select s.productionDate, s.identifier, farmer.id, farmer.name, "
+                        + "farmer.surname, semi.id, s.totalQuantity, s.totalGrossQuantity, s.tare, "
+                        + "s.damagedWeightDeduction, unit.id, unit.label, s.pricePerUnit, s.damagedPriceDeduction, "
+                        + "s.cost, s.balance, s.currency, s.preferredWayOfPayment from StockOrder s "
+                        + "left join s.producerUserCustomer farmer left join s.semiProduct semi "
+                        + "left join s.measurementUnitType unit where s.company.id = :companyId "
+                        + "and s.orderType = :orderType order by s.id desc", Object[].class)
+                .setParameter("companyId", companyId).setParameter("orderType", OrderType.PURCHASE_ORDER)
+                .setFirstResult(0).setMaxResults(DELIVERY_EXPORT_LIMIT).getResultList();
+        return rows.stream().map(row -> new DeliveryExportRow((LocalDate) row[0], (String) row[1],
+                (Long) row[2], (String) row[3], (String) row[4], (Long) row[5], (BigDecimal) row[6],
+                (BigDecimal) row[7], (BigDecimal) row[8], (BigDecimal) row[9], (Long) row[10], (String) row[11],
+                (BigDecimal) row[12], (BigDecimal) row[13], (BigDecimal) row[14], (BigDecimal) row[15],
+                (String) row[16], (PreferredWayOfPayment) row[17])).toList();
+    }
+
+    private Map<Long, String> loadExportSemiProductNames(List<DeliveryExportRow> rows, Language language) {
+        List<Long> ids = rows.stream().map(DeliveryExportRow::semiProductId).filter(Objects::nonNull).distinct().toList();
+        Map<Long, String> names = new HashMap<>();
+        for (int from = 0; from < ids.size(); from += EXPORT_TRANSLATION_BATCH_SIZE) {
+            List<SemiProduct> products = em.createQuery("select distinct s from SemiProduct s "
+                            + "left join fetch s.measurementUnitType left join fetch s.semiProductTranslations "
+                            + "where s.id in :ids", SemiProduct.class)
+                    .setParameter("ids", ids.subList(from, Math.min(from + EXPORT_TRANSLATION_BATCH_SIZE, ids.size()))).getResultList();
+            for (SemiProduct product : products) {
+                names.put(product.getId(), SemiProductMapper.toApiSemiProductBase(product, ApiSemiProduct.class, language).getName());
+            }
+        }
+        return names;
+    }
+
     public byte[] exportDeliveriesByCompany(CustomUserDetails authUser, Long companyId, Language language) throws IOException, ApiException {
-
-        // Get the deliveries list (PURCHASE_ORDER stock orders)
-        ApiPaginatedRequest request = new ApiPaginatedRequest();
-        request.setLimit(10000);
-
-        // Prepare the query request for deliveries
-        StockOrderQueryRequest queryRequest = new StockOrderQueryRequest(
-                companyId,
-                null,
-                null,
-                null,
-                null,
-                true,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null
-        );
-
-        List<ApiStockOrder> apiDeliveries = getStockOrderListForCompany(request, queryRequest, authUser, language).items;
+        if (companyId == null) {
+            throw new ApiException(ApiStatus.UNAUTHORIZED, "Company ID or Facility ID should be provided!");
+        }
+        checkCompanyEnrollment(companyId, authUser);
+        List<DeliveryExportRow> deliveries = findDeliveryExportRows(companyId);
+        Map<Long, String> semiProductNames = loadExportSemiProductNames(deliveries, language);
 
         ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
         try (XSSFWorkbook workbook = new XSSFWorkbook()) {
@@ -1910,91 +1941,93 @@ public class StockOrderService extends BaseService {
             ));
 
             int rowNum = 1;
-            for (ApiStockOrder apiDelivery : apiDeliveries) {
+            for (DeliveryExportRow delivery : deliveries) {
 
                 Row row = sheet.createRow(rowNum++);
 
                 // Create delivery date column
-                row.createCell(0, CellType.NUMERIC).setCellValue(apiDelivery.getProductionDate());
+                row.createCell(0, CellType.NUMERIC).setCellValue(delivery.date());
                 row.getCell(0).setCellStyle(dateCellStyle);
                 // sheet.autoSizeColumn(0);
 
                 // Create column identifier
-                row.createCell(1, CellType.STRING).setCellValue(apiDelivery.getIdentifier());
+                row.createCell(1, CellType.STRING).setCellValue(delivery.identifier());
                 // sheet.autoSizeColumn(1);
 
                 // Create farmer column
-                row.createCell(2, CellType.STRING).setCellValue(apiDelivery.getProducerUserCustomer().getName() + " " + apiDelivery.getProducerUserCustomer().getSurname());
+                Objects.requireNonNull(delivery.farmerId());
+                row.createCell(2, CellType.STRING).setCellValue(delivery.farmerName() + " " + delivery.farmerSurname());
                 // sheet.autoSizeColumn(2);
 
                 // Create semi-product column
-                row.createCell(3, CellType.STRING).setCellValue(apiDelivery.getSemiProduct().getName());
+                row.createCell(3, CellType.STRING).setCellValue(semiProductNames.get(Objects.requireNonNull(delivery.semiProductId())));
                 // sheet.autoSizeColumn(3);
 
                 // Create quantity column
-                row.createCell(4, CellType.NUMERIC).setCellValue(apiDelivery.getTotalQuantity().doubleValue());
+                row.createCell(4, CellType.NUMERIC).setCellValue(delivery.quantity().doubleValue());
                 // sheet.autoSizeColumn(4);
 
                 // Create gross quantity column
                 row.createCell(5, CellType.NUMERIC);
-                if (apiDelivery.getTotalGrossQuantity() != null) {
-                    row.getCell(5).setCellValue(apiDelivery.getTotalGrossQuantity().doubleValue());
+                if (delivery.grossQuantity() != null) {
+                    row.getCell(5).setCellValue(delivery.grossQuantity().doubleValue());
                 }
                 // sheet.autoSizeColumn(5);
 
                 // Create tare column
                 row.createCell(6, CellType.NUMERIC);
-                if (apiDelivery.getTare() != null) {
-                    row.getCell(6).setCellValue(apiDelivery.getTare().doubleValue());
+                if (delivery.tare() != null) {
+                    row.getCell(6).setCellValue(delivery.tare().doubleValue());
                 }
                 // sheet.autoSizeColumn(6);
 
                 // Create damaged weight deduction column
                 row.createCell(7, CellType.NUMERIC);
-                if (apiDelivery.getDamagedWeightDeduction() != null) {
-                    row.getCell(7).setCellValue(apiDelivery.getDamagedWeightDeduction().doubleValue());
+                if (delivery.damagedWeight() != null) {
+                    row.getCell(7).setCellValue(delivery.damagedWeight().doubleValue());
                 }
                 // sheet.autoSizeColumn(7);
 
                 // Create unit column
-                row.createCell(8, CellType.STRING).setCellValue(apiDelivery.getMeasureUnitType().getLabel());
+                Objects.requireNonNull(delivery.unitId());
+                row.createCell(8, CellType.STRING).setCellValue(delivery.unitLabel());
                 // sheet.autoSizeColumn(8);
 
                 // Create price per unit column
                 row.createCell(9, CellType.NUMERIC);
-                if (apiDelivery.getPricePerUnit() != null) {
-                    row.getCell(9).setCellValue(apiDelivery.getPricePerUnit().doubleValue());
+                if (delivery.price() != null) {
+                    row.getCell(9).setCellValue(delivery.price().doubleValue());
                 }
                 // sheet.autoSizeColumn(9);
 
                 // Create damaged price deduction column
                 row.createCell(10, CellType.NUMERIC);
-                if (apiDelivery.getDamagedPriceDeduction() != null) {
-                    row.getCell(10).setCellValue(apiDelivery.getDamagedPriceDeduction().doubleValue());
+                if (delivery.damagedPrice() != null) {
+                    row.getCell(10).setCellValue(delivery.damagedPrice().doubleValue());
                 }
                 // sheet.autoSizeColumn(10);
 
                 // Create payable column
                 row.createCell(11, CellType.NUMERIC);
-                if (apiDelivery.getCost() != null) {
-                    row.getCell(11).setCellValue(apiDelivery.getCost().doubleValue());
+                if (delivery.cost() != null) {
+                    row.getCell(11).setCellValue(delivery.cost().doubleValue());
                 }
                 // sheet.autoSizeColumn(11);
 
                 // Create balance column
                 row.createCell(12, CellType.NUMERIC);
-                if (apiDelivery.getBalance() != null) {
-                    row.getCell(12).setCellValue(apiDelivery.getBalance().doubleValue());
+                if (delivery.balance() != null) {
+                    row.getCell(12).setCellValue(delivery.balance().doubleValue());
                 }
                 // sheet.autoSizeColumn(12);
 
                 // Create currency column
-                row.createCell(13, CellType.STRING).setCellValue(apiDelivery.getCurrency());
+                row.createCell(13, CellType.STRING).setCellValue(delivery.currency());
                 // sheet.autoSizeColumn(13);
 
                 // Create preferred way of payment column
                 row.createCell(14, CellType.STRING).setCellValue(TranslateTools.getTranslatedValue(
-                        messageSource, "export.payments.column.preferredWayOfPayment.value." + apiDelivery.getPreferredWayOfPayment().toString(), language
+                        messageSource, "export.payments.column.preferredWayOfPayment.value." + delivery.paymentMethod().toString(), language
                 ));
                 // sheet.autoSizeColumn(14);
             }
