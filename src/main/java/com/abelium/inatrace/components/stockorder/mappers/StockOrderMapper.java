@@ -205,7 +205,7 @@ public class StockOrderMapper {
             apiStockOrder.setProcessingOrder(ProcessingOrderMapper.toApiProcessingOrderBase(entity.getProcessingOrder()));
         }
 
-        apiStockOrder.setPayments(entity.getPayments().stream().map(payment -> PaymentMapper.toApiPayment(payment, null)).collect(Collectors.toList()));
+        apiStockOrder.setPayments(entity.getPayments().stream().map(payment -> PaymentMapper.toApiPayment(payment, userId)).collect(Collectors.toList()));
 
         return apiStockOrder;
     }
