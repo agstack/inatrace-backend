@@ -696,7 +696,23 @@ public class ProductApiTools {
 		afb.questionnaireAnswers = fb.getQuestionnaireAnswers();
 		afb.setProductName(fb.getLabel().getProduct().getName());
 		return afb;
-	}	
+	}
+
+	/**
+	 * Feedback as shown to anyone holding the label UID (printed in every QR code): without the
+	 * consumer's e-mail, questionnaire answers (age, gender...) or consents.
+	 */
+	public static ApiProductLabelFeedback toPublicApiProductLabelFeedback(ProductLabelFeedback fb) {
+		ApiProductLabelFeedback afb = toApiProductLabelFeedback(fb);
+		if (afb == null) return null;
+
+		afb.email = null;
+		afb.questionnaireAnswers = null;
+		afb.gdprConsent = null;
+		afb.privacyPolicyConsent = null;
+		afb.termsOfUseConsent = null;
+		return afb;
+	}
 
 	public static void updateProductLabelFeedback(ProductLabelFeedback fb, ApiProductLabelFeedback afb) {
 		if (afb == null) return;

@@ -21,7 +21,7 @@ unchanged.
 | GET | `/api/public/document/{storageKey}` | Opaque, temporary key with an explicit current public scope | Public label/QR-certificate media streams bytes; private, unknown and revoked keys are rejected without marker | Verified |
 | GET | `/api/public/image/{storageKey}` | Opaque, temporary key with an explicit current public scope | Public label image streams bytes; private and revoked keys are rejected | Verified |
 | GET | `/api/public/image/{storageKey}/{size}` | Same scoped media capability as original image | Public label variant streams bytes; a revoked original capability also rejects its variants | Verified |
-| GET | `/api/public/product/label/feedback/list/{labelUid}` | Currently resolved by label UID only | Draft feedback marker is returned anonymously | Characterized: publication gate bypassed |
+| GET | `/api/public/product/label/feedback/list/{labelUid}` | Currently resolved by label UID only; consumer e-mail, questionnaire answers and consents are omitted (`ProductLabelFeedbackPrivacyTest`), the product's companies read them at `GET /api/product/label/{id}/feedback/list` | Draft feedback marker is returned anonymously | Characterized: publication gate bypassed |
 | POST | `/api/public/product/label/feedback/{labelUid}` | Published label only | Published write succeeds; draft write is refused and count is unchanged | Verified |
 | GET | `/api/public/globalSettings/{name}` | `isPublic` setting flag | Public value returns; private value is absent | Verified |
 

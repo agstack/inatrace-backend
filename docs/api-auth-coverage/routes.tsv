@@ -109,6 +109,7 @@ GET	/api/product/label/content/{id}	ProductController#getProductLabelContent
 GET	/api/product/label/{id}	ProductController#getProductLabel
 GET	/api/product/label/{id}/batches	ProductController#getProductLabelBatches
 GET	/api/product/label/{id}/documents	ProductController#getCompanyDocumentsForProductLabel
+GET	/api/product/label/{id}/feedback/list	ProductController#listProductLabelFeedbacksForLabel
 GET	/api/product/label/{id}/instructions	ProductController#getProductLabelInstructions
 GET	/api/product/label_batch/{id}	ProductController#getProductLabelBatch
 GET	/api/product/list	ProductController#listProducts
