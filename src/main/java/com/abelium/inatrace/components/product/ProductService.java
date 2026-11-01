@@ -418,6 +418,11 @@ public class ProductService extends BaseService {
 
 		removeProductLabelBatches(labels.stream().map(ProductLabel::getId).collect(Collectors.toList()));
 		labels.forEach(pl -> em.remove(pl));
+
+		KnowledgeBlog kbProxy = Torpedo.from(KnowledgeBlog.class);
+		Torpedo.where(kbProxy.getProduct()).eq(p);
+		Torpedo.select(kbProxy).list(em).forEach(this::removeKnowledgeBlog);
+
 		em.remove(p);
 	}
 
@@ -611,6 +616,20 @@ public class ProductService extends BaseService {
     	kb.setProduct(p);
     	productApiTools.updateKnowledgeBlog(authUser.getUserId(), kb, request);
     	em.persist(kb);
+	}
+
+    @Transactional
+	public void deleteKnowledgeBlog(CustomUserDetails authUser, Long id) throws ApiException {
+		removeKnowledgeBlog(fetchKnowledgeBlogAssoc(authUser, id));
+	}
+
+	/**
+	 * Removes a knowledge blog and its links to documents. The documents themselves are kept, as
+	 * when a blog update replaces them.
+	 */
+	private void removeKnowledgeBlog(KnowledgeBlog kb) {
+		kb.getDocuments().clear();
+		em.remove(kb);
 	}
     
     private ProductLabelFeedback feedbackListQueryObject(String labelUid, ApiListProductLabelFeedbackRequest request) {

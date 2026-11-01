@@ -16,6 +16,7 @@ DELETE	/api/chain/value-chain/{id}	ValueChainController#deleteValueChain
 DELETE	/api/company/companyCustomers/{id}	CompanyController#deleteCompanyCustomer
 DELETE	/api/company/userCustomers/{id}	CompanyController#deleteUserCustomer
 DELETE	/api/product-type/{id}	ProductTypeController#deleteProductType
+DELETE	/api/product/knowledgeBlog/{id}	ProductController#deleteProductKnowledgeBlog
 DELETE	/api/product/label/feedback/{id}	ProductController#deleteProductLabelFeedback
 DELETE	/api/product/label/{id}	ProductController#deleteProductLabel
 DELETE	/api/product/label_batch/{id}	ProductController#deleteProductLabelBatch
