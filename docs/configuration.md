@@ -54,5 +54,18 @@ INATrace supports integration with the Beyco platform. This allows users to crea
 - `beyco.oauth2.clientId`: `clientId`
 - `beyco.oauth2.clientSecret`: `clientSecret`
 - `beyco.oauth2.url`: `url`
+- `beyco.integration.url`: Beyco API base URL.
+- `beyco.integration.connectTimeoutMs`: connection timeout in milliseconds (default 30000).
+- `beyco.integration.readTimeoutMs`: response read timeout in milliseconds (default 30000).
+
+Beyco transport and response failures return `UPSTREAM_HTTP_ERROR` (HTTP 503)
+without forwarding the provider's response body. This differs from older
+versions, which could forward a Beyco 401 as a local 401. A valid INATrace
+session is not invalidated. If sending an offer times out or its response is
+lost, its remote outcome is unknown; check Beyco before trying again.
+The Angular Beyco offer screen displays the response error body. The companion
+frontend change extracts `errorMessage` from the API envelope while retaining
+support for plain-text errors; coordinate both deployments. No Beyco consumer
+was found in the mobile source during this review.
 
 The values of these properties are provided by Beyco. If integration with Byeco is not needed, the values of these properties should be empty.
