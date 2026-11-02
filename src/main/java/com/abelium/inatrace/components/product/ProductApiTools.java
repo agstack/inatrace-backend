@@ -371,7 +371,7 @@ public class ProductApiTools {
 	public void updateProductLabelContent(Long userId, ProductLabelContent p, ApiProductLabelContent pu) throws ApiException {
 		updateProductContent(userId, p, pu);
 		if (pu.origin != null) {
-			if (pu.origin.locations != null) updateOriginLocations(p, new ArrayList<>(p.getOriginLocations()), pu.origin.locations);
+			if (pu.origin.locations != null) updateOriginLocations(p, p.getOriginLocations(), pu.origin.locations);
 		}
         
         // Update product journey
@@ -406,7 +406,7 @@ public class ProductApiTools {
 		}
 	}
 
-	private void updateOriginLocations(ProductLabelContent p, List<ProductLocation> pls, List<ApiLocation> als) throws ApiException  {
+	private void updateOriginLocations(ProductLabelContent p, Set<ProductLocation> pls, List<ApiLocation> als) throws ApiException  {
 		pls.clear();
 		for (ApiLocation apl : als) {
 			pls.add(toProductLocation(p, apl));

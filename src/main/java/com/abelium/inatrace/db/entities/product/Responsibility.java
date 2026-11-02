@@ -25,7 +25,9 @@ public class Responsibility extends BaseEntity {
 	}
 
 	public Responsibility copy() {
-		return new Responsibility();
+		Responsibility r = new Responsibility();
+		r.setLaborPolicies(getLaborPolicies());
+		return r;
 	}
 
 }
