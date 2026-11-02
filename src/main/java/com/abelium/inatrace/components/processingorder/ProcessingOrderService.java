@@ -63,7 +63,7 @@ public class ProcessingOrderService extends BaseService {
                 companyQueries.fetchCompanyProducts(processingOrder.getProcessingAction().getCompany().getId()),
                 authUser);
 
-        return ProcessingOrderMapper.toApiProcessingOrder(processingOrder, language);
+        return ProcessingOrderMapper.toApiProcessingOrder(processingOrder, authUser.getUserId(), language);
     }
 
     /**

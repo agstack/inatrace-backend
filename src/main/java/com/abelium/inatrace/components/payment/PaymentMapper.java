@@ -48,9 +48,9 @@ public final class PaymentMapper {
 		apiPayment.setStockOrder(StockOrderMapper.toApiStockOrderBase(entity.getStockOrder()));
 		apiPayment.setPurchased(entity.getPurchased().intValue());
 
-		// A receipt is never public. Without a user (history built for exports and public
-		// traceability) it is left out instead of being registered as a public storage key,
-		// which StorageKeyCache refuses without an explicit public scope.
+		// A receipt is never public. Without a user (only the public QR traceability) it is left
+		// out instead of being registered as a public storage key, which StorageKeyCache refuses
+		// without an explicit public scope.
 		if (entity.getReceiptDocument() != null && userId != null) {
 			apiPayment.setReceiptDocument(CommonApiTools.toApiDocument(entity.getReceiptDocument(), userId));
 		}

@@ -210,7 +210,7 @@ public class StockOrderMapper {
         return apiStockOrder;
     }
 
-    public static ApiStockOrder toApiStockOrderHistoryItem(StockOrder entity, Language language) {
+    public static ApiStockOrder toApiStockOrderHistoryItem(StockOrder entity, Long userId, Language language) {
 
         if (entity == null) {
             return null;
@@ -234,7 +234,7 @@ public class StockOrderMapper {
         apiStockOrder.setOrganic(entity.getOrganic());
 
         // Map payments
-        apiStockOrder.setPayments(entity.getPayments().stream().map(payment -> PaymentMapper.toApiPayment(payment, null)).collect(Collectors.toList()));
+        apiStockOrder.setPayments(entity.getPayments().stream().map(payment -> PaymentMapper.toApiPayment(payment, userId)).collect(Collectors.toList()));
 
         // Map the instances (values) of processing evidence fields
         if (!entity.getProcessingEFValues().isEmpty()) {
@@ -246,9 +246,9 @@ public class StockOrderMapper {
         return apiStockOrder;
     }
 
-    public static ApiStockOrder toApiStockOrderHistory(StockOrder entity, Language language) {
+    public static ApiStockOrder toApiStockOrderHistory(StockOrder entity, Long userId, Language language) {
 
-        ApiStockOrder apiStockOrder = toApiStockOrderHistoryItem(entity, language);
+        ApiStockOrder apiStockOrder = toApiStockOrderHistoryItem(entity, userId, language);
 
         if (apiStockOrder == null) {
             return null;
