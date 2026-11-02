@@ -9,9 +9,16 @@ The export now checks company enrollment using the same code as the stock list,
 then selects only workbook fields for purchase orders belonging to that company,
 ordered by ID descending and limited to 10,000. It deliberately omits the count
 query, whose result was unused by the workbook. Semiproduct translations are
-loaded separately in batches of at most 500 distinct IDs and resolved with the
-existing mapper, preserving its language and missing-translation behavior. The
-ordinary stock-list mapper and endpoint are unchanged.
+loaded as scalar IDs and names in batches of at most 500 distinct IDs, filtered
+by the requested language. A missing translation produces an empty cell. If
+duplicate translations exist for one product and language, the lowest ID is
+selected; the previous mapper selected the first element of an unordered set.
+The ordinary stock-list mapper and endpoint are unchanged.
+
+Missing farmer, semiproduct, unit, payment method, quantity or date now produces
+an empty cell instead of aborting the export. Other available fields and rows
+remain in the workbook. This changes the previous error behavior for incomplete
+orders and should be considered by consumers that expect a complete dataset.
 
 ## Evidence
 
@@ -41,7 +48,7 @@ for the tested fixture, the observed total is four fixed statements plus
 `ceil(distinctSemiproducts / 500)` translation-fetch statements. Thus 501
 distinct semiproducts add one statement, not one per order; 10,000 distinct
 semiproducts would require 20 translation batches (and 24 statements under the
-same fixture shape). The 10,001-order test currently uses only two distinct
+same fixture shape). The 10,001-order test uses 501 distinct
 semiproducts, so it verifies the export limit, not the 10,000-distinct-product
 case. These derived counts describe this fixture and do not account for extra
 queries caused by other mapped associations or codebook relationships.
@@ -59,10 +66,8 @@ The regular fixture enforces a ceiling of eight inspected statements for up to
 The separate 501-product control requires exactly one more statement. Those
 bounds describe the declared fixture and do not claim every possible graph has
 the same query count; other mapped associations and codebook relationships may
-cause additional work. The translation query currently hydrates `SemiProduct`
-entities and their mapped translations in each batch, so query growth is
-bounded by the batch formula but total hydrated data and persistence-context
-memory still grow with the number of distinct products. The XLSX writer also
+cause additional work. The translation query returns scalar IDs and names for
+the requested language rather than hydrating product entities. The XLSX writer
 builds an `XSSFWorkbook` in memory.
 
 Elapsed times and `Runtime` heap deltas varied substantially between optional
@@ -84,9 +89,13 @@ mvn -q -DargLine=-Dapi.version=1.43 clean verify
 
 The large case is opt-in to keep its fixture and workbook out of ordinary test
 runs. These are test-only synthetic records, rolled back with the test.
-The export's existing 10,000-order cap, workbook semantics, authorization and
-failure behavior for absent required relationships are intentionally unchanged.
+The export's existing 10,000-order cap and authorization are unchanged; missing
+fields and duplicate translations are handled as described above.
 Query-budget work for other endpoints remains separate in issue #105.
 
-The final full verification on this branch passed 328 tests with no failures,
-errors or skipped tests; the stock-order test class accounted for 38 tests.
+The original full verification on base `19d0ea3` passed 328 tests. After the
+review follow-up and rebase onto `eb8431d`, the full verification passed 384
+tests with no failures, errors or skipped tests; the stock-order test class
+accounted for 42 tests. The 10,001-order scenario was repeated after the
+follow-up and used six inspected statements; its measured elapsed time was
+5,407 ms including fixture setup, request and workbook inspection.

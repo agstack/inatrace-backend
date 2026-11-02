@@ -11,8 +11,6 @@ import com.abelium.inatrace.components.codebook.measure_unit_type.MeasureUnitTyp
 import com.abelium.inatrace.components.codebook.processing_evidence_type.ProcessingEvidenceTypeService;
 import com.abelium.inatrace.components.codebook.processingevidencefield.ProcessingEvidenceFieldService;
 import com.abelium.inatrace.components.codebook.semiproduct.SemiProductService;
-import com.abelium.inatrace.components.codebook.semiproduct.SemiProductMapper;
-import com.abelium.inatrace.components.codebook.semiproduct.api.ApiSemiProduct;
 import com.abelium.inatrace.components.common.BaseService;
 import com.abelium.inatrace.components.common.StorageKeyCache;
 import com.abelium.inatrace.components.common.api.ApiActivityProof;
@@ -1861,12 +1859,13 @@ public class StockOrderService extends BaseService {
         List<Long> ids = rows.stream().map(DeliveryExportRow::semiProductId).filter(Objects::nonNull).distinct().toList();
         Map<Long, String> names = new HashMap<>();
         for (int from = 0; from < ids.size(); from += EXPORT_TRANSLATION_BATCH_SIZE) {
-            List<SemiProduct> products = em.createQuery("select distinct s from SemiProduct s "
-                            + "left join fetch s.measurementUnitType left join fetch s.semiProductTranslations "
-                            + "where s.id in :ids", SemiProduct.class)
-                    .setParameter("ids", ids.subList(from, Math.min(from + EXPORT_TRANSLATION_BATCH_SIZE, ids.size()))).getResultList();
-            for (SemiProduct product : products) {
-                names.put(product.getId(), SemiProductMapper.toApiSemiProductBase(product, ApiSemiProduct.class, language).getName());
+            List<Object[]> translations = em.createQuery("select t.semiProduct.id, t.name from SemiProductTranslation t "
+                            + "where t.semiProduct.id in :ids and t.language = :language order by t.id", Object[].class)
+                    .setParameter("ids", ids.subList(from, Math.min(from + EXPORT_TRANSLATION_BATCH_SIZE, ids.size())))
+                    .setParameter("language", language).getResultList();
+            for (Object[] translation : translations) {
+                Long id = (Long) translation[0];
+                if (!names.containsKey(id)) names.put(id, (String) translation[1]);
             }
         }
         return names;
@@ -1946,7 +1945,9 @@ public class StockOrderService extends BaseService {
                 Row row = sheet.createRow(rowNum++);
 
                 // Create delivery date column
-                row.createCell(0, CellType.NUMERIC).setCellValue(delivery.date());
+                row.createCell(0, CellType.NUMERIC);
+                if (delivery.date() != null) row.getCell(0).setCellValue(delivery.date());
+                else row.getCell(0).setBlank();
                 row.getCell(0).setCellStyle(dateCellStyle);
                 // sheet.autoSizeColumn(0);
 
@@ -1955,16 +1956,18 @@ public class StockOrderService extends BaseService {
                 // sheet.autoSizeColumn(1);
 
                 // Create farmer column
-                Objects.requireNonNull(delivery.farmerId());
-                row.createCell(2, CellType.STRING).setCellValue(delivery.farmerName() + " " + delivery.farmerSurname());
+                row.createCell(2, CellType.STRING).setCellValue(delivery.farmerId() == null ? null
+                        : delivery.farmerName() + " " + delivery.farmerSurname());
                 // sheet.autoSizeColumn(2);
 
                 // Create semi-product column
-                row.createCell(3, CellType.STRING).setCellValue(semiProductNames.get(Objects.requireNonNull(delivery.semiProductId())));
+                row.createCell(3, CellType.STRING).setCellValue(semiProductNames.get(delivery.semiProductId()));
                 // sheet.autoSizeColumn(3);
 
                 // Create quantity column
-                row.createCell(4, CellType.NUMERIC).setCellValue(delivery.quantity().doubleValue());
+                row.createCell(4, CellType.NUMERIC);
+                if (delivery.quantity() != null) row.getCell(4).setCellValue(delivery.quantity().doubleValue());
+                else row.getCell(4).setBlank();
                 // sheet.autoSizeColumn(4);
 
                 // Create gross quantity column
@@ -1989,7 +1992,6 @@ public class StockOrderService extends BaseService {
                 // sheet.autoSizeColumn(7);
 
                 // Create unit column
-                Objects.requireNonNull(delivery.unitId());
                 row.createCell(8, CellType.STRING).setCellValue(delivery.unitLabel());
                 // sheet.autoSizeColumn(8);
 
@@ -2026,9 +2028,9 @@ public class StockOrderService extends BaseService {
                 // sheet.autoSizeColumn(13);
 
                 // Create preferred way of payment column
-                row.createCell(14, CellType.STRING).setCellValue(TranslateTools.getTranslatedValue(
-                        messageSource, "export.payments.column.preferredWayOfPayment.value." + delivery.paymentMethod().toString(), language
-                ));
+                row.createCell(14, CellType.STRING).setCellValue(delivery.paymentMethod() == null ? null
+                        : TranslateTools.getTranslatedValue(messageSource,
+                                "export.payments.column.preferredWayOfPayment.value." + delivery.paymentMethod(), language));
                 // sheet.autoSizeColumn(14);
             }
 

@@ -964,6 +964,26 @@ class StockOrderApiAuthTest extends AbstractMySqlIntegrationTest {
     }
 
     @Test
+    void deliveryExportUsesLowestTranslationIdWhenLanguageIsDuplicated() throws Exception {
+        SemiProduct product = em.find(SemiProduct.class, semiProductId);
+        for (String name : List.of("First translation", "Second translation")) {
+            SemiProductTranslation translation = new SemiProductTranslation();
+            translation.setSemiProduct(product);
+            translation.setLanguage(Language.DE);
+            translation.setName(name);
+            em.persist(translation);
+            em.flush();
+        }
+        em.clear();
+        MvcResult result = mockMvc.perform(get("/api/chain/stock-order/export/deliveries/company/" + companyId)
+                .header("language", "DE").cookie(ownerSession)).andReturn();
+        assertEquals(200, result.getResponse().getStatus());
+        try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(result.getResponse().getContentAsByteArray()))) {
+            assertEquals("First translation", workbook.getSheetAt(0).getRow(1).getCell(3).getStringCellValue());
+        }
+    }
+
+    @Test
     void deliveryExportReturnsHeadersForAnEmptyCompany() throws Exception {
         em.createQuery("update StockOrder s set s.orderType = :replacement where s.company.id = :company and s.orderType = :purchase")
                 .setParameter("replacement", OrderType.GENERAL_ORDER).setParameter("company", companyId)
@@ -980,29 +1000,55 @@ class StockOrderApiAuthTest extends AbstractMySqlIntegrationTest {
     }
 
     @Test
-    void deliveryExportDoesNotSilentlyAcceptAMissingFarmer() throws Exception {
+    void deliveryExportLeavesMissingFarmerBlank() throws Exception {
         em.find(StockOrder.class, orderId).setProducerUserCustomer(null);
-        assertExportRejectsMissingRequiredRelationship();
+        assertExportLeavesCellBlank(2);
     }
 
     @Test
-    void deliveryExportDoesNotSilentlyAcceptAMissingSemiProduct() throws Exception {
+    void deliveryExportLeavesMissingSemiProductBlank() throws Exception {
         em.find(StockOrder.class, orderId).setSemiProduct(null);
-        assertExportRejectsMissingRequiredRelationship();
+        assertExportLeavesCellBlank(3);
     }
 
     @Test
-    void deliveryExportDoesNotSilentlyAcceptAMissingUnit() throws Exception {
+    void deliveryExportLeavesMissingUnitBlank() throws Exception {
         em.find(StockOrder.class, orderId).setMeasurementUnitType(null);
-        assertExportRejectsMissingRequiredRelationship();
+        assertExportLeavesCellBlank(8);
     }
 
-    private void assertExportRejectsMissingRequiredRelationship() throws Exception {
+    @Test
+    void deliveryExportLeavesMissingPaymentMethodBlank() throws Exception {
+        em.find(StockOrder.class, orderId).setPreferredWayOfPayment(null);
+        assertExportLeavesCellBlank(14);
+    }
+
+    @Test
+    void deliveryExportLeavesMissingQuantityBlank() throws Exception {
+        em.find(StockOrder.class, orderId).setTotalQuantity(null);
+        assertExportLeavesCellBlank(4);
+    }
+
+    @Test
+    void deliveryExportLeavesMissingDateBlank() throws Exception {
+        em.find(StockOrder.class, orderId).setProductionDate(null);
+        assertExportLeavesCellBlank(0);
+    }
+
+    private void assertExportLeavesCellBlank(int column) throws Exception {
+        addExportOrders(1, 0);
         em.flush();
         em.clear();
         MvcResult result = mockMvc.perform(get("/api/chain/stock-order/export/deliveries/company/" + companyId)
                 .cookie(ownerSession)).andReturn();
-        assertEquals(500, result.getResponse().getStatus());
+        assertEquals(200, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+        try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(result.getResponse().getContentAsByteArray()))) {
+            var sheet = workbook.getSheetAt(0);
+            assertEquals(2, sheet.getLastRowNum());
+            assertEquals("EXPORT-110-0", sheet.getRow(1).getCell(1).getStringCellValue());
+            assertEquals(MARKER, sheet.getRow(2).getCell(1).getStringCellValue());
+            assertEquals(org.apache.poi.ss.usermodel.CellType.BLANK, sheet.getRow(2).getCell(column).getCellType());
+        }
     }
 
     @Test
