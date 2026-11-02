@@ -9,6 +9,7 @@ import com.abelium.inatrace.components.common.BaseService;
 import com.abelium.inatrace.components.currencies.api.ApiCurrencyRatesResponse;
 import com.abelium.inatrace.components.currencies.api.ApiCurrencySymbolsResponse;
 import com.abelium.inatrace.components.currencies.api.ApiCurrencyTypeRequest;
+import com.abelium.inatrace.components.currencies.CurrencyService;
 import com.abelium.inatrace.db.entities.codebook.CurrencyType;
 import com.abelium.inatrace.db.entities.currencies.CurrencyPair;
 import com.abelium.inatrace.tools.PaginationTools;
@@ -23,6 +24,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import org.torpedoquery.jakarta.jpa.OnGoingLogicalCondition;
 import org.torpedoquery.jakarta.jpa.Torpedo;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +38,12 @@ public class CurrencyTypeService extends BaseService {
 
     @Value("${INAtrace.exchangerate.apiKey}")
     private String apiKey;
+
+    @Value("${INAtrace.exchangerate.baseURL:http://api.exchangeratesapi.io/v1}")
+    private String baseURL;
+
+    @Value("${INAtrace.exchangerate.requestTimeoutMs:30000}")
+    private long requestTimeoutMs;
 
     public List<ApiCurrencyType> getCurrencyTypeList() {
         List<CurrencyType> currencyTypeList = em.createNamedQuery("CurrencyType.getAllCurrencyTypes", CurrencyType.class).getResultList();
@@ -66,17 +74,24 @@ public class CurrencyTypeService extends BaseService {
     @Transactional
     public void updateCurrencies() {
         String requestId = ApiRequestObservability.requestId();
-        WebClient webClientSymbols = WebClient.create("http://api.exchangeratesapi.io/v1/symbols?access_key=" + apiKey);
+        WebClient webClientSymbols = WebClient.create(baseURL);
         ApiCurrencySymbolsResponse apiCurrencySymbolsResponse = webClientSymbols
                 .get()
+                .uri(builder -> builder.pathSegment("symbols").queryParam("access_key", apiKey).build())
                 .accept(MediaType.APPLICATION_JSON)
                 .retrieve().bodyToMono(ApiCurrencySymbolsResponse.class)
-                .doOnError(e -> SafeExceptionLog.error(logger, "Failed to fetch exchange rate data", e, requestId))
+                .timeout(Duration.ofMillis(requestTimeoutMs))
+                .doOnError(e -> SafeExceptionLog.error(logger, "Failed to fetch currency symbols", e, requestId))
                 .onErrorReturn(new ApiCurrencySymbolsResponse())
                 .block();
-        if (apiCurrencySymbolsResponse != null && apiCurrencySymbolsResponse.isSuccess()) {
+        if (apiCurrencySymbolsResponse != null && apiCurrencySymbolsResponse.isSuccess()
+                && apiCurrencySymbolsResponse.getSymbols() != null) {
             Map<String, String> symbols = apiCurrencySymbolsResponse.getSymbols();
             for (Map.Entry<String, String> entry : symbols.entrySet()) {
+                if (entry.getKey() == null || entry.getKey().isBlank()
+                        || entry.getValue() == null || entry.getValue().isBlank()) {
+                    continue;
+                }
                 if (em.createNamedQuery("CurrencyType.getCurrencyTypeByCode").setParameter("code", entry.getKey()).getResultList().isEmpty()) {
                     CurrencyType currencyType = new CurrencyType();
                     currencyType.setCode(entry.getKey());
@@ -87,22 +102,24 @@ public class CurrencyTypeService extends BaseService {
             }
         }
 
-        WebClient webClientRates = WebClient.create("http://api.exchangeratesapi.io/v1/latest?access_key=" + apiKey + "&base=EUR");
+        WebClient webClientRates = WebClient.create(baseURL);
         ApiCurrencyRatesResponse apiCurrencyResponse = webClientRates
                 .get()
+                .uri(builder -> builder.pathSegment("latest").queryParam("access_key", apiKey).queryParam("base", "EUR").build())
                 .accept(MediaType.APPLICATION_JSON)
                 .retrieve().bodyToMono(ApiCurrencyRatesResponse.class)
-                .doOnError(e -> SafeExceptionLog.error(logger, "Failed to fetch exchange rate data", e, requestId))
+                .timeout(Duration.ofMillis(requestTimeoutMs))
+                .doOnError(e -> SafeExceptionLog.error(logger, "Failed to fetch current exchange rates", e, requestId))
                 .onErrorReturn(new ApiCurrencyRatesResponse())
                 .block();
-        if (apiCurrencyResponse != null && apiCurrencyResponse.isSuccess()) {
+        if (CurrencyService.validRates(apiCurrencyResponse)) {
             Map<String, BigDecimal> rates = apiCurrencyResponse.getRates();
             Date current = apiCurrencyResponse.getDate();
 
             List<String> enabled = getEnabledCurrencyCodes();
 
             for (Map.Entry<String, BigDecimal> entry : rates.entrySet()) {
-                if (enabled.contains(entry.getKey()) && em.createNamedQuery("CurrencyPair.rateAtDate").setParameter(CURRENCY, entry.getKey()).setParameter("date", current).getResultList().isEmpty()) {
+                if (CurrencyService.validRate(entry.getValue()) && enabled.contains(entry.getKey()) && em.createNamedQuery("CurrencyPair.rateAtDate").setParameter(CURRENCY, entry.getKey()).setParameter("date", current).getResultList().isEmpty()) {
                     CurrencyPair currencyPair = new CurrencyPair();
                     CurrencyType from = getCurrencyTypeByCode("EUR");
                     CurrencyType to = getCurrencyTypeByCode(entry.getKey());

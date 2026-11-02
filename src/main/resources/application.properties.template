@@ -140,6 +140,9 @@ INATrace.requestLog.token =
 
 # Exchange rate API key
 INAtrace.exchangerate.apiKey =
+# Optional: legacy provider URL and per-request deadline in milliseconds.
+INAtrace.exchangerate.baseURL = http://api.exchangeratesapi.io/v1
+INAtrace.exchangerate.requestTimeoutMs = 30000
 # Set false only in environments where automatic external refreshes are intentionally disabled.
 INATrace.currency.autoUpdate.enabled = true
 
