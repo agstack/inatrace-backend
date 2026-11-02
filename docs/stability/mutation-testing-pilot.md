@@ -54,4 +54,20 @@ Initially, 2 of 3 payment mutations survived: removing `Payment.setUpdatedBy` on
 
 The selected tests improved without changing production behavior. These observations do not prove the omitted mutants are safe, that all rules are protected, or that every mutation is meaningful. The broader codebook/product deletion gaps remain tracked in [#79](https://github.com/agstack/inatrace-backend/issues/79) and [#80](https://github.com/agstack/inatrace-backend/issues/80); this pilot does not depend on or replace them. Testcontainers workers create their own JVM-local resources, so expand the target or worker count only after measuring resource use and runtime.
 
-The normal build was verified separately with `mvn -q -DargLine=-Dapi.version=1.43 clean verify`: 291 tests, no failures, errors or skipped tests. This was run against the stated base before the upstream `main` advanced; rerun verification after rebasing onto the eventual PR base.
+The original normal-build result was 291 tests on base `02ef12d`. After rebasing
+the pilot onto upstream main `91a06679a5b9bacae074d9624b906e5567912d7f`, the
+review follow-up adds a separate positive case where the facility company owns
+the product and has no product-company association. The existing associated
+but not owned case and the unrelated-company refusal remain in place.
+
+As a controlled negative check, temporarily forcing the `owned` condition to
+false caused the new test to fail with HTTP 403 instead of 200; production
+source was restored immediately afterwards. This is a manual check, not a PIT
+mutation result. The bounded facility PIT run on the updated base generated and
+killed 3 mutations in 32 seconds; it does not establish that the ownership
+mutation was among the selected three.
+
+The updated normal build passed with `mvn -q -DargLine=-Dapi.version=1.43 clean
+verify`: 331 tests, no failures, errors or skipped tests. The 11 facility tests
+also passed. The mapper and payment PIT results above are historical results
+from the original base; they were not rerun for this review follow-up.
