@@ -312,7 +312,7 @@ public class CompanyController {
 
     @PostMapping(value = "/userCustomers/import/farmers/{companyId}/{documentId}")
     @PreAuthorize("hasAnyAuthority('SYSTEM_ADMIN', 'REGIONAL_ADMIN')")
-    @Operation(summary = "Upload .xls or .xlsx spreadsheet of farmers to import into DB")
+    @Operation(summary = "Import farmers from an XLSX spreadsheet document")
     public ApiUserCustomerImportResponse importFarmersSpreadsheet(
             @AuthenticationPrincipal CustomUserDetails authUser,
             @Valid @Parameter(description = "Company ID", required = true) @PathVariable("companyId") Long companyId,
