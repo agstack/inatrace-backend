@@ -52,6 +52,16 @@ Run it from `inatrace-backend/`:
 mvn -q -DargLine=-Dapi.version=1.43 -Dtest=DatabaseUpgradeTest test
 ```
 
+## Maintaining this upgrade path
+
+Changes to migrations, entity columns, indexes or foreign keys must be reviewed
+against this test. Update `TARGET_MIGRATIONS`, `target.required.migration` in
+the manifest, and the expected schema delta in `assertExpectedSchemaDelta` and
+its helpers when applicable. Review source data preservation and current-model
+writes as well. Failures show the actual differences; do not update expectations
+without reviewing the upgrade effect. The target is the current checkout, not a
+fixed target SHA. The original reviewed target revision is historical provenance.
+
 The reviewed source/target metadata is in
 `src/test/resources/db/upgrade/fb4fecf/manifest.properties`; explanatory
 provenance is kept beside it in `manifest.md`. The manifest records the pinned

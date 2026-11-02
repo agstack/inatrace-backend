@@ -1,4 +1,4 @@
-# Reviewed synthetic upgrade fixture: `fb4fecf` to target reference `19d0ea3`
+# Reviewed synthetic upgrade fixture: `fb4fecf`
 
 The test pulls the MySQL image by the index digest in `manifest.properties`,
 not by the mutable tag alone. The history signature hashes every row ordered by
@@ -37,6 +37,10 @@ not claim to be a byte-for-byte customer database or a clean-source output.
 
 Use an isolated detached worktree at the pinned source revision and a disposable
 database created from `mysql:8.4.11@sha256:0744ee5ef89ce6ccfa13de3e579fe6b9e27f93dd70da9c06d2c908b1b193fb8d`.
+Create the empty database with `CHARACTER SET utf8mb4 COLLATE
+utf8mb4_unicode_ci`. Configure the source application and database for UTC;
+isolate the source application from external services while allowing access to
+the disposable database, because its background jobs can make network requests.
 The following procedure intentionally uses only local, disposable paths and a
 local MySQL defaults file; it must never point at a shared or production server:
 
@@ -50,11 +54,12 @@ git worktree add --detach /tmp/inatrace-backend-source-88 \
     --spring.config.additional-location=file:/tmp/inatrace-source-88.properties
 )
 # Wait for that unchanged source boot to record baseline + 41 rows, stop it,
-# then apply only the reviewed upgrade-fixture-* graph and the 28 legacy indexes
-# to the disposable database through mysql --defaults-extra-file=<local-cnf>.
+# then apply the reviewed synthetic graph and legacy indexes to that database:
+mysql --defaults-extra-file=<local-cnf> <isolated-upgrade-database> \
+  < src/test/resources/db/upgrade/fb4fecf/synthetic-state.sql
 mysqldump --no-tablespaces --single-transaction --skip-comments \
   --skip-dump-date --set-charset --routines --events --triggers \
-  --databases <isolated-upgrade-database> > source-fixture.sql
+  <isolated-upgrade-database> > source-fixture.sql
 sha256sum source-fixture.sql
 ```
 
@@ -64,7 +69,9 @@ Run the source application's normal boot unchanged with Java 17.0.20.1, Maven
 for this schema-upgrade fixture: it tests target preservation, rather than the
 old application's create-flow. After Flyway reports the baseline plus 41
 successful source migrations, insert only the reviewed `upgrade-fixture-*`
-graph and the 28 documented legacy indexes before running the recorded export.
+graph and the 28 documented legacy indexes using `synthetic-state.sql` before
+running the recorded export. The test removes and recreates that state in the
+restored fixture and compares its schema and data snapshots.
 
 Credentials, temporary datasource flags and local paths are deliberately not
 recorded. The canonical detailed migration inventory is the source-produced
@@ -76,7 +83,11 @@ The database was exported with `mysqldump --no-tablespaces
 --single-transaction --skip-comments --skip-dump-date --set-charset --routines
 --events --triggers`. Its SHA-256, and a canonical SHA-256 over the source
 `schema_version` content, are recorded in `manifest.properties` and checked by
-`DatabaseUpgradeTest`. No customer data, passwords, usable sessions, or
+`DatabaseUpgradeTest`. The fixture hash verifies the checked-in file. A fresh
+dump can differ in timestamps, migration execution times and other metadata;
+compare schema, migration history and synthetic data semantically when
+regenerating. MySQL can also render equivalent character-set declarations
+differently depending on database defaults. No customer data, passwords, usable sessions, or
 external credentials are included.
 
 Regenerate only after deliberately changing the pinned source contract: repeat

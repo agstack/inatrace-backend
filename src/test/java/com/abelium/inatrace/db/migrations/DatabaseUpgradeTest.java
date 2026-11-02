@@ -57,10 +57,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DatabaseUpgradeTest {
 
     private static final String SOURCE_REVISION = "fb4fecf87c97c0ae65994850446a73bceb99d201";
-    private static final String TARGET_REVISION = "19d0ea3b119e78713720a9a4f2b81e6c3deceb24";
-    private static final String REQUIRED_TARGET_MIGRATION = "2026.10.21.12.00";
     private static final String FIXTURE = "db/upgrade/fb4fecf/source-fixture.sql";
     private static final String LOCATIONS = "classpath:com/abelium/inatrace/db/migrations,classpath:/db/migrations";
+    // Review migrations and schema deltas when the target changes; see docs/stability/database-upgrade.md.
     private static final Map<String, String> TARGET_MIGRATIONS = Map.of(
             "2026.09.23.12.00", "com.abelium.inatrace.db.migrations.V2026_09_23_12_00__Drop_Legacy_OneToOne_Unique_Indexes",
             "2026.10.13.12.00", "com.abelium.inatrace.db.migrations.V2026_10_13_12_00__Add_Document_Uploaded_By",
@@ -111,6 +110,8 @@ class DatabaseUpgradeTest {
             try (Connection source = connection(mysql)) {
                 assertSourceState(source, manifest);
                 assertHistorySignatureDetectsLastRowChange(source, manifest);
+                assertSyntheticStateCanBeRecreated(source);
+                assertSourceState(source, manifest);
                 sourceSnapshot = snapshot(source);
             }
 
@@ -168,14 +169,59 @@ class DatabaseUpgradeTest {
 
     private void restoreSourceFixture(MySQLContainer<?> mysql) throws Exception {
         try (Connection connection = connection(mysql); Statement statement = connection.createStatement()) {
+            statement.execute("SET NAMES utf8mb4");
+            statement.execute("SET SESSION time_zone = '+00:00'");
+            statement.execute("SET SESSION sql_mode = 'NO_AUTO_VALUE_ON_ZERO'");
+            statement.execute("SET SESSION UNIQUE_CHECKS=0");
             statement.execute("SET FOREIGN_KEY_CHECKS=0");
+            try (ResultSet settings = statement.executeQuery("SELECT @@session.character_set_client, @@session.character_set_connection, @@session.time_zone, @@session.sql_mode, @@session.unique_checks, @@session.foreign_key_checks")) {
+                assertTrue(settings.next());
+                assertEquals("utf8mb4", settings.getString(1));
+                assertEquals("utf8mb4", settings.getString(2));
+                assertEquals("+00:00", settings.getString(3));
+                assertTrue(settings.getString(4).contains("NO_AUTO_VALUE_ON_ZERO"));
+                assertEquals(0, settings.getInt(5));
+                assertEquals(0, settings.getInt(6));
+            }
             ScriptUtils.executeSqlScript(connection, new EncodedResource(new ClassPathResource(FIXTURE), StandardCharsets.UTF_8));
             statement.execute("SET FOREIGN_KEY_CHECKS=1");
+            statement.execute("SET SESSION UNIQUE_CHECKS=1");
         }
     }
 
     private Connection connection(MySQLContainer<?> mysql) throws Exception {
         return DriverManager.getConnection(mysql.getJdbcUrl(), mysql.getUsername(), mysql.getPassword());
+    }
+
+    private void assertSyntheticStateCanBeRecreated(Connection connection) throws Exception {
+        UpgradeSnapshot expected = snapshot(connection);
+        List<String[]> indexes = new java.util.ArrayList<>();
+        try (Statement statement = connection.createStatement();
+             ResultSet result = statement.executeQuery("SELECT TABLE_NAME, INDEX_NAME, COLUMN_NAME FROM information_schema.STATISTICS "
+                     + "WHERE TABLE_SCHEMA=DATABASE() AND LEFT(INDEX_NAME, 10)='UK_LEGACY_'")) {
+            while (result.next()) indexes.add(new String[]{result.getString(1), result.getString(2), result.getString(3)});
+        }
+        assertEquals(28, indexes.size(), "Fixture must contain the reviewed synthetic indexes");
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("SET FOREIGN_KEY_CHECKS=0");
+            for (int i = 0; i < indexes.size(); i++) {
+                String[] index = indexes.get(i);
+                statement.execute("ALTER TABLE `" + index[0] + "` ADD INDEX `IDX_TMP_UPGRADE_" + i + "` (`" + index[2] + "`)");
+                statement.execute("ALTER TABLE `" + index[0] + "` DROP INDEX `" + index[1] + "`");
+            }
+            for (String deletion : List.of("AuthenticationToken:12001", "Transaction:10001", "StockOrder:9001,9002",
+                    "ProcessingOrder:8001", "ProcessingAction:7001", "SemiProduct:6001", "Facility:5001",
+                    "FacilityLocation:4001", "Document:11001", "CompanyUser:3001", "Company:2001", "User:1001")) {
+                String[] parts = deletion.split(":");
+                statement.executeUpdate("DELETE FROM `" + parts[0] + "` WHERE id IN (" + parts[1] + ")");
+            }
+            ScriptUtils.executeSqlScript(connection, new EncodedResource(
+                    new ClassPathResource("db/upgrade/fb4fecf/synthetic-state.sql"), StandardCharsets.UTF_8));
+            for (int i = 0; i < indexes.size(); i++) {
+                statement.execute("ALTER TABLE `" + indexes.get(i)[0] + "` DROP INDEX `IDX_TMP_UPGRADE_" + i + "`");
+            }
+        }
+        assertEquals(expected, snapshot(connection), "Recreated synthetic graph and indexes must match the reviewed fixture");
     }
 
     private Manifest readManifest() throws Exception {
@@ -185,8 +231,8 @@ class DatabaseUpgradeTest {
             properties.load(input);
         }
         assertEquals(SOURCE_REVISION, properties.getProperty("source.revision"));
-        assertEquals(TARGET_REVISION, properties.getProperty("target.revision"));
-        assertEquals(REQUIRED_TARGET_MIGRATION, properties.getProperty("target.required.migration"));
+        assertTrue(TARGET_MIGRATIONS.containsKey(properties.getProperty("target.required.migration")),
+                "Required migration must be included in TARGET_MIGRATIONS; see docs/stability/database-upgrade.md");
         assertEquals("sha256:0744ee5ef89ce6ccfa13de3e579fe6b9e27f93dd70da9c06d2c908b1b193fb8d",
                 properties.getProperty("mysql.image.digest"));
         assertEquals("org.hibernate.boot.model.naming.ImplicitNamingStrategyComponentPathImpl",
@@ -243,7 +289,13 @@ class DatabaseUpgradeTest {
 
     private void assertTargetHistory(DataSource dataSource, Manifest manifest) throws Exception {
         try (Connection connection = dataSource.getConnection()) {
-            assertEquals(manifest.historyCount() + TARGET_MIGRATIONS.size(), scalar(connection, "SELECT COUNT(*) FROM schema_version WHERE success"));
+            Set<String> actual = rows(connection, "SELECT CONCAT(version, '|', script, '|', type, '|', COALESCE(CAST(checksum AS CHAR), '<NULL>'), '|', success) FROM schema_version WHERE installed_rank > " + manifest.historyCount());
+            Set<String> expected = new LinkedHashSet<>();
+            TARGET_MIGRATIONS.forEach((version, script) -> expected.add(version + "|" + script + "|CUSTOM|<NULL>|1"));
+            assertEquals(expected, actual, "Unexpected or missing migrations: extra=" + difference(actual, expected)
+                    + ", missing=" + difference(expected, actual) + "; see docs/stability/database-upgrade.md");
+            assertEquals(manifest.historyCount() + TARGET_MIGRATIONS.size(), scalar(connection, "SELECT COUNT(*) FROM schema_version WHERE success"),
+                    "Unexpected migration count; see docs/stability/database-upgrade.md");
             assertEquals(manifest.historySha256(), sourceHistorySignature(connection));
             for (Map.Entry<String, String> migration : TARGET_MIGRATIONS.entrySet()) {
                 assertEquals(1, scalar(connection, "SELECT COUNT(*) FROM schema_version WHERE version='" + migration.getKey()
@@ -412,12 +464,12 @@ class DatabaseUpgradeTest {
             SchemaSnapshot target = schemaSnapshot(connection);
             assertEquals(source.tables(), target.tables(), "Target must not add or remove tables in this upgrade path");
             Set<String> addedColumns = difference(target.columns(), source.columns());
-            assertEquals(1, addedColumns.size());
+            assertEquals(1, addedColumns.size(), "Unexpected added columns: " + addedColumns + "; see docs/stability/database-upgrade.md");
             assertTrue(addedColumns.iterator().next().startsWith("Document|uploadedBy_id|bigint|YES|<NULL>|"));
             assertTrue(difference(source.columns(), target.columns()).isEmpty(), "Target must not remove source columns");
             Set<String> removedIndexes = difference(source.indexes(), target.indexes());
-            assertEquals(legacyUniqueIndexes(source.indexes()), removedIndexes);
-            assertEquals(expectedAddedIndexes(), difference(target.indexes(), source.indexes()));
+            assertEquals(legacyUniqueIndexes(source.indexes()), removedIndexes, "Unexpected removed indexes; see docs/stability/database-upgrade.md");
+            assertEquals(expectedAddedIndexes(), difference(target.indexes(), source.indexes()), "Unexpected added indexes; see docs/stability/database-upgrade.md");
             assertTrue(difference(source.foreignKeys(), target.foreignKeys()).isEmpty(), "Target must not remove source foreign keys");
             assertExpectedDocumentUploaderForeignKeys(difference(target.foreignKeys(), source.foreignKeys()));
         }
