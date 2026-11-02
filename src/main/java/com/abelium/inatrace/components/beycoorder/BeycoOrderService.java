@@ -16,6 +16,7 @@ import com.abelium.inatrace.db.entities.stockorder.enums.TransactionStatus;
 import com.abelium.inatrace.security.service.CustomUserDetails;
 import com.abelium.inatrace.security.utils.PermissionsUtil;
 import com.abelium.inatrace.types.*;
+import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
@@ -23,7 +24,9 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.ZoneOffset;
@@ -48,6 +51,12 @@ public class BeycoOrderService extends BaseService {
     @Value("${beyco.integration.url}")
     private String beycoUrl;
 
+    @Value("${beyco.integration.connectTimeoutMs:30000}")
+    private int connectTimeoutMs;
+
+    @Value("${beyco.integration.readTimeoutMs:30000}")
+    private int readTimeoutMs;
+
     private static final String GRADE_FIELD_NAME = "GRADE";
     private static final String SCREEN_SIZE_FIELD_NAME = "SCREEN_SIZE";
     private static final String CUPPING_SCORE_FIELD_NAME = "CUPPING_SCORE";
@@ -65,34 +74,44 @@ public class BeycoOrderService extends BaseService {
         this.companyQueries = companyQueries;
     }
 
+    @PostConstruct
+    void validateTimeouts() {
+        if (connectTimeoutMs <= 0 || readTimeoutMs <= 0) {
+            throw new IllegalArgumentException("Beyco timeouts must be positive milliseconds");
+        }
+    }
+
     public ApiBeycoTokenResponse getBeycoAuthToken(String authCode, Long companyId, CustomUserDetails user) throws ApiException {
         fetchAuthorizedCompany(companyId, user);
 
-        RestTemplate restTemplate = new RestTemplate();
         ApiBeycoTokenRequest tokenRequest = new ApiBeycoTokenRequest();
         tokenRequest.setCode(authCode);
         tokenRequest.setClientSecret(this.clientSecret);
         tokenRequest.setClientId(this.clientId);
         tokenRequest.setGrantType(TokenGrantType.AuthorizationCode);
 
-        ResponseEntity<ApiBeycoTokenResponse> response = restTemplate.exchange(this.authUrl, HttpMethod.POST,
-                new HttpEntity<>(tokenRequest), ApiBeycoTokenResponse.class);
-        return response.getBody();
+        return validateToken(exchange(this.authUrl, new HttpEntity<>(tokenRequest), ApiBeycoTokenResponse.class));
     }
 
     public ApiBeycoTokenResponse refreshBeycoAuthToken(String refreshToken, Long companyId, CustomUserDetails user) throws ApiException {
         fetchAuthorizedCompany(companyId, user);
 
-        RestTemplate restTemplate = new RestTemplate();
         ApiBeycoTokenRequest tokenRequest = new ApiBeycoTokenRequest();
         tokenRequest.setRefreshToken(refreshToken);
         tokenRequest.setClientSecret(this.clientSecret);
         tokenRequest.setClientId(this.clientId);
         tokenRequest.setGrantType(TokenGrantType.RefreshToken);
 
-        ResponseEntity<ApiBeycoTokenResponse> response = restTemplate.exchange(this.authUrl, HttpMethod.POST,
-                new HttpEntity<>(tokenRequest), ApiBeycoTokenResponse.class);
-        return response.getBody();
+        return validateToken(exchange(this.authUrl, new HttpEntity<>(tokenRequest), ApiBeycoTokenResponse.class));
+    }
+
+    private ApiBeycoTokenResponse validateToken(ApiBeycoTokenResponse token) throws ApiException {
+        if (token.getAccessToken() == null || token.getAccessToken().isBlank()
+                || (token.getRefreshToken() != null && token.getRefreshToken().isBlank())
+                || (token.getExpiresIn() != null && token.getExpiresIn() <= 0)) {
+            throw new ApiException(ApiStatus.UPSTREAM_HTTP_ERROR, "Beyco service returned an invalid token");
+        }
+        return token;
     }
 
     public Object sendBeycoOrder(ApiBeycoOrderFields beycoOrder, String token, Long companyId, CustomUserDetails user) throws ApiException {
@@ -105,18 +124,27 @@ public class BeycoOrderService extends BaseService {
             beycoCoffees.getCoffee().setUnit(BeycoCoffeeUnit.Kg);
         }
 
-        RestTemplate restTemplate = new RestTemplate();
         HttpHeaders headers = new HttpHeaders();
         headers.add("Authorization", "Bearer " + token);
         HttpEntity<ApiBeycoOrderFields> request = new HttpEntity<>(beycoOrder, headers);
 
-        ResponseEntity<Object> response = restTemplate.exchange(
-                this.beycoUrl + BeycoOrderService.BEYCO_ORDER_ENDPOINT,
-                HttpMethod.POST,
-                request,
-                Object.class
-        );
-        return response.getBody();
+        return exchange(this.beycoUrl + BEYCO_ORDER_ENDPOINT, request, Object.class);
+    }
+
+    private <T> T exchange(String url, HttpEntity<?> request, Class<T> responseType) throws ApiException {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(connectTimeoutMs);
+        factory.setReadTimeout(readTimeoutMs);
+        try {
+            ResponseEntity<T> response = new RestTemplate(factory).exchange(url, HttpMethod.POST, request, responseType);
+            if (response.getBody() == null) {
+                throw new ApiException(ApiStatus.UPSTREAM_HTTP_ERROR, "Beyco service returned an empty response");
+            }
+            return response.getBody();
+        } catch (RestClientException ex) {
+            // Do not propagate the provider's body, URL or credentials through the global handler.
+            throw new ApiException(ApiStatus.UPSTREAM_HTTP_ERROR, "Beyco service request failed");
+        }
     }
 
     public ApiBeycoOrderFields getBeycoOrderFieldList(List<Long> stockOrderIds, Long companyId, CustomUserDetails user) throws ApiException {
