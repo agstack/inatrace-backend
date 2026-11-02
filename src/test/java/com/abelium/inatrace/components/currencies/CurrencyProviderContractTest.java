@@ -145,7 +145,8 @@ class CurrencyProviderContractTest extends AbstractMySqlIntegrationTest {
                 em.createNativeQuery("delete from User_AUD where id = :id").setParameter("id", ownedUserId).executeUpdate();
             }
             em.createQuery("delete from CurrencyPair p where p.to.code in :codes").setParameter("codes", List.of(currencyA, currencyB, disabled)).executeUpdate();
-            em.createQuery("delete from CurrencyType c where c.code = :code").setParameter("code", discovered).executeUpdate();
+            em.createQuery("delete from CurrencyType c where c.code in :codes")
+                    .setParameter("codes", List.of(discovered, discovered + "BAD", discovered + "BLANK")).executeUpdate();
             if (!ownedIds.isEmpty()) em.createQuery("delete from CurrencyType c where c.id in :ids").setParameter("ids", ownedIds).executeUpdate();
         });
     }
@@ -216,7 +217,7 @@ class CurrencyProviderContractTest extends AbstractMySqlIntegrationTest {
         symbols = "{\"success\":true,\"symbols\":null}";
         latest = rates("0", "4");
         currencyTypes.updateCurrencies();
-        assertEquals(0, countRates());
+        assertEquals(1, countRates());
         long found = new TransactionTemplate(transactions).execute(tx -> em.createQuery("select count(c) from CurrencyType c where c.code = :code", Long.class)
                 .setParameter("code", discovered).getSingleResult());
         assertEquals(0, found);
@@ -224,6 +225,70 @@ class CurrencyProviderContractTest extends AbstractMySqlIntegrationTest {
         latest = rates("2", "4");
         currencyTypes.updateCurrencies();
         assertEquals(2, countRates());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"null", "0", "-1"})
+    void latestRefreshPreservesValidRateWhenAnotherIsInvalid(String invalidRate) {
+        latest = rates("2", invalidRate);
+        currencyTypes.updateCurrencies();
+        currencyTypes.updateCurrencies();
+        assertEquals(1, countRates());
+        BigDecimal converted = new TransactionTemplate(transactions).execute(tx ->
+                currencyService.convert("EUR", currencyA, new BigDecimal("3")));
+        assertEquals(0, new BigDecimal("6").compareTo(converted));
+        long invalidCount = new TransactionTemplate(transactions).execute(tx -> em.createQuery(
+                "select count(p) from CurrencyPair p where p.to.code = :code", Long.class)
+                .setParameter("code", currencyB).getSingleResult());
+        assertEquals(0, invalidCount);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"null", "0", "-1"})
+    void historicalConversionPersistsValidRateWhenAnotherIsInvalid(String invalidRate) {
+        historical = rates("2", invalidRate);
+        assertEquals(0, new BigDecimal("6").compareTo(
+                currencyService.convertAtDate("EUR", currencyA, new BigDecimal("3"), DATE)));
+        assertEquals(1, countRates());
+        assertThrows(RuntimeException.class, () -> currencyService.convertAtDate("EUR", currencyB, BigDecimal.ONE, DATE));
+        assertEquals(1, countRates());
+    }
+
+    @Test
+    void allInvalidRatesDoNotPersist() {
+        latest = rates("0", "-1");
+        currencyTypes.updateCurrencies();
+        assertEquals(0, countRates());
+        historical = rates("null", "0");
+        assertThrows(RuntimeException.class, () -> currencyService.convertAtDate("EUR", currencyA, BigDecimal.ONE, DATE));
+        assertEquals(0, countRates());
+    }
+
+    @Test
+    void validSymbolsAreCreatedWhenOtherDescriptionsAreMissingOrBlank() {
+        List<Long> existingBlankIds = new TransactionTemplate(transactions).execute(tx -> em.createQuery(
+                "select c.id from CurrencyType c where c.code = :code", Long.class)
+                .setParameter("code", "").getResultList());
+        List<Long> newBlankIds = new ArrayList<>();
+        symbols = "{\"success\":true,\"symbols\":{\"" + discovered + "\":\"Synthetic new\",\""
+                + discovered + "BAD\":null,\"" + discovered + "BLANK\":\"  \",\"\":\"Missing code\"}}";
+        try {
+            currencyTypes.updateCurrencies();
+        } finally {
+            List<Long> blankIds = new TransactionTemplate(transactions).execute(tx -> em.createQuery(
+                    "select c.id from CurrencyType c where c.code = :code", Long.class)
+                    .setParameter("code", "").getResultList());
+            blankIds.stream().filter(id -> !existingBlankIds.contains(id)).forEach(newBlankIds::add);
+            ownedIds.addAll(newBlankIds);
+        }
+        new TransactionTemplate(transactions).executeWithoutResult(tx -> {
+            CurrencyType created = em.createQuery("select c from CurrencyType c where c.code = :code", CurrencyType.class)
+                    .setParameter("code", discovered).getSingleResult();
+            assertEquals(Boolean.FALSE, created.getEnabled());
+            assertEquals(0L, em.createQuery("select count(c) from CurrencyType c where c.code in :codes", Long.class)
+                    .setParameter("codes", List.of(discovered + "BAD", discovered + "BLANK")).getSingleResult());
+        });
+        assertTrue(newBlankIds.isEmpty(), "blank currency codes must not be created");
     }
 
     @ParameterizedTest
@@ -277,7 +342,7 @@ class CurrencyProviderContractTest extends AbstractMySqlIntegrationTest {
             assertEquals(endpoint.equals("symbols") ? 2 : 0, countRates());
             assertEquals(2, requests.size());
             assertEquals(1, logs.list.stream().filter(event ->
-                    event.getFormattedMessage().contains("type=TimeoutException")).count());
+                    event.getFormattedMessage().contains("type=java.util.concurrent.TimeoutException")).count());
         } finally {
             logger.detachAppender(logs);
             logs.stop();

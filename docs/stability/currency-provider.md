@@ -20,9 +20,15 @@ with no stored rate fails rather than substituting a current or invented rate.
 The authenticated conversion endpoint currently returns a generic 500 in that
 case; it does not invalidate the local session.
 
-Successful rates must include EUR as base, a date and a nonempty map containing
-only positive values. Historical responses must also match the requested GMT
-date. Invalid responses are ignored as a whole and no new rates are written.
+Successful rate responses must include EUR as base, a date and a nonempty map.
+Historical responses must also match the requested GMT date. Responses that
+fail these structural checks are ignored. Within a valid response, null, zero
+and negative rates are skipped independently; positive rates for enabled
+currencies can still be saved. Symbols with blank codes or missing or blank
+descriptions are also skipped individually. A response that cannot be parsed
+still fails as a whole before entry validation. If a historical conversion's
+requested rate is unavailable, that conversion fails and its transaction can
+roll back other rates fetched in the same operation.
 Successful symbols and successful rates remain independent: a symbols update
 can commit even when the following rates request fails. New symbols are disabled
 by default, and repeated sequential refreshes do not add duplicate rates for the

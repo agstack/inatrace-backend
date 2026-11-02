@@ -130,7 +130,7 @@ public class CurrencyService extends BaseService {
             List<String> enabled = currencyTypeService.getEnabledCurrencyCodes();
 
             for (Map.Entry<String, BigDecimal> entry : rates.entrySet()) {
-                if (enabled.contains(entry.getKey()) && rateAtDateQuery(entry.getKey(), current).getResultList().isEmpty()) {
+                if (validRate(entry.getValue()) && enabled.contains(entry.getKey()) && rateAtDateQuery(entry.getKey(), current).getResultList().isEmpty()) {
                     CurrencyPair currencyPair = new CurrencyPair();
                     CurrencyType from = currencyTypeService.getCurrencyTypeByCode("EUR");
                     CurrencyType to = currencyTypeService.getCurrencyTypeByCode(entry.getKey());
@@ -146,8 +146,11 @@ public class CurrencyService extends BaseService {
 
     public static boolean validRates(ApiCurrencyRatesResponse response) {
         return response != null && response.isSuccess() && "EUR".equals(response.getBase()) && response.getDate() != null
-                && response.getRates() != null && !response.getRates().isEmpty()
-                && response.getRates().values().stream().allMatch(rate -> rate != null && rate.signum() > 0);
+                && response.getRates() != null && !response.getRates().isEmpty();
+    }
+
+    public static boolean validRate(BigDecimal rate) {
+        return rate != null && rate.signum() > 0;
     }
 
     private TypedQuery<BigDecimal> rateAtDateQuery(String currency, Date date) {

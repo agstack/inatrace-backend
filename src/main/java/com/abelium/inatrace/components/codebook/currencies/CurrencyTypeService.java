@@ -85,11 +85,13 @@ public class CurrencyTypeService extends BaseService {
                 .onErrorReturn(new ApiCurrencySymbolsResponse())
                 .block();
         if (apiCurrencySymbolsResponse != null && apiCurrencySymbolsResponse.isSuccess()
-                && apiCurrencySymbolsResponse.getSymbols() != null
-                && apiCurrencySymbolsResponse.getSymbols().entrySet().stream()
-                .allMatch(entry -> entry.getKey() != null && entry.getValue() != null)) {
+                && apiCurrencySymbolsResponse.getSymbols() != null) {
             Map<String, String> symbols = apiCurrencySymbolsResponse.getSymbols();
             for (Map.Entry<String, String> entry : symbols.entrySet()) {
+                if (entry.getKey() == null || entry.getKey().isBlank()
+                        || entry.getValue() == null || entry.getValue().isBlank()) {
+                    continue;
+                }
                 if (em.createNamedQuery("CurrencyType.getCurrencyTypeByCode").setParameter("code", entry.getKey()).getResultList().isEmpty()) {
                     CurrencyType currencyType = new CurrencyType();
                     currencyType.setCode(entry.getKey());
@@ -117,7 +119,7 @@ public class CurrencyTypeService extends BaseService {
             List<String> enabled = getEnabledCurrencyCodes();
 
             for (Map.Entry<String, BigDecimal> entry : rates.entrySet()) {
-                if (enabled.contains(entry.getKey()) && em.createNamedQuery("CurrencyPair.rateAtDate").setParameter(CURRENCY, entry.getKey()).setParameter("date", current).getResultList().isEmpty()) {
+                if (CurrencyService.validRate(entry.getValue()) && enabled.contains(entry.getKey()) && em.createNamedQuery("CurrencyPair.rateAtDate").setParameter(CURRENCY, entry.getKey()).setParameter("date", current).getResultList().isEmpty()) {
                     CurrencyPair currencyPair = new CurrencyPair();
                     CurrencyType from = getCurrencyTypeByCode("EUR");
                     CurrencyType to = getCurrencyTypeByCode(entry.getKey());
