@@ -24,6 +24,10 @@ import com.abelium.inatrace.types.Language;
 import com.abelium.inatrace.types.UserCustomerType;
 import com.abelium.inatrace.types.UserRole;
 import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.EmptyFileException;
+import org.apache.poi.openxml4j.exceptions.NotOfficeXmlFileException;
+import org.apache.poi.openxml4j.exceptions.InvalidFormatException;
+import org.apache.poi.ooxml.POIXMLException;
 import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
@@ -79,6 +83,13 @@ public class UserCustomerImportService extends BaseService {
         try {
             inputStream = new ByteArrayInputStream(documentData.file);
             mainWorkbook = new XSSFWorkbook(inputStream);
+        } catch (NotOfficeXmlFileException | EmptyFileException e) {
+            throw new ApiException(ApiStatus.INVALID_REQUEST, "The file is not a valid XLSX spreadsheet. Please check the file and try again.");
+        } catch (POIXMLException e) {
+            if (e.getCause() instanceof InvalidFormatException) {
+                throw new ApiException(ApiStatus.INVALID_REQUEST, "The file is not a valid XLSX spreadsheet. Please check the file and try again.");
+            }
+            throw e;
         } catch (IOException e) {
             throw new ApiException(ApiStatus.ERROR, "Could not read file");
         }
