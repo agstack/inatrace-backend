@@ -170,6 +170,7 @@ public class CompanyApiTools {
 		}
 		c.setLogo(commonEngine.fetchDocument(userId, ac.logo));
 		c.setHeadquarters(commonApiTools.toAddress(ac.headquarters));
+		c.setManager(ac.manager);
 		c.setEmail(ac.email);
 		c.setPhone(ac.phone);
 		c.setCurrency(ac.getCurrency() == null ? null : currencyTypeService.getCurrencyType(ac.getCurrency().getId()));

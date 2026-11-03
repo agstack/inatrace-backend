@@ -309,6 +309,8 @@ class ProductAndLabelApiTest extends AbstractMySqlIntegrationTest {
         assertRefused(post("/api/product/knowledgeBlog/" + productId).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"title\":\"FOREIGN-BLOG-36\"}").cookie(strangerSession), 403);
         assertRefused(post("/api/product/knowledgeBlog/" + productId).contentType(MediaType.APPLICATION_JSON).content("{}"), 401);
+        assertRefused(delete("/api/product/knowledgeBlog/" + blogId).cookie(strangerSession), 403);
+        assertRefused(delete("/api/product/knowledgeBlog/" + blogId), 401);
         assertContains(get("/api/product/knowledgeBlog/" + blogId).cookie(ownerSession), 200, MARKER);
     }
 

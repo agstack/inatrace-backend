@@ -184,6 +184,9 @@ class FacilityApiAuthTest extends AbstractMySqlIntegrationTest {
         Product connectedProduct = em.createQuery(
                 "SELECT p FROM Product p WHERE p.name = :name", Product.class)
                 .setParameter("name", "Connected facility product").getSingleResult();
+        // The facility company is associated with the product, but does not own it.
+        // This distinguishes the association path from the separate ownership check.
+        connectedProduct.setCompany(em.find(Company.class, rivalCompanyId));
         FinalProduct finalProduct = new FinalProduct();
         finalProduct.setName("CONNECTED-FINAL-35");
         finalProduct.setDescription("Shared through product association");
@@ -201,6 +204,59 @@ class FacilityApiAuthTest extends AbstractMySqlIntegrationTest {
         em.flush();
         em.clear();
         assertEquals(finalProduct.getId(), em.find(Facility.class, facilityId)
+                .getFacilityFinalProducts().iterator().next().getFinalProduct().getId());
+    }
+
+    @Test
+    void facilityCanAttachOwnedFinalProductWithoutCompanyAssociation() throws Exception {
+        ProductType productType = new ProductType();
+        productType.setCode("OWNED_FACILITY_PRODUCT_104");
+        productType.setName("Owned facility product type");
+        em.persist(productType);
+
+        ValueChain chain = new ValueChain();
+        chain.setName("Owned facility value chain");
+        chain.setDescription("Ownership authorization test");
+        chain.setValueChainStatus(ValueChainStatus.ENABLED);
+        chain.setProductType(productType);
+        chain.setCreatedBy(em.find(User.class, ownerId));
+        em.persist(chain);
+
+        Product product = new Product();
+        product.setName("Owned facility product");
+        product.setCompany(em.find(Company.class, companyId));
+        product.setValueChain(chain);
+        product.setProcess(null);
+        product.setResponsibility(null);
+        product.setSustainability(null);
+        product.setJourney(null);
+        product.setSettings(null);
+        product.setBusinessToCustomerSettings(null);
+        em.persist(product);
+
+        FinalProduct finalProduct = new FinalProduct();
+        finalProduct.setName("OWNED-FINAL-104");
+        finalProduct.setDescription("Owned without a company association");
+        finalProduct.setProduct(product);
+        em.persist(finalProduct);
+        Long productId = product.getId();
+        Long finalProductId = finalProduct.getId();
+        em.flush();
+        em.clear();
+
+        Product persistedProduct = em.find(Product.class, productId);
+        assertEquals(companyId, persistedProduct.getCompany().getId());
+        assertTrue(persistedProduct.getAssociatedCompanies().isEmpty());
+
+        String body = facilityBody(facilityId, "ACME-OWNED-FINAL-104")
+                .replace("\"facilityFinalProducts\":[]",
+                        "\"facilityFinalProducts\":[{\"id\":" + finalProductId + "}]");
+        MvcResult allowed = mockMvc.perform(put("/api/chain/facility").cookie(ownerSession)
+                .contentType(MediaType.APPLICATION_JSON).content(body)).andReturn();
+        assertEquals(200, allowed.getResponse().getStatus(), allowed.getResponse().getContentAsString());
+        em.flush();
+        em.clear();
+        assertEquals(finalProductId, em.find(Facility.class, facilityId)
                 .getFacilityFinalProducts().iterator().next().getFinalProduct().getId());
     }
 

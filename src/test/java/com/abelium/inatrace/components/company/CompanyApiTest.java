@@ -319,6 +319,22 @@ class CompanyApiTest extends AbstractMySqlIntegrationTest {
 	}
 
 	@Test
+	@DisplayName("update saves the company's manager")
+	void updateSavesManager() {
+		User admin = seedUser(UserRole.USER);
+		Company company = seedCompany(CompanyStatus.ACTIVE, "Managed " + UUID.randomUUID());
+		enroll(company, admin, CompanyUserRole.COMPANY_ADMIN);
+
+		ResponseEntity<String> response = exchange(HttpMethod.PUT, "/api/company/profile",
+				Map.of("id", company.getId(), "name", company.getName(), "manager", "Ana Perez"), accessCookieFor(admin));
+
+		assertEquals(HttpStatus.OK, response.getStatusCode());
+		assertEquals("Ana Perez", managerOf(company.getId()));
+		assertTrue(get("/api/company/profile/" + company.getId(), accessCookieFor(admin)).getBody().contains("\"manager\":\"Ana Perez\""),
+				"the profile should return the saved manager");
+	}
+
+	@Test
 	@DisplayName("update refuses an enrolled user who is not the company admin")
 	void updateRefusesPlainCompanyUser() {
 		User user = seedUser(UserRole.USER);
@@ -669,6 +685,10 @@ class CompanyApiTest extends AbstractMySqlIntegrationTest {
 
 	private String nameOf(Long companyId) {
 		return tx().execute(s -> em.find(Company.class, companyId).getName());
+	}
+
+	private String managerOf(Long companyId) {
+		return tx().execute(s -> em.find(Company.class, companyId).getManager());
 	}
 
 	/** Null when the user is not (or no longer) enrolled in the company. */

@@ -263,6 +263,46 @@
       </plugin>
     </plugins>
   </build>
+  <profiles>
+    <!-- Explicit opt-in: regular builds and CI do not run mutation analysis. -->
+    <profile>
+      <id>mutation</id>
+      <properties>
+        <mutation.targetClass>com.abelium.inatrace.components.codebook.measure_unit_type.MeasureUnitTypeMapper</mutation.targetClass>
+        <mutation.targetTest>com.abelium.inatrace.components.codebook.measure_unit_type.MeasureUnitTypeMapperTest</mutation.targetTest>
+        <mutation.features>+CLASSLIMIT(limit[30])</mutation.features>
+        <mutation.reportDir>${project.build.directory}/pit-reports/mapper</mutation.reportDir>
+        <api.version>1.43</api.version>
+      </properties>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.pitest</groupId>
+            <artifactId>pitest-maven</artifactId>
+            <version>1.18.2</version>
+            <dependencies>
+              <dependency>
+                <groupId>org.pitest</groupId>
+                <artifactId>pitest-junit5-plugin</artifactId>
+                <version>1.2.2</version>
+              </dependency>
+            </dependencies>
+            <configuration>
+              <targetClasses><param>${mutation.targetClass}</param></targetClasses>
+              <targetTests><param>${mutation.targetTest}</param></targetTests>
+              <features><feature>${mutation.features}</feature></features>
+              <threads>1</threads>
+              <timeoutConstant>30000</timeoutConstant>
+              <jvmArgs><jvmArg>-Dapi.version=${api.version}</jvmArg></jvmArgs>
+              <outputFormats><outputFormat>HTML</outputFormat><outputFormat>XML</outputFormat></outputFormats>
+              <reportsDirectory>${mutation.reportDir}</reportsDirectory>
+              <timestampedReports>false</timestampedReports>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 	<repositories>
 		<repository>
 			<id>maven_central</id>
