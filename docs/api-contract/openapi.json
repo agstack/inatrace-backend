@@ -13461,7 +13461,7 @@
             "description" : "OK"
           }
         },
-        "summary" : "Upload .xls or .xlsx spreadsheet of farmers to import into DB",
+        "summary" : "Import farmers from an XLSX spreadsheet document",
         "tags" : [ "company-controller" ]
       }
     },

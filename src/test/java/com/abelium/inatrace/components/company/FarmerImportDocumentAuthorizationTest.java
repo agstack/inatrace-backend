@@ -1,6 +1,7 @@
 package com.abelium.inatrace.components.company;
 
 import com.abelium.inatrace.components.common.TokenService;
+import com.abelium.inatrace.components.common.StorageService;
 import com.abelium.inatrace.db.entities.codebook.ProductType;
 import com.abelium.inatrace.db.entities.common.Document;
 import com.abelium.inatrace.db.entities.common.User;
@@ -20,6 +21,8 @@ import jakarta.persistence.EntityManager;
 import jakarta.servlet.http.Cookie;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.apache.poi.hssf.usermodel.HSSFWorkbook;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -35,7 +38,14 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.ByteArrayOutputStream;
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.Arrays;
 import java.util.UUID;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -60,6 +70,7 @@ class FarmerImportDocumentAuthorizationTest extends AbstractMySqlIntegrationTest
     @Autowired private EntityManager em;
     @Autowired private TokenService tokenService;
     @Autowired private ObjectMapper objectMapper;
+    @Autowired private StorageService storageService;
 
     @Value("${INATrace.auth.accessTokenCookieName}")
     private String accessCookieName;
@@ -109,6 +120,106 @@ class FarmerImportDocumentAuthorizationTest extends AbstractMySqlIntegrationTest
         assertTrue(body(result).contains("\"successful\":0"), body(result));
         assertEquals(uploader.getId(), em.find(Document.class, documentId).getUploadedBy().getId(),
                 "the common upload endpoint must persist the authenticated uploader");
+    }
+
+    @Test
+    @DisplayName("non-XLSX and legacy XLS uploads produce a safe client error without writing farmers")
+    void invalidWorkbookProducesClientErrorWithoutWrites() throws Exception {
+        byte[] legacyXls;
+        try (HSSFWorkbook workbook = new HSSFWorkbook(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            workbook.createSheet("Farmers");
+            workbook.write(output);
+            legacyXls = output.toByteArray();
+        }
+        byte[] unrelatedZip;
+        try (ByteArrayOutputStream output = new ByteArrayOutputStream(); ZipOutputStream zip = new ZipOutputStream(output)) {
+            zip.putNextEntry(new ZipEntry("readme.txt"));
+            zip.write("not a spreadsheet".getBytes(StandardCharsets.UTF_8));
+            zip.closeEntry();
+            zip.finish();
+            unrelatedZip = output.toByteArray();
+        }
+        byte[] docx;
+        try (XWPFDocument document = new XWPFDocument(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            document.createParagraph().createRun().setText("Not a spreadsheet");
+            document.write(output);
+            docx = output.toByteArray();
+        }
+        byte[] noSheets;
+        try (XSSFWorkbook workbook = new XSSFWorkbook(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            workbook.write(output);
+            noSheets = output.toByteArray();
+        }
+        byte[] validWorkbook = emptyImportWorkbook();
+        byte[] truncated = Arrays.copyOf(validWorkbook, validWorkbook.length / 2);
+        byte[] corrupt = validWorkbook.clone();
+        int nameLength = (corrupt[26] & 0xff) | ((corrupt[27] & 0xff) << 8);
+        int extraLength = (corrupt[28] & 0xff) | ((corrupt[29] & 0xff) << 8);
+        int compressedData = 30 + nameLength + extraLength;
+        corrupt[compressedData] = (byte) ((corrupt[compressedData] & ~6) | 6); // reserved DEFLATE block type
+        byte[] strict = rewriteZipEntry(validWorkbook, "_rels/.rels",
+                xml -> xml.replace("http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument",
+                        "http://purl.oclc.org/ooxml/officeDocument/relationships/officeDocument"));
+        byte[] zipBomb = rewriteZipEntry(validWorkbook, "xl/workbook.xml",
+                xml -> xml.replace("</workbook>", " ".repeat(500_000) + "</workbook>"));
+        for (byte[] bytes : new byte[][] { new byte[0], "not a spreadsheet".getBytes(StandardCharsets.UTF_8),
+                legacyXls, unrelatedZip, docx, truncated, corrupt, strict, zipBomb, noSheets }) {
+            long before = em.createQuery("select count(u) from UserCustomer u where u.company.id = :company", Long.class)
+                    .setParameter("company", importingCompany.getId()).getSingleResult();
+            long documentId = uploadWorkbook(uploaderSession, bytes);
+            Document document = em.find(Document.class, documentId);
+            var file = storageService.getPath(document);
+            try {
+                MvcResult result = importFarmers(importingCompany.getId(), documentId, uploaderSession);
+                assertEquals(400, result.getResponse().getStatus(), body(result));
+                var response = objectMapper.readTree(body(result));
+                assertEquals("INVALID_REQUEST", response.path("status").asText());
+                assertEquals("The file is not a valid XLSX spreadsheet. Please check the file and try again.", response.path("errorMessage").asText());
+                assertFalse(body(result).contains("Exception"), body(result));
+                em.flush();
+                em.clear();
+                long after = em.createQuery("select count(u) from UserCustomer u where u.company.id = :company", Long.class)
+                        .setParameter("company", importingCompany.getId()).getSingleResult();
+                assertEquals(before, after);
+            } finally {
+                Files.deleteIfExists(file);
+            }
+        }
+    }
+
+    @Test
+    void missingStoredFileRemainsServerError() throws Exception {
+        long documentId = uploadWorkbook(uploaderSession);
+        Document document = em.find(Document.class, documentId);
+        Files.delete(storageService.getPath(document));
+        MvcResult result = importFarmers(importingCompany.getId(), documentId, uploaderSession);
+        assertEquals(500, result.getResponse().getStatus(), body(result));
+        assertFalse(body(result).contains("not a valid XLSX"));
+    }
+
+    private byte[] rewriteZipEntry(byte[] original, String name, java.util.function.UnaryOperator<String> rewrite) throws Exception {
+        boolean replaced = false;
+        try (ZipInputStream input = new ZipInputStream(new ByteArrayInputStream(original));
+             ByteArrayOutputStream output = new ByteArrayOutputStream();
+             ZipOutputStream zip = new ZipOutputStream(output)) {
+            ZipEntry entry;
+            while ((entry = input.getNextEntry()) != null) {
+                zip.putNextEntry(new ZipEntry(entry.getName()));
+                byte[] data = input.readAllBytes();
+                if (name.equals(entry.getName())) {
+                    String before = new String(data, StandardCharsets.UTF_8);
+                    String after = rewrite.apply(before);
+                    assertFalse(before.equals(after), "fixture must modify " + name);
+                    data = after.getBytes(StandardCharsets.UTF_8);
+                    replaced = true;
+                }
+                zip.write(data);
+                zip.closeEntry();
+            }
+            assertTrue(replaced, "fixture must contain " + name);
+            zip.finish();
+            return output.toByteArray();
+        }
     }
 
     @Test
@@ -170,9 +281,13 @@ class FarmerImportDocumentAuthorizationTest extends AbstractMySqlIntegrationTest
     }
 
     private long uploadWorkbook(Cookie session) throws Exception {
+        return uploadWorkbook(session, emptyImportWorkbook());
+    }
+
+    private long uploadWorkbook(Cookie session, byte[] bytes) throws Exception {
         MockMultipartFile upload = new MockMultipartFile(
                 "file", WORKBOOK_NAME,
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", emptyImportWorkbook());
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bytes);
 
         MvcResult result = mockMvc.perform(multipart("/api/common/document")
                         .file(upload)
