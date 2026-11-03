@@ -16,6 +16,7 @@ import com.abelium.inatrace.db.entities.productorder.ProductOrder;
 import com.abelium.inatrace.db.entities.stockorder.enums.OrderType;
 import com.abelium.inatrace.db.entities.stockorder.enums.PreferredWayOfPayment;
 import jakarta.persistence.*;
+import org.hibernate.annotations.BatchSize;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -98,19 +99,23 @@ public class StockOrder extends TimestampEntity {
 	// The required processing evidence fields values - the available values are sourced from the
 	// selected Processing action definition;
 	@OneToMany(mappedBy = "stockOrder", cascade = CascadeType.ALL, orphanRemoval = true)
+	@BatchSize(size = 64)
 	private Set<StockOrderPEFieldValue> processingEFValues;
 
 	// The required processing evidence documents - the available values are sourced from the
 	// selected Processing action definition;
 	@OneToMany(mappedBy = "stockOrder", cascade = CascadeType.ALL, orphanRemoval = true)
+	@BatchSize(size = 64)
 	private Set<StockOrderPETypeValue> documentRequirements;
 
 	// Activity proofs that were provided while creating or updating a purchase order
 	@OneToMany(mappedBy = "stockOrder", cascade = CascadeType.ALL, orphanRemoval = true)
+	@BatchSize(size = 64)
 	private Set<StockOrderActivityProof> activityProofs;
 
 	// A stock (purchase) order can be divided in many payments
 	@OneToMany(mappedBy = "stockOrder", cascade = CascadeType.ALL, orphanRemoval = true)
+	@BatchSize(size = 64)
 	private Set<Payment> payments = new HashSet<>();
 
 	@ManyToOne

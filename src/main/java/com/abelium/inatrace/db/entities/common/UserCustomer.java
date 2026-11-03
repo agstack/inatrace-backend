@@ -7,11 +7,13 @@ import com.abelium.inatrace.db.entities.product.Product;
 import com.abelium.inatrace.types.Gender;
 import com.abelium.inatrace.types.UserCustomerType;
 import jakarta.persistence.*;
+import org.hibernate.annotations.BatchSize;
 
 import java.util.HashSet;
 import java.util.Set;
 
 @Entity
+@BatchSize(size = 64)
 @NamedQueries({
 	@NamedQuery(name = "UserCustomer.getUserCustomerByCompanyIdAndType",
 			    query = "SELECT u FROM UserCustomer u WHERE u.company.id = :companyId AND u.type = :type"),
