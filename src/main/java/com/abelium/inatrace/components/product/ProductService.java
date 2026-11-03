@@ -383,19 +383,36 @@ public class ProductService extends BaseService {
     @Transactional
 	public void deleteProductLabel(CustomUserDetails authUser, Long id) throws ApiException {
 		ProductLabel pl = productQueries.fetchProductLabelAssoc(authUser, id);
+		removeProductLabel(pl);
+	}
 
-		removeProductLabelBatches(List.of(pl.getId()));
-    	em.remove(pl.getContent().getProcess());
-    	em.remove(pl.getContent().getResponsibility());
-    	em.remove(pl.getContent().getSustainability());
+	/**
+	 * Removes a label with everything that belongs to it: its batches, consumer feedback, links to
+	 * final products, chosen company documents and its content tree (process, responsibility,
+	 * sustainability, journey, settings and origin locations).
+	 */
+	private void removeProductLabel(ProductLabel pl) {
+		Long labelId = pl.getId();
+		removeProductLabelBatches(List.of(labelId));
+		em.createQuery("DELETE FROM ProductLabelFeedback f WHERE f.label.id = :labelId")
+				.setParameter("labelId", labelId).executeUpdate();
+		em.createQuery("DELETE FROM FinalProductLabel fpl WHERE fpl.productLabel.id = :labelId")
+				.setParameter("labelId", labelId).executeUpdate();
+		em.createQuery("DELETE FROM ProductLabelCompanyDocument d WHERE d.productLabelId = :labelId")
+				.setParameter("labelId", labelId).executeUpdate();
 
-		if (pl.getContent().getJourney() != null) {
-			em.remove(pl.getContent().getJourney());
-		}
-
-    	em.remove(pl.getContent().getSettings());
-		em.remove(pl.getContent());
+		ProductLabelContent content = pl.getContent();
 		em.remove(pl);
+		if (content != null) {
+			em.remove(content);
+			em.remove(content.getProcess());
+			em.remove(content.getResponsibility());
+			em.remove(content.getSustainability());
+			if (content.getJourney() != null) {
+				em.remove(content.getJourney());
+			}
+			em.remove(content.getSettings());
+		}
 	}
     
     @Transactional
@@ -411,19 +428,33 @@ public class ProductService extends BaseService {
     @Transactional
 	public void deleteProduct(CustomUserDetails authUser, Long id) throws ApiException {
 		Product p = fetchProduct(authUser, id);
-		
+
+		// Final products and customers are business data of their own: they are not deleted along
+		// with the product, so a product that still has them is refused.
+		assertNoReferrers("SELECT COUNT(fp) FROM FinalProduct fp WHERE fp.product.id = :productId", id,
+				"Cannot delete a product that has final products");
+		assertNoReferrers("SELECT COUNT(cc) FROM CompanyCustomer cc WHERE cc.product.id = :productId", id,
+				"Cannot delete a product that has company customers");
+		assertNoReferrers("SELECT COUNT(uc) FROM UserCustomer uc WHERE uc.product.id = :productId", id,
+				"Cannot delete a product that has user customers");
+
 		ProductLabel plProxy = Torpedo.from(ProductLabel.class);
 		Torpedo.where(plProxy.getProduct()).eq(p);
 		List<ProductLabel> labels = Torpedo.select(plProxy).list(em);
-
-		removeProductLabelBatches(labels.stream().map(ProductLabel::getId).collect(Collectors.toList()));
-		labels.forEach(pl -> em.remove(pl));
+		labels.forEach(this::removeProductLabel);
 
 		KnowledgeBlog kbProxy = Torpedo.from(KnowledgeBlog.class);
 		Torpedo.where(kbProxy.getProduct()).eq(p);
 		Torpedo.select(kbProxy).list(em).forEach(this::removeKnowledgeBlog);
 
 		em.remove(p);
+	}
+
+	private void assertNoReferrers(String countQuery, Long productId, String message) throws ApiException {
+		Long count = em.createQuery(countQuery, Long.class).setParameter("productId", productId).getSingleResult();
+		if (count > 0) {
+			throw new ApiException(ApiStatus.VALIDATION_ERROR, message);
+		}
 	}
 
     private void removeProductLabelBatches(List<Long> labelIds) {

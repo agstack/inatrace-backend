@@ -1,7 +1,7 @@
 # Products and consumer labels — issue #36
 
-The issue describes 36 endpoints. The current controllers expose **34** authenticated
-mappings: 33 in `ProductController` and one in `FinalProductController`. This matrix
+The issue describes 36 endpoints. The current controllers expose **35** authenticated
+mappings: 34 in `ProductController` and one in `FinalProductController`. This matrix
 records every mapping present in this revision; the two-endpoint difference must be
 reconciled with the issue history before declaring the campaign count complete.
 
