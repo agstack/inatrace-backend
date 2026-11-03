@@ -149,7 +149,7 @@ public class StockOrderService extends BaseService {
             throw new ApiException(ApiStatus.INVALID_REQUEST, "The Stock order with ID: " + id + " doesn't have Processing order.");
         }
 
-        return ProcessingOrderMapper.toApiProcessingOrder(stockOrder.getProcessingOrder(), language);
+        return ProcessingOrderMapper.toApiProcessingOrder(stockOrder.getProcessingOrder(), user.getUserId(), language);
     }
 
     public ApiPaginatedList<ApiStockOrder> getAvailableStockOrderListForFacility(ApiPaginatedRequest request,
@@ -724,12 +724,9 @@ public class StockOrderService extends BaseService {
         ApiStockOrderHistory stockOrderHistory = new ApiStockOrderHistory();
 
         // Recursively add history, starting from depth 0
-        List<ApiStockOrderHistoryTimelineItem> historyTimeline;
-        if (user != null) {
-            historyTimeline = addNextAggregationLevels(0, stockOrder, language, user.getUserId());
-        } else {
-            historyTimeline = addNextAggregationLevels(0, stockOrder, language, null);
-        }
+        // Without a user (public QR traceability) private documents such as receipts are left out
+        Long userId = user != null ? user.getUserId() : null;
+        List<ApiStockOrderHistoryTimelineItem> historyTimeline = addNextAggregationLevels(0, stockOrder, language, userId);
         historyTimeline.sort(Comparator.comparingInt(ApiStockOrderHistoryTimelineItem::getDepth));
 
         // Prepare aggregated Purchase orders (group all into single history timeline item)
@@ -750,7 +747,7 @@ public class StockOrderService extends BaseService {
         }
 
         // Set the Stock order and Processing order for which the history is calculated (including the input transaction for the Processing order)
-        stockOrderHistory.setStockOrder(StockOrderMapper.toApiStockOrderHistory(stockOrder, language));
+        stockOrderHistory.setStockOrder(StockOrderMapper.toApiStockOrderHistory(stockOrder, userId, language));
         stockOrderHistory.setProcessingOrder(ProcessingOrderMapper.toApiProcessingOrderHistory(stockOrder.getProcessingOrder(), language));
 
         if (stockOrder.getProcessingOrder() != null) {
@@ -830,7 +827,7 @@ public class StockOrderService extends BaseService {
                 // Get the Stock orders that were created when executing the Processing order
                 List<ApiStockOrder> targetStockOrders = stockOrder.getProcessingOrder().getTargetStockOrders()
                         .stream()
-                        .map(siblingOrder -> StockOrderMapper.toApiStockOrderHistoryItem(siblingOrder, language))
+                        .map(siblingOrder -> StockOrderMapper.toApiStockOrderHistoryItem(siblingOrder, userId, language))
                         .collect(Collectors.toList());
 
                 nextHistory.setProcessingOrder(
@@ -872,7 +869,7 @@ public class StockOrderService extends BaseService {
 
             } else {
 
-                nextHistory.setStockOrder(StockOrderMapper.toApiStockOrderHistory(stockOrder, language));
+                nextHistory.setStockOrder(StockOrderMapper.toApiStockOrderHistory(stockOrder, userId, language));
                 nextHistory.setDepth(currentDepth);
             }
 

@@ -24,7 +24,7 @@ public class ProcessingOrderMapper {
         return apiProcessingOrder;
     }
 
-    public static ApiProcessingOrder toApiProcessingOrder(ProcessingOrder entity, Language language) {
+    public static ApiProcessingOrder toApiProcessingOrder(ProcessingOrder entity, Long userId, Language language) {
 
         ApiProcessingOrder apiProcessingOrder = toApiProcessingOrderBase(entity);
 
@@ -36,7 +36,7 @@ public class ProcessingOrderMapper {
         apiProcessingOrder.setProcessingDate(entity.getProcessingDate());
         apiProcessingOrder.setProcessingAction(ProcessingActionMapper.toApiProcessingAction(entity.getProcessingAction(), language));
         apiProcessingOrder.setInputTransactions(entity.getInputTransactions().stream().map(transaction -> TransactionMapper.toApiTransactionBase(transaction, language)).collect(Collectors.toList()));
-        apiProcessingOrder.setTargetStockOrders(entity.getTargetStockOrders().stream().map(so -> StockOrderMapper.toApiStockOrder(so ,null, language)).collect(Collectors.toList()));
+        apiProcessingOrder.setTargetStockOrders(entity.getTargetStockOrders().stream().map(so -> StockOrderMapper.toApiStockOrder(so, userId, language)).collect(Collectors.toList()));
 
         return apiProcessingOrder;
     }
