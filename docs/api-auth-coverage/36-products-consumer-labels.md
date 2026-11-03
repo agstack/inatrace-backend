@@ -41,6 +41,7 @@ refused writes are checked against persisted state.
 | POST | `/api/product/knowledgeBlog/{productId}` | Owner or associated company | Foreign and anonymous refusal |
 | DELETE | `/api/product/knowledgeBlog/{id}` | Owner or associated company | Foreign and anonymous refusal; blog retained |
 | DELETE | `/api/product/label/feedback/{id}` | Owner or associated company | Foreign and anonymous refusal; feedback retained |
+| GET | `/api/product/label/{id}/feedback/list` | Owner or associated company | Owner and associate read consumer details; foreign and anonymous refusal (`ProductLabelFeedbackPrivacyTest`) |
 | GET | `/api/product/{productId}/finalProduct/{finalProductId}` | Owner or associated company | Associate control; foreign and anonymous refusal |
 | GET | `/api/product/{productId}/finalProduct/{finalProductId}/labels` | Owner or associated company | Associate control; foreign and anonymous refusal |
 | GET | `/api/product/{productId}/finalProduct/list` | Owner or associated company | Associate control; foreign and anonymous refusal |

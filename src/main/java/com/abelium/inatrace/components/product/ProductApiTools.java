@@ -696,7 +696,25 @@ public class ProductApiTools {
 		afb.questionnaireAnswers = fb.getQuestionnaireAnswers();
 		afb.setProductName(fb.getLabel().getProduct().getName());
 		return afb;
-	}	
+	}
+
+	/**
+	 * Feedback as shown to anyone holding the label UID (printed in every QR code): without the
+	 * consumer's e-mail, questionnaire answers (age, gender...) or consents.
+	 */
+	/**
+	 * Feedback as anyone holding the label's QR code may read it: built from an allowlist (type, text
+	 * and product name), so a field added later to the private mapper is not published by default.
+	 */
+	public static ApiProductLabelFeedback toPublicApiProductLabelFeedback(ProductLabelFeedback fb) {
+		if (fb == null) return null;
+
+		ApiProductLabelFeedback afb = new ApiProductLabelFeedback();
+		afb.type = fb.getType();
+		afb.feedback = fb.getFeedback();
+		afb.setProductName(fb.getLabel().getProduct().getName());
+		return afb;
+	}
 
 	public static void updateProductLabelFeedback(ProductLabelFeedback fb, ApiProductLabelFeedback afb) {
 		if (afb == null) return;

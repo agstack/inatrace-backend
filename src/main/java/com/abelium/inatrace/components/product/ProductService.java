@@ -683,7 +683,19 @@ public class ProductService extends BaseService {
 	public ApiPaginatedList<ApiProductLabelFeedback> listProductLabelFeedbacks(String labelUid, ApiListProductLabelFeedbackRequest request) throws ApiException {
 		fetchProductLabelPublic(labelUid);
     	return PaginationTools.createPaginatedResponse(em, request, () -> feedbackListQueryObject(labelUid, request), 
-    			ProductApiTools::toApiProductLabelFeedback); 
+				ProductApiTools::toPublicApiProductLabelFeedback);
+	}
+
+	/**
+	 * Feedback of a label with the consumer's contact details and answers, for the companies of the
+	 * product (the same users who can delete feedback).
+	 */
+    @Transactional
+	public ApiPaginatedList<ApiProductLabelFeedback> listProductLabelFeedbacks(CustomUserDetails authUser, Long labelId, ApiListProductLabelFeedbackRequest request) throws ApiException {
+		ProductLabel pl = productQueries.fetchProductLabelAssoc(authUser, labelId);
+		String labelUid = pl.getUuid();
+		return PaginationTools.createPaginatedResponse(em, request, () -> feedbackListQueryObject(labelUid, request),
+				ProductApiTools::toApiProductLabelFeedback);
 	}
     
     @Transactional
