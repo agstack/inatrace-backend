@@ -1648,8 +1648,22 @@ public class CompanyService extends BaseService {
 	@Transactional
 	public void deleteCompanyCustomer(Long id, CustomUserDetails user) throws ApiException {
 
-		CompanyCustomer companyCustomer = em.find(CompanyCustomer.class, id);
+		CompanyCustomer companyCustomer = fetchCompanyCustomer(id);
 		PermissionsUtil.checkUserIfCompanyEnrolled(companyCustomer.getCompany().getUsers().stream().toList(), user);
+
+		// Product orders and stock orders keep a reference to their customer; removing it would only
+		// fail on the foreign key with a generic error.
+		Long productOrders = em.createQuery(
+						"SELECT COUNT(po) FROM ProductOrder po WHERE po.customer.id = :customerId", Long.class)
+				.setParameter("customerId", id)
+				.getSingleResult();
+		Long stockOrders = em.createQuery(
+						"SELECT COUNT(so) FROM StockOrder so WHERE so.consumerCompanyCustomer.id = :customerId", Long.class)
+				.setParameter("customerId", id)
+				.getSingleResult();
+		if (productOrders > 0 || stockOrders > 0) {
+			throw new ApiException(ApiStatus.VALIDATION_ERROR, "Cannot delete a company customer that has orders");
+		}
 
 		em.remove(companyCustomer);
 	}

@@ -1,7 +1,7 @@
 # Products and consumer labels — issue #36
 
-The issue describes 36 endpoints. The current controllers expose **34** authenticated
-mappings: 33 in `ProductController` and one in `FinalProductController`. This matrix
+The issue describes 36 endpoints. The current controllers expose **35** authenticated
+mappings: 34 in `ProductController` and one in `FinalProductController`. This matrix
 records every mapping present in this revision; the two-endpoint difference must be
 reconciled with the issue history before declaring the campaign count complete.
 
@@ -39,7 +39,9 @@ refused writes are checked against persisted state.
 | GET | `/api/product/knowledgeBlog/{id}` | Owner or associated company | Associate control; foreign and anonymous refusal |
 | PUT | `/api/product/knowledgeBlog` | Owner or associated company | Foreign and anonymous refusal |
 | POST | `/api/product/knowledgeBlog/{productId}` | Owner or associated company | Foreign and anonymous refusal |
+| DELETE | `/api/product/knowledgeBlog/{id}` | Owner or associated company | Foreign and anonymous refusal; blog retained |
 | DELETE | `/api/product/label/feedback/{id}` | Owner or associated company | Foreign and anonymous refusal; feedback retained |
+| GET | `/api/product/label/{id}/feedback/list` | Owner or associated company | Owner and associate read consumer details; foreign and anonymous refusal (`ProductLabelFeedbackPrivacyTest`) |
 | GET | `/api/product/{productId}/finalProduct/{finalProductId}` | Owner or associated company | Associate control; foreign and anonymous refusal |
 | GET | `/api/product/{productId}/finalProduct/{finalProductId}/labels` | Owner or associated company | Associate control; foreign and anonymous refusal |
 | GET | `/api/product/{productId}/finalProduct/list` | Owner or associated company | Associate control; foreign and anonymous refusal |
