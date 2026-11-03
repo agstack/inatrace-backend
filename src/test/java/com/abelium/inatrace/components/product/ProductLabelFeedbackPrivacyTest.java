@@ -145,6 +145,9 @@ class ProductLabelFeedbackPrivacyTest extends AbstractMySqlIntegrationTest {
         assertFalse(body.contains(AGE), body);
         assertFalse(body.contains("FEMALE"), body);
         assertFalse(body.contains("gdprConsent"), body);
+        // Only type, text and product name: no internal feedback or label IDs either.
+        assertFalse(body.contains("\"id\""), body);
+        assertFalse(body.contains("\"labelId\""), body);
     }
 
     @Test
