@@ -248,6 +248,15 @@ public class ProductController {
     	productService.addKnowledgeBlog(authUser, productId, request);
     	return new ApiDefaultResponse();
     }
+
+    @DeleteMapping(value = "/knowledgeBlog/{id}")
+    @Operation(summary = "Delete knowledge blog")
+    public ApiDefaultResponse deleteProductKnowledgeBlog(
+			@AuthenticationPrincipal CustomUserDetails authUser,
+			@Valid @Parameter(description = "id", required = true) @PathVariable("id") Long id) throws ApiException {
+		productService.deleteKnowledgeBlog(authUser, id);
+		return new ApiDefaultResponse();
+    }
     
     @DeleteMapping(value = "/label/feedback/{id}")
     @Operation(summary = "Deletes a product label feedback")
