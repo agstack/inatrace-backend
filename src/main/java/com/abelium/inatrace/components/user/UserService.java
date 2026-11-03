@@ -635,12 +635,12 @@ public class UserService extends BaseService {
 		if (!authUser.getUserId().equals(userId)) {
 			switch (user.getStatus()) {
 				case ACTIVE: 
-					actions.add(UserAction.DEACTIVATE_USER);
-
-					// If Regional admin don't set any additional actions
+					// A Regional admin can neither deactivate nor change roles (see changeUserStatus)
 					if (authUser.getUserRole() == UserRole.REGIONAL_ADMIN) {
 						break;
 					}
+
+					actions.add(UserAction.DEACTIVATE_USER);
 
 					if (user.getRole() == UserRole.SYSTEM_ADMIN) {
 						actions.add(UserAction.UNSET_USER_SYSTEM_ADMIN);
@@ -652,7 +652,12 @@ public class UserService extends BaseService {
 					}
 
 					break;
-				case CONFIRMED_EMAIL: actions.addAll(Arrays.asList(UserAction.DEACTIVATE_USER, UserAction.ACTIVATE_USER)); break;
+				case CONFIRMED_EMAIL:
+					if (authUser.getUserRole() != UserRole.REGIONAL_ADMIN) {
+						actions.add(UserAction.DEACTIVATE_USER);
+					}
+					actions.add(UserAction.ACTIVATE_USER);
+					break;
 				case DEACTIVATED: actions.add(UserAction.ACTIVATE_USER); break;
 				default:
 			}
@@ -689,8 +694,11 @@ public class UserService extends BaseService {
 		// Check if Regional admin has access to the requested user
 		if (authUser.getUserRole() == UserRole.REGIONAL_ADMIN) {
 
-			// Check if action is 'DEACTIVATE_USER' - this is not allowed by the Regional admin
-			if (action == UserAction.DEACTIVATE_USER) {
+			// Regional admins onboard accounts: they may confirm an e-mail and activate. Every other
+			// status or role change is reserved for system admins (the frontend only offers the role
+			// actions to them). Allowing SET_USER_SYSTEM_ADMIN here would let a regional admin turn any
+			// account it can reach, including a second account of its own, into a system admin.
+			if (action != UserAction.CONFIRM_USER_EMAIL && action != UserAction.ACTIVATE_USER) {
 				throw new ApiException(ApiStatus.UNAUTHORIZED, "Regional admin not authorized!");
 			}
 
