@@ -5,6 +5,7 @@ import com.abelium.inatrace.components.stockorder.api.ApiStockOrderHistory;
 import com.abelium.inatrace.db.entities.codebook.FacilityType;
 import com.abelium.inatrace.db.entities.codebook.MeasureUnitType;
 import com.abelium.inatrace.db.entities.codebook.ProductType;
+import com.abelium.inatrace.db.entities.codebook.ProcessingEvidenceField;
 import com.abelium.inatrace.db.entities.codebook.SemiProduct;
 import com.abelium.inatrace.db.entities.codebook.SemiProductTranslation;
 import com.abelium.inatrace.db.entities.common.Address;
@@ -27,6 +28,8 @@ import com.abelium.inatrace.db.entities.processingaction.ProcessingAction;
 import com.abelium.inatrace.db.entities.processingaction.ProcessingActionTranslation;
 import com.abelium.inatrace.db.entities.processingorder.ProcessingOrder;
 import com.abelium.inatrace.db.entities.stockorder.StockOrder;
+import com.abelium.inatrace.db.entities.stockorder.StockOrderPEFieldValue;
+import com.abelium.inatrace.db.entities.payment.Payment;
 import com.abelium.inatrace.db.entities.stockorder.Transaction;
 import com.abelium.inatrace.db.entities.stockorder.enums.OrderType;
 import com.abelium.inatrace.db.entities.stockorder.enums.PreferredWayOfPayment;
@@ -44,6 +47,7 @@ import com.abelium.inatrace.types.UserCustomerType;
 import com.abelium.inatrace.types.UserRole;
 import com.abelium.inatrace.types.UserStatus;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.servlet.http.Cookie;
@@ -115,6 +119,222 @@ class StockOrderApiAuthTest extends AbstractMySqlIntegrationTest {
     private Cookie ownerSession;
     private Cookie strangerSession;
     private Cookie associatedSession;
+
+    @Test
+    void stockListAndDashboardHaveBoundedQueryGrowth() throws Exception {
+        addBudgetOrders(4, 0);
+        int smallList = measureBudgetList(5, 5);
+        int smallDashboard = measureBudgetDashboard(5);
+        addBudgetOrders(45, 4);
+        int largeList = measureBudgetList(50, 5);
+        int largeDashboard = measureBudgetDashboard(50);
+        int largerPage = measureBudgetList(50, 10);
+        int fullPage = measureBudgetList(50, 50);
+        assertEquals(largeList, measureBudgetList(50, 5), "repeated list sample must be stable");
+        assertEquals(largeDashboard, measureBudgetDashboard(50), "repeated dashboard sample must be stable");
+        System.out.printf("SQL budgets: list 5/50=%d/%d, page 10=%d, dashboard 5/50=%d/%d%n",
+                smallList, largeList, largerPage, smallDashboard, largeDashboard);
+        assertBoundedGrowth(smallList, largeList);
+        assertBoundedGrowth(smallDashboard, largeDashboard);
+        assertBoundedGrowth(largeList, largerPage);
+        assertBoundedGrowth(largeList, fullPage);
+
+        MvcResult next = mockMvc.perform(get("/api/chain/stock-order/list/company/" + companyId)
+                .param("limit", "5").param("offset", "5").param("sort", "ASC")
+                .param("isPurchaseOrderOnly", "true").cookie(ownerSession)).andReturn();
+        assertEquals(200, next.getResponse().getStatus());
+        JsonNode nextData = objectMapper.readTree(next.getResponse().getContentAsString()).path("data");
+        assertEquals(50, nextData.path("count").asInt());
+        assertEquals(5, nextData.path("items").size());
+        for (int i = 0; i < 5; i++) {
+            assertEquals("SQL-BASELINE-" + (i + 4), nextData.path("items").get(i).path("identifier").asText());
+        }
+
+        String listPath = "/api/chain/stock-order/list/company/" + companyId;
+        assertEquals(403, mockMvc.perform(get(listPath).cookie(strangerSession)).andReturn().getResponse().getStatus());
+        assertEquals(401, mockMvc.perform(get(listPath)).andReturn().getResponse().getStatus());
+        String dashboardPath = "/api/dashboard/deliveries-aggregated-data?companyId=" + companyId + "&aggregationType=YEAR";
+        assertEquals(403, mockMvc.perform(get(dashboardPath).cookie(strangerSession)).andReturn().getResponse().getStatus());
+        assertEquals(401, mockMvc.perform(get(dashboardPath)).andReturn().getResponse().getStatus());
+    }
+
+    private void addBudgetOrders(int count, int first) {
+        StockOrder template = em.find(StockOrder.class, orderId);
+        for (int i = first; i < first + count; i++) {
+            UserCustomer farmer = new UserCustomer();
+            farmer.setName("SQL budget farmer " + i);
+            farmer.setSurname("Synthetic");
+            farmer.setType(UserCustomerType.FARMER);
+            farmer.setCompany(template.getCompany());
+            em.persist(farmer);
+            StockOrder order = new StockOrder();
+            order.setCompany(template.getCompany());
+            order.setFacility(template.getFacility());
+            order.setSemiProduct(template.getSemiProduct());
+            order.setMeasurementUnitType(template.getMeasurementUnitType());
+            order.setCreatedBy(template.getCreatedBy());
+            order.setProducerUserCustomer(farmer);
+            order.setIdentifier("SQL-BASELINE-" + i);
+            order.setOrderType(OrderType.PURCHASE_ORDER);
+            order.setPurchaseOrder(true);
+            order.setAvailable(true);
+            order.setTotalQuantity(BigDecimal.TEN);
+            order.setTotalGrossQuantity(BigDecimal.TEN);
+            order.setFulfilledQuantity(BigDecimal.TEN);
+            order.setAvailableQuantity(BigDecimal.TEN);
+            order.setProductionDate(LocalDate.of(2025, 8, 18));
+            order.setPreferredWayOfPayment(PreferredWayOfPayment.BANK_TRANSFER);
+            em.persist(order);
+        }
+        em.flush();
+        em.clear();
+    }
+
+    private int measureBudgetList(int expectedCount, int pageSize) throws Exception {
+        em.flush();
+        em.clear();
+        MvcResult result;
+        int count;
+        try (var sample = DeliveryExportSqlObserver.start()) {
+            result = mockMvc.perform(get("/api/chain/stock-order/list/company/" + companyId)
+                    .param("limit", Integer.toString(pageSize)).param("offset", "0").param("sort", "ASC")
+                    .param("isPurchaseOrderOnly", "true").cookie(ownerSession)).andReturn();
+            count = sample.statements();
+            assertTrue(count <= 23, "stock list statement budget exceeded: " + count);
+            assertTrue(sample.stockSelects() > 0);
+            assertEquals(sample.stockSelects(), sample.limitedStockSelects(), "stock queries must paginate in SQL");
+        }
+        assertEquals(200, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+        JsonNode data = objectMapper.readTree(result.getResponse().getContentAsString()).path("data");
+        assertEquals(expectedCount, data.path("count").asInt());
+        assertEquals(pageSize, data.path("items").size());
+        assertEquals(MARKER, data.path("items").get(0).path("identifier").asText());
+        for (int i = 1; i < pageSize; i++) {
+            assertEquals("SQL-BASELINE-" + (i - 1), data.path("items").get(i).path("identifier").asText());
+        }
+        assertFalse(result.getResponse().getContentAsString().contains("RIVAL-QUOTE-ONLY-35"));
+        return count;
+    }
+
+    private int measureBudgetDashboard(int orders) throws Exception {
+        em.flush();
+        em.clear();
+        MvcResult result;
+        int count;
+        try (var sample = DeliveryExportSqlObserver.start()) {
+            result = mockMvc.perform(get("/api/dashboard/deliveries-aggregated-data")
+                    .param("companyId", companyId.toString()).param("aggregationType", "YEAR")
+                    .cookie(ownerSession)).andReturn();
+            count = sample.statements();
+            assertTrue(count <= 5, "dashboard statement budget exceeded: " + count);
+        }
+        assertEquals(200, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+        JsonNode totals = objectMapper.readTree(result.getResponse().getContentAsString()).path("data").path("totals");
+        assertEquals(1, totals.size());
+        assertEquals("2025", totals.get(0).path("unit").asText());
+        BigDecimal expected = new BigDecimal("123.50").add(BigDecimal.TEN.multiply(BigDecimal.valueOf(orders - 1)));
+        assertEquals(0, expected.compareTo(totals.get(0).path("totalQuantity").decimalValue()));
+        return count;
+    }
+
+    @Test
+    void sqlObserverDetectsUnboundedStockSelectAndPerItemQueries() {
+        addBudgetOrders(4, 0);
+        List<Long> farmerIds;
+        try (var sample = DeliveryExportSqlObserver.start()) {
+            farmerIds = em.createQuery("select s.producerUserCustomer.id from StockOrder s "
+                            + "where s.company.id = :company and s.orderType = :type order by s.id", Long.class)
+                    .setParameter("company", companyId).setParameter("type", OrderType.PURCHASE_ORDER).getResultList();
+            assertTrue(sample.stockSelects() > 0);
+            assertEquals(0, sample.limitedStockSelects());
+        }
+        assertEquals(5, farmerIds.size());
+        em.clear();
+        try (var sample = DeliveryExportSqlObserver.start()) {
+            for (Long id : farmerIds) assertNotNull(em.find(UserCustomer.class, id));
+            assertEquals(5, sample.statements());
+            assertThrows(org.opentest4j.AssertionFailedError.class,
+                    () -> assertBoundedGrowth(0, sample.statements()), "growth guard must reject per-item reads");
+        }
+    }
+
+    private static void assertBoundedGrowth(int baseline, int observed) {
+        assertTrue(observed <= baseline + 2, "query growth exceeded: " + baseline + " -> " + observed);
+    }
+
+    @Test
+    void batchedListKeepsEvidenceAndPaymentsOnTheirOwnOrders() throws Exception {
+        addBudgetOrders(1, 0);
+        List<StockOrder> orders = em.createQuery("select s from StockOrder s where s.company.id = :company "
+                        + "and s.orderType = :type order by s.id", StockOrder.class)
+                .setParameter("company", companyId).setParameter("type", OrderType.PURCHASE_ORDER).getResultList();
+        assertEquals(2, orders.size());
+        ProcessingEvidenceField field = new ProcessingEvidenceField();
+        field.setFieldName("batch-evidence");
+        em.persist(field);
+        for (int i = 0; i < orders.size(); i++) {
+            StockOrderPEFieldValue value = new StockOrderPEFieldValue();
+            value.setStockOrder(orders.get(i));
+            value.setProcessingEvidenceField(field);
+            value.setStringValue("evidence-" + i);
+            em.persist(value);
+            Payment payment = new Payment();
+            payment.setStockOrder(orders.get(i));
+            payment.setCreatedBy(em.find(User.class, ownerUserId));
+            payment.setPurchased(BigDecimal.ONE);
+            payment.setReceiptNumber("receipt-" + i);
+            em.persist(payment);
+        }
+        em.flush();
+        em.clear();
+        MvcResult result = mockMvc.perform(get("/api/chain/stock-order/list/company/" + companyId)
+                .param("limit", "5").param("sort", "ASC").param("isPurchaseOrderOnly", "true")
+                .cookie(ownerSession)).andReturn();
+        assertEquals(200, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+        JsonNode items = objectMapper.readTree(result.getResponse().getContentAsString()).path("data").path("items");
+        assertEquals(2, items.size());
+        for (int i = 0; i < 2; i++) {
+            assertEquals("evidence-" + i, items.get(i).path("requiredEvidenceFieldValues").get(0).path("stringValue").asText());
+            assertEquals("receipt-" + i, items.get(i).path("payments").get(0).path("receiptNumber").asText());
+        }
+    }
+
+    @Test
+    void queryBudgetsRejectExtraReadsAfterActualRequests() throws Exception {
+        addBudgetOrders(49, 0);
+        List<Long> ids = em.createQuery("select s.producerUserCustomer.id from StockOrder s "
+                        + "where s.company.id = :company and s.orderType = :type order by s.id desc", Long.class)
+                .setParameter("company", companyId).setParameter("type", OrderType.PURCHASE_ORDER)
+                .setMaxResults(5).getResultList();
+        assertEquals(5, ids.size());
+        int baseline = measureBudgetList(50, 5);
+        em.clear();
+        try (var sample = DeliveryExportSqlObserver.start()) {
+            MvcResult response = mockMvc.perform(get("/api/chain/stock-order/list/company/" + companyId)
+                    .param("limit", "5").param("offset", "0").param("sort", "ASC")
+                    .param("isPurchaseOrderOnly", "true").cookie(ownerSession)).andReturn();
+            assertEquals(200, response.getResponse().getStatus());
+            assertBoundedGrowth(baseline, sample.statements());
+            int before = sample.statements();
+            for (Long id : ids) assertNotNull(em.find(UserCustomer.class, id));
+            assertEquals(5, sample.statements() - before);
+            assertThrows(org.opentest4j.AssertionFailedError.class,
+                    () -> assertBoundedGrowth(baseline, sample.statements()));
+            assertTrue(sample.statements() > 23, "extra reads must exceed the list budget");
+        }
+        em.clear();
+        try (var sample = DeliveryExportSqlObserver.start()) {
+            MvcResult response = mockMvc.perform(get("/api/dashboard/deliveries-aggregated-data")
+                    .param("companyId", companyId.toString()).param("aggregationType", "YEAR")
+                    .cookie(ownerSession)).andReturn();
+            assertEquals(200, response.getResponse().getStatus());
+            assertTrue(sample.statements() <= 5);
+            int before = sample.statements();
+            for (Long id : ids) assertNotNull(em.find(UserCustomer.class, id));
+            assertEquals(5, sample.statements() - before);
+            assertTrue(sample.statements() > 5, "extra reads must exceed the dashboard budget");
+        }
+    }
 
     @BeforeEach
     void seed() {
