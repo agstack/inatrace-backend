@@ -4,6 +4,8 @@ import com.abelium.inatrace.components.common.TokenService;
 import com.abelium.inatrace.components.common.StorageService;
 import com.abelium.inatrace.db.entities.codebook.ProductType;
 import com.abelium.inatrace.db.entities.common.Document;
+import com.abelium.inatrace.db.entities.common.Country;
+import com.abelium.inatrace.db.entities.common.UserCustomer;
 import com.abelium.inatrace.db.entities.common.User;
 import com.abelium.inatrace.db.entities.company.Company;
 import com.abelium.inatrace.db.entities.company.CompanyUser;
@@ -24,6 +26,7 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,12 +39,25 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.test.context.transaction.TestTransaction;
+import org.springframework.test.util.AopTestUtils;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.mockito.AdditionalAnswers;
+import org.mockito.Mockito;
+import com.abelium.inatrace.api.ApiStatus;
+import com.abelium.inatrace.api.errors.ApiException;
+import com.abelium.inatrace.components.company.api.ApiUserCustomer;
 
 import java.io.ByteArrayOutputStream;
 import java.io.ByteArrayInputStream;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -53,6 +69,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
 /**
  * The farmer import endpoint receives only a document id.  These tests prove that the id is not
@@ -71,6 +88,10 @@ class FarmerImportDocumentAuthorizationTest extends AbstractMySqlIntegrationTest
     @Autowired private TokenService tokenService;
     @Autowired private ObjectMapper objectMapper;
     @Autowired private StorageService storageService;
+    @Autowired private PlatformTransactionManager transactionManager;
+    @Autowired private UserCustomerImportService importService;
+    @Autowired private CompanyService companyService;
+    private final List<Path> uploadedFiles = new ArrayList<>();
 
     @Value("${INATrace.auth.accessTokenCookieName}")
     private String accessCookieName;
@@ -85,6 +106,12 @@ class FarmerImportDocumentAuthorizationTest extends AbstractMySqlIntegrationTest
     private Cookie colleagueSession;
     private Cookie otherCompanySession;
     private Cookie systemAdminSession;
+
+    @AfterEach
+    void removeOwnedUploadedFiles() throws Exception {
+        for (Path file : uploadedFiles) Files.deleteIfExists(file);
+        uploadedFiles.clear();
+    }
 
     @BeforeEach
     void seedImportPermissionFixture() {
@@ -120,6 +147,278 @@ class FarmerImportDocumentAuthorizationTest extends AbstractMySqlIntegrationTest
         assertTrue(body(result).contains("\"successful\":0"), body(result));
         assertEquals(uploader.getId(), em.find(Document.class, documentId).getUploadedBy().getId(),
                 "the common upload endpoint must persist the authenticated uploader");
+    }
+
+    @Test
+    @DisplayName("a real workbook imports a farmer and persists its company and product association")
+    void importsValidFarmerAndPersistsBusinessFields() throws Exception {
+        ensureSyntheticCountry();
+        String marker = "SHEET-" + UUID.randomUUID();
+        long documentId = uploadWorkbook(uploaderSession, workbook(marker, false));
+        MvcResult result = importFarmers(importingCompany.getId(), documentId, uploaderSession);
+        assertEquals(200, result.getResponse().getStatus(), body(result));
+        assertTrue(body(result).contains("\"successful\":1"), body(result));
+        em.flush();
+        em.clear();
+        var farmers = em.createQuery("select u from UserCustomer u where u.company.id = :company and u.farmerCompanyInternalId = :marker", UserCustomer.class)
+                .setParameter("company", importingCompany.getId()).setParameter("marker", marker).getResultList();
+        assertEquals(1, farmers.size());
+        assertEquals("Synthetic", farmers.get(0).getName());
+        assertEquals("Farmer", farmers.get(0).getSurname());
+        long associations = em.createQuery("select count(p) from UserCustomerProductType p where p.userCustomer.id = :id", Long.class)
+                .setParameter("id", farmers.get(0).getId()).getSingleResult();
+        assertEquals(1L, associations);
+    }
+
+    @Test
+    @DisplayName("a row validation error prevents a valid row from being persisted")
+    void invalidRowPreventsPersistenceOfValidRow() throws Exception {
+        ensureSyntheticCountry();
+        String marker = "SHEET-" + UUID.randomUUID();
+        long documentId = uploadWorkbook(uploaderSession, workbook(marker, true));
+        MvcResult result = importFarmers(importingCompany.getId(), documentId, uploaderSession);
+        assertEquals(200, result.getResponse().getStatus(), body(result));
+        assertTrue(body(result).contains("\"successful\":0"), body(result));
+        assertTrue(body(result).contains("B7"), body(result));
+        assertTrue(body(result).contains("INCORRECT_TYPE"), body(result));
+        em.flush();
+        em.clear();
+        long count = em.createQuery("select count(u) from UserCustomer u where u.company.id = :company and u.farmerCompanyInternalId = :marker", Long.class)
+                .setParameter("company", importingCompany.getId()).setParameter("marker", marker).getSingleResult();
+        assertEquals(0L, count);
+    }
+
+    @Test
+    @DisplayName("independent committed requests preserve import validation atomicity")
+    void committedRequestsPreserveValidationAtomicity() throws Exception {
+        boolean createdCountry = em.createQuery("select count(c) from Country c where c.code = :code", Long.class)
+                .setParameter("code", "QZ").getSingleResult() == 0;
+        ensureSyntheticCountry();
+        String marker = "COMMITTED-" + UUID.randomUUID();
+        long invalidDocumentId = uploadWorkbook(uploaderSession, workbook(marker + "-invalid", true));
+        long validDocumentId = uploadWorkbook(uploaderSession, workbook(marker + "-valid", false));
+        byte[] failsDuringWrite;
+        try (XSSFWorkbook book = new XSSFWorkbook(new ByteArrayInputStream(workbook(marker + "-rollback", false)));
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            var first = book.getSheetAt(0).getRow(5);
+            var second = book.getSheetAt(0).createRow(6);
+            for (var cell : first) second.createCell(cell.getColumnIndex()).setCellValue(cell.getStringCellValue());
+            second.getCell(0).setCellValue(marker + "-forced-error");
+            second.getCell(2).setCellValue("Second person");
+            book.write(out);
+            failsDuringWrite = out.toByteArray();
+        }
+        long failureDocumentId = uploadWorkbook(uploaderSession, failsDuringWrite);
+        Long companyId = importingCompany.getId();
+        List<Long> companyIds = List.of(companyId, otherCompany.getId());
+        List<Long> userIds = List.of(uploader.getId(), sameCompanyColleague.getId(), otherCompanyAdmin.getId(), systemAdmin.getId());
+        List<Long> chainIds = em.createQuery("select c.valueChain.id from CompanyValueChain c where c.company.id = :company", Long.class)
+                .setParameter("company", companyId).getResultList();
+        List<Long> productIds = em.createQuery("select v.productType.id from ValueChain v where v.id in :ids", Long.class)
+                .setParameter("ids", chainIds).getResultList();
+        em.flush();
+        TestTransaction.flagForCommit();
+        TestTransaction.end();
+        TransactionTemplate tx = new TransactionTemplate(transactionManager);
+        try {
+            MvcResult invalid = importFarmers(companyId, invalidDocumentId, uploaderSession);
+            assertEquals(200, invalid.getResponse().getStatus(), body(invalid));
+            assertEquals(0, objectMapper.readTree(body(invalid)).path("successful").asInt());
+            assertTrue(body(invalid).contains("B7"), body(invalid));
+            long afterInvalid = tx.execute(status -> em.createQuery("select count(u) from UserCustomer u where u.company.id = :company", Long.class)
+                    .setParameter("company", companyId).getSingleResult());
+            assertEquals(0L, afterInvalid);
+
+            var successfulWrites = new java.util.concurrent.atomic.AtomicInteger();
+            CompanyService doubleService = Mockito.mock(CompanyService.class, AdditionalAnswers.delegatesTo(companyService));
+            Mockito.doAnswer(call -> {
+                ApiUserCustomer candidate = call.getArgument(1);
+                if ((marker + "-forced-error").equals(candidate.getFarmerCompanyInternalId())) {
+                    throw new ApiException(ApiStatus.INVALID_REQUEST, "Synthetic write failure");
+                }
+                var saved = companyService.addUserCustomer(call.getArgument(0), candidate, call.getArgument(2), call.getArgument(3));
+                successfulWrites.incrementAndGet();
+                return saved;
+            }).when(doubleService).addUserCustomer(Mockito.anyLong(), Mockito.any(), Mockito.any(), Mockito.any());
+            UserCustomerImportService target = AopTestUtils.getUltimateTargetObject(importService);
+            MvcResult writeFailure;
+            try {
+                ReflectionTestUtils.setField(target, "companyService", doubleService);
+                writeFailure = importFarmers(companyId, failureDocumentId, uploaderSession);
+            } finally {
+                ReflectionTestUtils.setField(target, "companyService", companyService);
+            }
+            assertEquals(1, successfulWrites.get(), "the first row must be written before the injected failure");
+            assertEquals(400, writeFailure.getResponse().getStatus(), body(writeFailure));
+            long afterFailure = tx.execute(status -> em.createQuery("select count(u) from UserCustomer u where u.company.id = :company", Long.class)
+                    .setParameter("company", companyId).getSingleResult());
+            assertEquals(0L, afterFailure, "failure on a later row must roll back earlier inserts");
+
+            MvcResult valid = importFarmers(companyId, validDocumentId, uploaderSession);
+            assertEquals(200, valid.getResponse().getStatus(), body(valid));
+            assertEquals(1, objectMapper.readTree(body(valid)).path("successful").asInt());
+            long afterValid = tx.execute(status -> em.createQuery("select count(u) from UserCustomer u where u.company.id = :company and u.farmerCompanyInternalId = :marker", Long.class)
+                    .setParameter("company", companyId).setParameter("marker", marker + "-valid").getSingleResult());
+            assertEquals(1L, afterValid);
+        } finally {
+            tx.executeWithoutResult(status -> {
+                var farmers = em.createQuery("select u from UserCustomer u where u.company.id in :companies", UserCustomer.class)
+                        .setParameter("companies", companyIds).getResultList();
+                var locations = new ArrayList<com.abelium.inatrace.db.entities.common.UserCustomerLocation>();
+                for (UserCustomer farmer : farmers) {
+                    if (farmer.getUserCustomerLocation() != null) locations.add(farmer.getUserCustomerLocation());
+                    em.remove(farmer);
+                }
+                em.flush();
+                locations.forEach(em::remove);
+                for (Long id : List.of(invalidDocumentId, validDocumentId, failureDocumentId)) {
+                    Document document = em.find(Document.class, id);
+                    if (document != null) em.remove(document);
+                }
+                em.createQuery("delete from CompanyValueChain c where c.company.id in :companies")
+                        .setParameter("companies", companyIds).executeUpdate();
+                em.createQuery("delete from CompanyUser c where c.company.id in :companies")
+                        .setParameter("companies", companyIds).executeUpdate();
+                em.flush();
+                for (Long id : chainIds) em.remove(em.find(ValueChain.class, id));
+                em.flush();
+                for (Long id : productIds) em.remove(em.find(ProductType.class, id));
+                for (Long id : companyIds) em.remove(em.find(Company.class, id));
+                em.flush();
+                for (Long id : userIds) em.remove(em.find(User.class, id));
+                if (createdCountry) {
+                    Country country = em.createQuery("select c from Country c where c.code = :code", Country.class)
+                            .setParameter("code", "QZ").getSingleResult();
+                    em.remove(country);
+                }
+                em.flush();
+            });
+        }
+    }
+
+    @Test
+    @DisplayName("invalid cell types and domain values report their location and do not persist")
+    void invalidCellsReportLocationWithoutWriting() throws Exception {
+        ensureSyntheticCountry();
+        String[] cases = {"blank-surname", "bad-country", "bad-gender", "text-area", "formula-id", "error-id"};
+        String[] addresses = {"B6", "P6", "Q6", "V6", "A6", "A6"};
+        String[] errors = {"REQUIRED", "INVALID_VALUE", "INVALID_VALUE", "INCORRECT_TYPE", "INCORRECT_TYPE", "INCORRECT_TYPE"};
+        for (int i = 0; i < cases.length; i++) {
+            String marker = "SHEET-" + UUID.randomUUID();
+            byte[] bytes;
+            try (XSSFWorkbook book = new XSSFWorkbook(new ByteArrayInputStream(workbook(marker, false)));
+                 ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+                var row = book.getSheetAt(0).getRow(5);
+                switch (cases[i]) {
+                    case "blank-surname" -> row.getCell(1).setBlank();
+                    case "bad-country" -> row.getCell(15).setCellValue("??");
+                    case "bad-gender" -> row.getCell(16).setCellValue("invalid");
+                    case "text-area" -> row.createCell(21).setCellValue("not a number");
+                    case "formula-id" -> row.getCell(0).setCellFormula("1+1");
+                    case "error-id" -> row.getCell(0).setCellErrorValue(org.apache.poi.ss.usermodel.FormulaError.DIV0.getCode());
+                    default -> throw new IllegalStateException(cases[i]);
+                }
+                book.write(out);
+                bytes = out.toByteArray();
+            }
+            MvcResult result = importFarmers(importingCompany.getId(), uploadWorkbook(uploaderSession, bytes), uploaderSession);
+            assertEquals(200, result.getResponse().getStatus(), body(result));
+            assertTrue(body(result).contains("\"successful\":0"), body(result));
+            assertTrue(body(result).contains(addresses[i]), body(result));
+            assertTrue(body(result).contains(errors[i]), body(result));
+            em.flush();
+            long count = em.createQuery("select count(u) from UserCustomer u where u.company.id = :company and u.farmerCompanyInternalId = :marker", Long.class)
+                    .setParameter("company", importingCompany.getId()).setParameter("marker", marker).getSingleResult();
+            assertEquals(0L, count, cases[i]);
+        }
+    }
+
+    @Test
+    @DisplayName("name and surname accept 255 characters and reject 256 before writing")
+    void nameLengthBoundariesAreValidated() throws Exception {
+        ensureSyntheticCountry();
+        for (int column : new int[] {1, 2}) {
+            for (int length : new int[] {255, 256}) {
+                String marker = "LENGTH-" + UUID.randomUUID();
+                byte[] bytes;
+                try (XSSFWorkbook book = new XSSFWorkbook(new ByteArrayInputStream(workbook(marker, false)));
+                     ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+                    var row = book.getSheetAt(0).getRow(5);
+                    row.getCell(column).setCellValue("é".repeat(length));
+                    if (column == 1) row.getCell(2).setCellValue(marker);
+                    else row.getCell(1).setCellValue(marker);
+                    book.write(out);
+                    bytes = out.toByteArray();
+                }
+                MvcResult result = importFarmers(importingCompany.getId(), uploadWorkbook(uploaderSession, bytes), uploaderSession);
+                assertEquals(200, result.getResponse().getStatus(), body(result));
+                var response = objectMapper.readTree(body(result));
+                assertEquals(length == 255 ? 1 : 0, response.path("successful").asInt(), body(result));
+                if (length == 256) {
+                    assertTrue(body(result).contains(column == 1 ? "B6" : "C6"), body(result));
+                    assertTrue(body(result).contains("INVALID_VALUE"), body(result));
+                }
+                em.flush();
+                em.clear();
+                long count = em.createQuery("select count(u) from UserCustomer u where u.company.id = :company and u.farmerCompanyInternalId = :marker", Long.class)
+                        .setParameter("company", importingCompany.getId()).setParameter("marker", marker).getSingleResult();
+                assertEquals(length == 255 ? 1L : 0L, count, body(result));
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("an absent surname is rejected like a blank surname")
+    void absentSurnameDoesNotCreateFarmer() throws Exception {
+        ensureSyntheticCountry();
+        String marker = "SHEET-" + UUID.randomUUID();
+        byte[] bytes;
+        try (XSSFWorkbook book = new XSSFWorkbook(new ByteArrayInputStream(workbook(marker, false)));
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            var row = book.getSheetAt(0).getRow(5);
+            row.removeCell(row.getCell(1));
+            book.write(out);
+            bytes = out.toByteArray();
+        }
+        MvcResult result = importFarmers(importingCompany.getId(), uploadWorkbook(uploaderSession, bytes), uploaderSession);
+        assertEquals(200, result.getResponse().getStatus(), body(result));
+        assertTrue(body(result).contains("\"successful\":0"), body(result));
+        assertTrue(body(result).contains("B6"), body(result));
+        assertTrue(body(result).contains("REQUIRED"), body(result));
+        em.flush();
+        em.clear();
+        long count = em.createQuery("select count(u) from UserCustomer u where u.company.id = :company and u.farmerCompanyInternalId = :marker", Long.class)
+                .setParameter("company", importingCompany.getId()).setParameter("marker", marker).getSingleResult();
+        assertEquals(0L, count);
+    }
+
+    @Test
+    @DisplayName("missing or blank country and gender produce validation errors without writing")
+    void missingRequiredCountryAndGenderAreReported() throws Exception {
+        ensureSyntheticCountry();
+        for (int column : new int[] {15, 16}) {
+            for (boolean absent : new boolean[] {true, false}) {
+                String marker = "SHEET-" + UUID.randomUUID();
+                byte[] bytes;
+                try (XSSFWorkbook book = new XSSFWorkbook(new ByteArrayInputStream(workbook(marker, false)));
+                     ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+                    var row = book.getSheetAt(0).getRow(5);
+                    if (absent) row.removeCell(row.getCell(column));
+                    else row.getCell(column).setBlank();
+                    book.write(out);
+                    bytes = out.toByteArray();
+                }
+                MvcResult result = importFarmers(importingCompany.getId(), uploadWorkbook(uploaderSession, bytes), uploaderSession);
+                assertEquals(200, result.getResponse().getStatus(), body(result));
+                assertTrue(body(result).contains("\"successful\":0"), body(result));
+                assertTrue(body(result).contains(column == 15 ? "P6" : "Q6"), body(result));
+                assertTrue(body(result).contains("REQUIRED"), body(result));
+                em.flush();
+                em.clear();
+                assertEquals(0L, em.createQuery("select count(u) from UserCustomer u where u.company.id = :company and u.farmerCompanyInternalId = :marker", Long.class)
+                        .setParameter("company", importingCompany.getId()).setParameter("marker", marker).getSingleResult());
+            }
+        }
     }
 
     @Test
@@ -188,6 +487,264 @@ class FarmerImportDocumentAuthorizationTest extends AbstractMySqlIntegrationTest
     }
 
     @Test
+    @DisplayName("importing the same workbook twice reports a duplicate and leaves one farmer")
+    void repeatImportReportsDuplicate() throws Exception {
+        ensureSyntheticCountry();
+        String marker = "SHEET-" + UUID.randomUUID();
+        byte[] bytes = workbook(marker, false);
+        MvcResult first = importFarmers(importingCompany.getId(), uploadWorkbook(uploaderSession, bytes), uploaderSession);
+        assertEquals(200, first.getResponse().getStatus(), body(first));
+        assertTrue(body(first).contains("\"successful\":1"), body(first));
+        em.flush();
+        em.clear();
+        MvcResult second = importFarmers(importingCompany.getId(), uploadWorkbook(uploaderSession, bytes), uploaderSession);
+        assertEquals(200, second.getResponse().getStatus(), body(second));
+        assertTrue(body(second).contains("\"successful\":0"), body(second));
+        assertTrue(body(second).contains(marker), body(second));
+        em.flush();
+        long count = em.createQuery("select count(u) from UserCustomer u where u.company.id = :company and u.farmerCompanyInternalId = :marker", Long.class)
+                .setParameter("company", importingCompany.getId()).setParameter("marker", marker).getSingleResult();
+        assertEquals(1L, count);
+    }
+
+    @Test
+    @DisplayName("repeated internal identifiers within one workbook do not create duplicate farmers")
+    void duplicateRowsInSameWorkbookAreNotPersistedTwice() throws Exception {
+        ensureSyntheticCountry();
+        String marker = "SHEET-" + UUID.randomUUID();
+        byte[] bytes;
+        try (XSSFWorkbook book = new XSSFWorkbook(new ByteArrayInputStream(workbook(marker, false)));
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            var source = book.getSheetAt(0).getRow(5);
+            var duplicate = book.getSheetAt(0).createRow(6);
+            for (var cell : source) duplicate.createCell(cell.getColumnIndex()).setCellValue(cell.getStringCellValue());
+            duplicate.getCell(0).setCellValue(marker.toLowerCase(java.util.Locale.ROOT));
+            duplicate.getCell(2).setCellValue("Different given name");
+            book.write(out);
+            bytes = out.toByteArray();
+        }
+        MvcResult result = importFarmers(importingCompany.getId(), uploadWorkbook(uploaderSession, bytes), uploaderSession);
+        assertEquals(200, result.getResponse().getStatus(), body(result));
+        assertEquals(1, objectMapper.readTree(body(result)).path("successful").asInt());
+        assertEquals(1, objectMapper.readTree(body(result)).path("duplicates").size());
+        em.flush();
+        em.clear();
+        long count = em.createQuery("select count(u) from UserCustomer u where u.company.id = :company and u.farmerCompanyInternalId = :marker", Long.class)
+                .setParameter("company", importingCompany.getId()).setParameter("marker", marker).getSingleResult();
+        assertEquals(1L, count, "one identifier must not create multiple farmers");
+    }
+
+    @Test
+    @DisplayName("distinct rows within one workbook are both imported")
+    void distinctRowsInSameWorkbookAreBothImported() throws Exception {
+        ensureSyntheticCountry();
+        String marker = "SHEET-" + UUID.randomUUID();
+        byte[] bytes;
+        try (XSSFWorkbook book = new XSSFWorkbook(new ByteArrayInputStream(workbook(marker, false)));
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            var source = book.getSheetAt(0).getRow(5);
+            var second = book.getSheetAt(0).createRow(6);
+            for (var cell : source) second.createCell(cell.getColumnIndex()).setCellValue(cell.getStringCellValue());
+            second.getCell(0).setCellValue(marker + "-second");
+            second.getCell(2).setCellValue("Another person");
+            book.write(out);
+            bytes = out.toByteArray();
+        }
+        MvcResult result = importFarmers(importingCompany.getId(), uploadWorkbook(uploaderSession, bytes), uploaderSession);
+        assertEquals(200, result.getResponse().getStatus(), body(result));
+        assertEquals(2, objectMapper.readTree(body(result)).path("successful").asInt());
+        assertEquals(0, objectMapper.readTree(body(result)).path("duplicates").size());
+        em.flush();
+        em.clear();
+        long count = em.createQuery("select count(u) from UserCustomer u where u.company.id = :company and u.farmerCompanyInternalId in :markers", Long.class)
+                .setParameter("company", importingCompany.getId()).setParameter("markers", List.of(marker, marker + "-second")).getSingleResult();
+        assertEquals(2L, count);
+    }
+
+    @Test
+    @DisplayName("repeated name, surname and city use the existing duplicate rule")
+    void duplicatePersonalDetailsAreDetectedWithinWorkbook() throws Exception {
+        ensureSyntheticCountry();
+        for (boolean withoutIdentifiers : new boolean[] {false, true}) {
+            String marker = "SHEET-" + UUID.randomUUID();
+            String name = "Person " + UUID.randomUUID();
+            byte[] bytes;
+            try (XSSFWorkbook book = new XSSFWorkbook(new ByteArrayInputStream(workbook(marker, false)));
+                 ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+                var first = book.getSheetAt(0).getRow(5);
+                first.getCell(2).setCellValue(name);
+                var second = book.getSheetAt(0).createRow(6);
+                for (var cell : first) second.createCell(cell.getColumnIndex()).setCellValue(cell.getStringCellValue());
+                if (withoutIdentifiers) {
+                    first.removeCell(first.getCell(0));
+                    second.removeCell(second.getCell(0));
+                } else {
+                    second.getCell(0).setCellValue(marker + "-second");
+                }
+                book.write(out);
+                bytes = out.toByteArray();
+            }
+            MvcResult result = importFarmers(importingCompany.getId(), uploadWorkbook(uploaderSession, bytes), uploaderSession);
+            assertEquals(200, result.getResponse().getStatus(), body(result));
+            assertEquals(1, objectMapper.readTree(body(result)).path("successful").asInt(), body(result));
+            assertEquals(1, objectMapper.readTree(body(result)).path("duplicates").size(), body(result));
+            em.flush();
+            em.clear();
+            assertEquals(1L, em.createQuery("select count(u) from UserCustomer u where u.company.id = :company and u.name = :name", Long.class)
+                    .setParameter("company", importingCompany.getId()).setParameter("name", name).getSingleResult());
+        }
+    }
+
+    void verifyGeneratedDuplicateIdentifier(String generated) throws Exception {
+        ensureSyntheticCountry();
+        String marker = "SHEET-" + generated;
+        byte[] bytes;
+        try (XSSFWorkbook book = new XSSFWorkbook(new ByteArrayInputStream(workbook(marker, false)));
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            var first = book.getSheetAt(0).getRow(5);
+            first.getCell(2).setCellValue("Generated person " + generated);
+            var second = book.getSheetAt(0).createRow(6);
+            for (var cell : first) second.createCell(cell.getColumnIndex()).setCellValue(cell.getStringCellValue());
+            second.getCell(0).setCellValue(marker.toUpperCase(java.util.Locale.ROOT));
+            second.getCell(2).setCellValue("Different person " + generated);
+            book.write(out);
+            bytes = out.toByteArray();
+        }
+        MvcResult result = importFarmers(importingCompany.getId(), uploadWorkbook(uploaderSession, bytes), uploaderSession);
+        String context = "identifier=" + marker + ": " + body(result);
+        assertEquals(200, result.getResponse().getStatus(), context);
+        var response = objectMapper.readTree(body(result));
+        assertEquals(1, response.path("successful").asInt(), context);
+        assertEquals(1, response.path("duplicates").size(), context);
+        em.flush();
+        em.clear();
+        assertEquals(1L, em.createQuery("select count(u) from UserCustomer u where u.company.id = :company and u.farmerCompanyInternalId = :marker", Long.class)
+                .setParameter("company", importingCompany.getId()).setParameter("marker", marker).getSingleResult(), context);
+    }
+
+    void verifyGeneratedInvalidIdentifier(boolean formula) throws Exception {
+        ensureSyntheticCountry();
+        String marker = "INVALID-" + UUID.randomUUID();
+        byte[] bytes;
+        try (XSSFWorkbook book = new XSSFWorkbook(new ByteArrayInputStream(workbook(marker, false)));
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            var cell = book.getSheetAt(0).getRow(5).getCell(0);
+            if (formula) cell.setCellFormula("1+1");
+            else cell.setCellErrorValue(org.apache.poi.ss.usermodel.FormulaError.DIV0.getCode());
+            book.write(out);
+            bytes = out.toByteArray();
+        }
+        long before = farmerCount(importingCompany.getId());
+        MvcResult result = importFarmers(importingCompany.getId(), uploadWorkbook(uploaderSession, bytes), uploaderSession);
+        assertEquals(200, result.getResponse().getStatus(), body(result));
+        var response = objectMapper.readTree(body(result));
+        assertEquals(0, response.path("successful").asInt(), body(result));
+        assertTrue(body(result).contains("A6"), body(result));
+        assertTrue(body(result).contains("INCORRECT_TYPE"), body(result));
+        em.flush();
+        em.clear();
+        assertEquals(before, farmerCount(importingCompany.getId()));
+    }
+
+    @Test
+    @DisplayName("a two-product workbook associates both configured products")
+    void importsTwoProductTypes() throws Exception {
+        ensureSyntheticCountry();
+        configureProductType(importingCompany, uploader);
+        em.flush();
+        em.clear();
+        String marker = "SHEET-" + UUID.randomUUID();
+        MvcResult result = importFarmers(importingCompany.getId(), uploadWorkbook(uploaderSession, workbook(marker, false, true)), uploaderSession);
+        assertEquals(200, result.getResponse().getStatus(), body(result));
+        assertTrue(body(result).contains("\"successful\":1"), body(result));
+        em.flush();
+        em.clear();
+        UserCustomer farmer = em.createQuery("select u from UserCustomer u where u.company.id = :company and u.farmerCompanyInternalId = :marker", UserCustomer.class)
+                .setParameter("company", importingCompany.getId()).setParameter("marker", marker).getSingleResult();
+        long associations = em.createQuery("select count(p) from UserCustomerProductType p where p.userCustomer.id = :id", Long.class)
+                .setParameter("id", farmer.getId()).getSingleResult();
+        assertEquals(2L, associations);
+    }
+
+    @Test
+    @DisplayName("two-product workbook requires two configured product types")
+    void twoProductWorkbookWithOneConfiguredProductIsRejected() throws Exception {
+        ensureSyntheticCountry();
+        String marker = "SHEET-" + UUID.randomUUID();
+        long before = farmerCount(importingCompany.getId());
+        MvcResult result = importFarmers(importingCompany.getId(),
+                uploadWorkbook(uploaderSession, workbook(marker, false, true)), uploaderSession);
+        assertEquals(400, result.getResponse().getStatus(), body(result));
+        assertEquals("INVALID_REQUEST", objectMapper.readTree(body(result)).path("status").asText());
+        em.flush();
+        em.clear();
+        assertEquals(before, farmerCount(importingCompany.getId()));
+    }
+
+    @Test
+    @DisplayName("farmer ZIP export contains the imported farmer's workbook fields")
+    void exportContainsImportedFarmer() throws Exception {
+        verifyGeneratedFarmerExport("Synthetic\nPerson");
+    }
+
+    void verifyGeneratedFarmerExport(String name) throws Exception {
+        ensureSyntheticCountry();
+        String marker = "SHEET-" + UUID.randomUUID();
+        String surname = "Farmer, \"Café\"";
+        byte[] source;
+        try (XSSFWorkbook book = new XSSFWorkbook(new ByteArrayInputStream(workbook(marker, false)));
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            book.getSheetAt(0).getRow(5).getCell(1).setCellValue(surname);
+            book.getSheetAt(0).getRow(5).getCell(2).setCellValue(name);
+            book.write(out);
+            source = out.toByteArray();
+        }
+        MvcResult imported = importFarmers(importingCompany.getId(), uploadWorkbook(uploaderSession, source), uploaderSession);
+        assertEquals(200, imported.getResponse().getStatus(), body(imported));
+        assertTrue(body(imported).contains("\"successful\":1"), body(imported));
+        em.flush();
+        em.clear();
+        MvcResult exported = mockMvc.perform(get("/api/company/userCustomers/" + importingCompany.getId() + "/exportFarmerData")
+                .header("language", "EN").cookie(uploaderSession)).andReturn();
+        assertEquals(200, exported.getResponse().getStatus(), body(exported));
+        assertTrue(exported.getResponse().getContentType().startsWith(MediaType.APPLICATION_OCTET_STREAM_VALUE));
+        boolean found = false;
+        var entries = new java.util.HashSet<String>();
+        try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(exported.getResponse().getContentAsByteArray()))) {
+            java.util.zip.ZipEntry entry;
+            while ((entry = zip.getNextEntry()) != null) {
+                assertTrue(entries.add(entry.getName()), "ZIP must not repeat entries");
+                if ("farmers.xlsx".equals(entry.getName())) {
+                    try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(zip.readAllBytes()))) {
+                        assertNotNull(workbook.getSheet("Farmers"));
+                        assertNotNull(workbook.getSheet("Plots"));
+                        assertEquals(1, workbook.getSheetAt(0).getLastRowNum());
+                        var header = workbook.getSheetAt(0).getRow(0);
+                        assertEquals("Farmer ID", header.getCell(0).getStringCellValue());
+                        assertEquals("Company internal ID", header.getCell(1).getStringCellValue());
+                        assertEquals("Last name", header.getCell(2).getStringCellValue());
+                        assertEquals("First name", header.getCell(3).getStringCellValue());
+                        var row = workbook.getSheetAt(0).getRow(1);
+                        assertNotNull(row);
+                        assertEquals(marker, row.getCell(1).getStringCellValue());
+                        assertEquals(surname, row.getCell(2).getStringCellValue());
+                        assertEquals(name, row.getCell(3).getStringCellValue());
+                        found = true;
+                    }
+                } else if ("geodata.geojson".equals(entry.getName())) {
+                    var geojson = objectMapper.readTree(zip.readAllBytes());
+                    assertEquals("FeatureCollection", geojson.path("type").asText());
+                    assertTrue(geojson.path("features").isArray());
+                    assertEquals(0, geojson.path("features").size());
+                }
+                zip.closeEntry();
+            }
+        }
+        assertTrue(found, "ZIP must contain farmers.xlsx");
+        assertEquals(java.util.Set.of("farmers.xlsx", "geodata.geojson"), entries);
+    }
+
+    @Test
     void missingStoredFileRemainsServerError() throws Exception {
         long documentId = uploadWorkbook(uploaderSession);
         Document document = em.find(Document.class, documentId);
@@ -225,11 +782,17 @@ class FarmerImportDocumentAuthorizationTest extends AbstractMySqlIntegrationTest
     @Test
     @DisplayName("a regional admin cannot import a spreadsheet uploaded by a colleague in the same company")
     void sameCompanyColleagueCannotImportUpload() throws Exception {
-        long documentId = uploadWorkbook(uploaderSession);
+        ensureSyntheticCountry();
+        String marker = "SHEET-" + UUID.randomUUID();
+        long documentId = uploadWorkbook(uploaderSession, workbook(marker, false));
+        long before = farmerCount(importingCompany.getId());
 
         MvcResult result = importFarmers(importingCompany.getId(), documentId, colleagueSession);
 
         assertRefused(result);
+        em.flush();
+        em.clear();
+        assertEquals(before, farmerCount(importingCompany.getId()));
         assertFalse(body(result).contains(WORKBOOK_NAME),
                 "a rejection must not disclose source-document metadata");
     }
@@ -237,11 +800,16 @@ class FarmerImportDocumentAuthorizationTest extends AbstractMySqlIntegrationTest
     @Test
     @DisplayName("a regional admin cannot import another company's spreadsheet into its company")
     void crossCompanyDocumentCannotBeImported() throws Exception {
-        long documentId = uploadWorkbook(uploaderSession);
+        ensureSyntheticCountry();
+        long documentId = uploadWorkbook(uploaderSession, workbook("SHEET-" + UUID.randomUUID(), false));
+        long before = farmerCount(otherCompany.getId());
 
         MvcResult result = importFarmers(otherCompany.getId(), documentId, otherCompanySession);
 
         assertRefused(result);
+        em.flush();
+        em.clear();
+        assertEquals(before, farmerCount(otherCompany.getId()));
     }
 
     @Test
@@ -280,14 +848,52 @@ class FarmerImportDocumentAuthorizationTest extends AbstractMySqlIntegrationTest
         assertRefused(result);
     }
 
+    @Test
+    @DisplayName("the first empty data row stops import of later rows")
+    void emptyDataRowStopsImport() throws Exception {
+        ensureSyntheticCountry();
+        String marker = "SHEET-" + UUID.randomUUID();
+        byte[] bytes;
+        try (XSSFWorkbook book = new XSSFWorkbook(new ByteArrayInputStream(workbook(marker, false)));
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            var row = book.getSheetAt(0).createRow(7);
+            row.createCell(0).setCellValue(marker + "-later");
+            row.createCell(1).setCellValue("Later");
+            row.createCell(15).setCellValue("QZ");
+            row.createCell(16).setCellValue("N/A");
+            book.write(out);
+            bytes = out.toByteArray();
+        }
+        MvcResult result = importFarmers(importingCompany.getId(), uploadWorkbook(uploaderSession, bytes), uploaderSession);
+        assertEquals(200, result.getResponse().getStatus(), body(result));
+        assertTrue(body(result).contains("\"successful\":1"), body(result));
+        em.flush();
+        long later = em.createQuery("select count(u) from UserCustomer u where u.company.id = :company and u.farmerCompanyInternalId = :marker", Long.class)
+                .setParameter("company", importingCompany.getId()).setParameter("marker", marker + "-later").getSingleResult();
+        assertEquals(0L, later);
+    }
+
+    @Test
+    @DisplayName("an unreadable uploaded workbook does not create farmers")
+    void unreadableWorkbookDoesNotCreateFarmers() throws Exception {
+        long before = farmerCount(importingCompany.getId());
+        long documentId = uploadWorkbook(uploaderSession, "not an XLSX file".getBytes(StandardCharsets.UTF_8));
+        MvcResult result = importFarmers(importingCompany.getId(), documentId, uploaderSession);
+        em.flush();
+        em.clear();
+        assertEquals(before, farmerCount(importingCompany.getId()));
+        assertTrue(result.getResponse().getStatus() >= 400 && result.getResponse().getStatus() < 500,
+                "Malformed user input should receive a controlled client error: " + body(result));
+    }
+
     private long uploadWorkbook(Cookie session) throws Exception {
         return uploadWorkbook(session, emptyImportWorkbook());
     }
 
-    private long uploadWorkbook(Cookie session, byte[] bytes) throws Exception {
+    private long uploadWorkbook(Cookie session, byte[] workbookBytes) throws Exception {
         MockMultipartFile upload = new MockMultipartFile(
                 "file", WORKBOOK_NAME,
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bytes);
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", workbookBytes);
 
         MvcResult result = mockMvc.perform(multipart("/api/common/document")
                         .file(upload)
@@ -298,7 +904,52 @@ class FarmerImportDocumentAuthorizationTest extends AbstractMySqlIntegrationTest
         assertEquals(200, result.getResponse().getStatus(), body(result));
         long documentId = objectMapper.readTree(body(result)).path("data").path("id").asLong();
         assertTrue(documentId > 0, "upload response must contain the persisted document id: " + body(result));
+        uploadedFiles.add(storageService.getPath(em.find(Document.class, documentId)));
         return documentId;
+    }
+
+    private void ensureSyntheticCountry() {
+        if (em.createQuery("select count(c) from Country c where c.code = :code", Long.class)
+                .setParameter("code", "QZ").getSingleResult() == 0) {
+            Country country = new Country();
+            country.setCode("QZ");
+            country.setName("Synthetic country");
+            em.persist(country);
+            em.flush();
+        }
+    }
+
+    private byte[] workbook(String marker, boolean invalidSecondRow) throws Exception {
+        return workbook(marker, invalidSecondRow, false);
+    }
+
+    private byte[] workbook(String marker, boolean invalidSecondRow, boolean secondProduct) throws Exception {
+        try (XSSFWorkbook workbook = new XSSFWorkbook(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            XSSFSheet sheet = workbook.createSheet("Farmers");
+            var header = sheet.createRow(4);
+            if (secondProduct) header.createCell(24).setCellValue("Second product");
+            var valid = sheet.createRow(5);
+            valid.createCell(0).setCellValue(marker);
+            valid.createCell(1).setCellValue("Farmer");
+            valid.createCell(2).setCellValue("Synthetic");
+            valid.createCell(11).setCellValue("Test city");
+            valid.createCell(12).setCellValue("Test state");
+            valid.createCell(15).setCellValue("QZ");
+            valid.createCell(16).setCellValue("N/A");
+            if (secondProduct) {
+                valid.createCell(24).setCellValue(1.25);
+                valid.createCell(25).setCellValue(5);
+            }
+            if (invalidSecondRow) {
+                var invalid = sheet.createRow(6);
+                invalid.createCell(0).setCellValue(marker + "-invalid");
+                invalid.createCell(1).setCellValue(123);
+                invalid.createCell(15).setCellValue("QZ");
+                invalid.createCell(16).setCellValue("N/A");
+            }
+            workbook.write(output);
+            return output.toByteArray();
+        }
     }
 
     private MvcResult importFarmers(long companyId, long documentId, Cookie session) throws Exception {
@@ -382,6 +1033,11 @@ class FarmerImportDocumentAuthorizationTest extends AbstractMySqlIntegrationTest
     private void assertRefused(MvcResult result) throws Exception {
         assertEquals(403, result.getResponse().getStatus(), body(result));
         assertFalse(body(result).contains("Exception"), body(result));
+    }
+
+    private long farmerCount(long companyId) {
+        return em.createQuery("select count(u) from UserCustomer u where u.company.id = :company", Long.class)
+                .setParameter("company", companyId).getSingleResult();
     }
 
     private String body(MvcResult result) throws Exception {

@@ -1,6 +1,7 @@
 package com.abelium.inatrace.components.company;
 
 import com.abelium.inatrace.api.ApiStatus;
+import com.abelium.inatrace.api.types.Lengths;
 import com.abelium.inatrace.api.errors.ApiException;
 import com.abelium.inatrace.components.common.BaseService;
 import com.abelium.inatrace.components.common.CommonApiTools;
@@ -31,6 +32,7 @@ import org.apache.poi.ooxml.POIXMLException;
 import org.apache.xmlbeans.XmlException;
 import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.util.CellReference;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -119,6 +121,11 @@ public class UserCustomerImportService extends BaseService {
                  throw new ApiException(ApiStatus.INVALID_REQUEST,
                      "Company has no product types configured. "
                      + "Please associate the company with a value chain before importing farmers.");
+        }
+
+        if (hasSecondProductType && companyProductTypes.size() < 2) {
+            throw new ApiException(ApiStatus.INVALID_REQUEST,
+                    "The spreadsheet requires two product types, but the company has fewer than two configured.");
         }
         
         // if only first product type is given in Excel,
@@ -212,11 +219,7 @@ public class UserCustomerImportService extends BaseService {
                 apiUserCustomer.getBank().setBankName(getStringOrNumeric(row.getCell(31)));
                 apiUserCustomer.getBank().setAdditionalInformation(getStringOrNumeric(row.getCell(32)));
 
-                if (companyService.existsUserCustomer(apiUserCustomer)) {
-                    duplicates.add(apiUserCustomer);
-                } else {
-                    toAdd.add(apiUserCustomer);
-                }
+                toAdd.add(apiUserCustomer);
             } else {
 
                 response.getValidationErrors().add(rowValidation);
@@ -229,8 +232,14 @@ public class UserCustomerImportService extends BaseService {
         // no user customer should be persisted
         if (response.getValidationErrors().isEmpty()) {
             for (ApiUserCustomer apiUserCustomer : toAdd) {
-                companyService.addUserCustomer(companyId, apiUserCustomer, authUser, language);
-                successful++;
+                // Evaluate after each insert so later rows use the same database
+                // matching and collation as the existing-farmer check.
+                if (companyService.existsUserCustomer(apiUserCustomer)) {
+                    duplicates.add(apiUserCustomer);
+                } else {
+                    companyService.addUserCustomer(companyId, apiUserCustomer, authUser, language);
+                    successful++;
+                }
             }
 
             response.setDuplicates(duplicates);
@@ -313,17 +322,20 @@ public class UserCustomerImportService extends BaseService {
         }
 
         // Last name
-        if (invalidCell(row.getCell(1), CellType.STRING)) {
-            if (emptyCell(row.getCell(1))) {
-                rowValidation.getColumnValidationErrors().add(new ApiUserCustomerImportColumnValidationError(getCellAddress(row.getCell(1)), UserCustomerImportCellErrorType.REQUIRED));
-            } else {
-                rowValidation.getColumnValidationErrors().add(new ApiUserCustomerImportColumnValidationError(getCellAddress(row.getCell(1)), UserCustomerImportCellErrorType.INCORRECT_TYPE));
-            }
+        if (emptyCell(row.getCell(1))) {
+            rowValidation.getColumnValidationErrors().add(new ApiUserCustomerImportColumnValidationError(
+                    new CellReference(row.getRowNum(), 1).formatAsString(), UserCustomerImportCellErrorType.REQUIRED));
+        } else if (invalidCell(row.getCell(1), CellType.STRING)) {
+            rowValidation.getColumnValidationErrors().add(new ApiUserCustomerImportColumnValidationError(getCellAddress(row.getCell(1)), UserCustomerImportCellErrorType.INCORRECT_TYPE));
+        } else if (exceedsCharacterLimit(row.getCell(1), Lengths.SURNAME)) {
+            rowValidation.getColumnValidationErrors().add(new ApiUserCustomerImportColumnValidationError(getCellAddress(row.getCell(1)), UserCustomerImportCellErrorType.INVALID_VALUE));
         }
 
         // First name
         if (invalidCell(row.getCell(2), List.of(CellType.STRING))) {
             rowValidation.getColumnValidationErrors().add(new ApiUserCustomerImportColumnValidationError(getCellAddress(row.getCell(2)), UserCustomerImportCellErrorType.INCORRECT_TYPE));
+        } else if (exceedsCharacterLimit(row.getCell(2), Lengths.NAME)) {
+            rowValidation.getColumnValidationErrors().add(new ApiUserCustomerImportColumnValidationError(getCellAddress(row.getCell(2)), UserCustomerImportCellErrorType.INVALID_VALUE));
         }
 
         // Village
@@ -395,19 +407,21 @@ public class UserCustomerImportService extends BaseService {
         }
 
         // Country
-        if (invalidCell(row.getCell(15), CellType.STRING)) {
+        if (emptyCell(row.getCell(15))) {
+            rowValidation.getColumnValidationErrors().add(new ApiUserCustomerImportColumnValidationError(
+                    new CellReference(row.getRowNum(), 15).formatAsString(), UserCustomerImportCellErrorType.REQUIRED));
+        } else if (invalidCell(row.getCell(15), CellType.STRING)) {
             rowValidation.getColumnValidationErrors().add(new ApiUserCustomerImportColumnValidationError(getCellAddress(row.getCell(15)), UserCustomerImportCellErrorType.INCORRECT_TYPE));
         } else if (getCountryByCode(getString(row.getCell(15))) == null) {
             rowValidation.getColumnValidationErrors().add(new ApiUserCustomerImportColumnValidationError(getCellAddress(row.getCell(15)), UserCustomerImportCellErrorType.INVALID_VALUE));
         }
 
         // Gender
-        if (invalidCell(row.getCell(16), CellType.STRING)) {
-            if (emptyCell(row.getCell(16))) {
-                rowValidation.getColumnValidationErrors().add(new ApiUserCustomerImportColumnValidationError(getCellAddress(row.getCell(16)), UserCustomerImportCellErrorType.REQUIRED));
-            } else {
-                rowValidation.getColumnValidationErrors().add(new ApiUserCustomerImportColumnValidationError(getCellAddress(row.getCell(16)), UserCustomerImportCellErrorType.INCORRECT_TYPE));
-            }
+        if (emptyCell(row.getCell(16))) {
+            rowValidation.getColumnValidationErrors().add(new ApiUserCustomerImportColumnValidationError(
+                    new CellReference(row.getRowNum(), 16).formatAsString(), UserCustomerImportCellErrorType.REQUIRED));
+        } else if (invalidCell(row.getCell(16), CellType.STRING)) {
+            rowValidation.getColumnValidationErrors().add(new ApiUserCustomerImportColumnValidationError(getCellAddress(row.getCell(16)), UserCustomerImportCellErrorType.INCORRECT_TYPE));
         } else if (getGender(row.getCell(16)) == null) {
             rowValidation.getColumnValidationErrors().add(new ApiUserCustomerImportColumnValidationError(getCellAddress(row.getCell(16)), UserCustomerImportCellErrorType.INVALID_VALUE));
         }
@@ -493,6 +507,12 @@ public class UserCustomerImportService extends BaseService {
         }
 
         return rowValidation;
+    }
+
+    private boolean exceedsCharacterLimit(Cell cell, int limit) {
+        if (emptyCell(cell) || cell.getCellType() != CellType.STRING) return false;
+        String value = cell.getStringCellValue();
+        return value.codePointCount(0, value.length()) > limit;
     }
 
     private boolean invalidCell(Cell cell, List<CellType> cellTypeList) {
