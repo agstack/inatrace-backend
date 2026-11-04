@@ -1442,13 +1442,13 @@ public class CompanyService extends BaseService {
 			if (!CollectionUtils.isEmpty(response.getMatchedGeoIDs())) {
                 // On errors API returns additional message
                 if (response.getMessage() != null) {
-                    logger.warn("Boundary registration returned a message");
+                    logger.warn("AgStack reported a matched plot boundary");
                 }
 				return response.getMatchedGeoIDs().stream().findFirst().orElse(null);
 			} else {
                 // On errors API returns additional message
                 if (response.getGeoID() == null && response.getMessage() != null) {
-                    logger.warn("Boundary registration returned a message");
+                    logger.warn("AgStack did not return a plot GeoID");
                 }
 				return response.getGeoID();
 			}
