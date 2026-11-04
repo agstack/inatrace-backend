@@ -13461,7 +13461,7 @@
             "description" : "OK"
           }
         },
-        "summary" : "Upload .xls or .xlsx spreadsheet of farmers to import into DB",
+        "summary" : "Import farmers from an XLSX spreadsheet document",
         "tags" : [ "company-controller" ]
       }
     },
@@ -14911,6 +14911,33 @@
       }
     },
     "/api/product/knowledgeBlog/{id}" : {
+      "delete" : {
+        "operationId" : "deleteProductKnowledgeBlog",
+        "parameters" : [ {
+          "description" : "id",
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiDefaultResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Delete knowledge blog",
+        "tags" : [ "product-controller" ]
+      },
       "get" : {
         "operationId" : "getProductKnowledgeBlog",
         "parameters" : [ {
@@ -15395,6 +15422,90 @@
           }
         },
         "summary" : "Update company document product label list",
+        "tags" : [ "product-controller" ]
+      }
+    },
+    "/api/product/label/{id}/feedback/list" : {
+      "get" : {
+        "operationId" : "listProductLabelFeedbacksForLabel",
+        "parameters" : [ {
+          "description" : "Label id",
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        }, {
+          "description" : "feedback type",
+          "in" : "query",
+          "name" : "type",
+          "required" : false,
+          "schema" : {
+            "enum" : [ "PRAISE", "PROPOSAL", "COMPLAINT" ],
+            "type" : "string"
+          }
+        }, {
+          "description" : "Only count, only fetch, or return both values (if null)",
+          "in" : "query",
+          "name" : "requestType",
+          "required" : false,
+          "schema" : {
+            "enum" : [ "COUNT", "FETCH" ],
+            "type" : "string"
+          }
+        }, {
+          "description" : "Number of records to return. Min: 1, default: 100",
+          "in" : "query",
+          "name" : "limit",
+          "required" : false,
+          "schema" : {
+            "format" : "int32",
+            "minimum" : 1,
+            "type" : "integer"
+          }
+        }, {
+          "description" : "Number of records to skip before returning. Default: 0, min: 0",
+          "in" : "query",
+          "name" : "offset",
+          "required" : false,
+          "schema" : {
+            "format" : "int32",
+            "minimum" : 0,
+            "type" : "integer"
+          }
+        }, {
+          "description" : "Column name to be sorted by, varies for each endpoint, default is id",
+          "in" : "query",
+          "name" : "sortBy",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Direction of sorting (ASC or DESC). Default DESC.",
+          "in" : "query",
+          "name" : "sort",
+          "required" : false,
+          "schema" : {
+            "enum" : [ "ASC", "DESC" ],
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiPaginatedResponseApiProductLabelFeedback"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "List feedback for a product label, with the details given by consumers",
         "tags" : [ "product-controller" ]
       }
     },

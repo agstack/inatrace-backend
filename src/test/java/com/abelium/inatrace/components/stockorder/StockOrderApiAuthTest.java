@@ -5,6 +5,7 @@ import com.abelium.inatrace.components.stockorder.api.ApiStockOrderHistory;
 import com.abelium.inatrace.db.entities.codebook.FacilityType;
 import com.abelium.inatrace.db.entities.codebook.MeasureUnitType;
 import com.abelium.inatrace.db.entities.codebook.ProductType;
+import com.abelium.inatrace.db.entities.codebook.ProcessingEvidenceField;
 import com.abelium.inatrace.db.entities.codebook.SemiProduct;
 import com.abelium.inatrace.db.entities.codebook.SemiProductTranslation;
 import com.abelium.inatrace.db.entities.common.Address;
@@ -27,6 +28,8 @@ import com.abelium.inatrace.db.entities.processingaction.ProcessingAction;
 import com.abelium.inatrace.db.entities.processingaction.ProcessingActionTranslation;
 import com.abelium.inatrace.db.entities.processingorder.ProcessingOrder;
 import com.abelium.inatrace.db.entities.stockorder.StockOrder;
+import com.abelium.inatrace.db.entities.stockorder.StockOrderPEFieldValue;
+import com.abelium.inatrace.db.entities.payment.Payment;
 import com.abelium.inatrace.db.entities.stockorder.Transaction;
 import com.abelium.inatrace.db.entities.stockorder.enums.OrderType;
 import com.abelium.inatrace.db.entities.stockorder.enums.PreferredWayOfPayment;
@@ -34,6 +37,7 @@ import com.abelium.inatrace.db.entities.stockorder.enums.TransactionStatus;
 import com.abelium.inatrace.db.entities.value_chain.ValueChain;
 import com.abelium.inatrace.db.entities.value_chain.enums.ValueChainStatus;
 import com.abelium.inatrace.support.AbstractMySqlIntegrationTest;
+import com.abelium.inatrace.support.DeliveryExportSqlObserver;
 import com.abelium.inatrace.types.CompanyStatus;
 import com.abelium.inatrace.types.CompanyUserRole;
 import com.abelium.inatrace.types.Language;
@@ -42,7 +46,10 @@ import com.abelium.inatrace.types.ProcessingActionType;
 import com.abelium.inatrace.types.UserCustomerType;
 import com.abelium.inatrace.types.UserRole;
 import com.abelium.inatrace.types.UserStatus;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.EntityManagerFactory;
 import jakarta.servlet.http.Cookie;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.BeforeEach;
@@ -62,6 +69,8 @@ import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -81,8 +90,10 @@ class StockOrderApiAuthTest extends AbstractMySqlIntegrationTest {
 
     @Autowired private MockMvc mockMvc;
     @Autowired private EntityManager em;
+    @Autowired private EntityManagerFactory entityManagerFactory;
     @Autowired private TokenService tokenService;
     @Autowired private StockOrderService stockOrderService;
+    @Autowired private ObjectMapper objectMapper;
 
     @Value("${INATrace.auth.accessTokenCookieName}")
     private String accessCookieName;
@@ -108,6 +119,222 @@ class StockOrderApiAuthTest extends AbstractMySqlIntegrationTest {
     private Cookie ownerSession;
     private Cookie strangerSession;
     private Cookie associatedSession;
+
+    @Test
+    void stockListAndDashboardHaveBoundedQueryGrowth() throws Exception {
+        addBudgetOrders(4, 0);
+        int smallList = measureBudgetList(5, 5);
+        int smallDashboard = measureBudgetDashboard(5);
+        addBudgetOrders(45, 4);
+        int largeList = measureBudgetList(50, 5);
+        int largeDashboard = measureBudgetDashboard(50);
+        int largerPage = measureBudgetList(50, 10);
+        int fullPage = measureBudgetList(50, 50);
+        assertEquals(largeList, measureBudgetList(50, 5), "repeated list sample must be stable");
+        assertEquals(largeDashboard, measureBudgetDashboard(50), "repeated dashboard sample must be stable");
+        System.out.printf("SQL budgets: list 5/50=%d/%d, page 10=%d, dashboard 5/50=%d/%d%n",
+                smallList, largeList, largerPage, smallDashboard, largeDashboard);
+        assertBoundedGrowth(smallList, largeList);
+        assertBoundedGrowth(smallDashboard, largeDashboard);
+        assertBoundedGrowth(largeList, largerPage);
+        assertBoundedGrowth(largeList, fullPage);
+
+        MvcResult next = mockMvc.perform(get("/api/chain/stock-order/list/company/" + companyId)
+                .param("limit", "5").param("offset", "5").param("sort", "ASC")
+                .param("isPurchaseOrderOnly", "true").cookie(ownerSession)).andReturn();
+        assertEquals(200, next.getResponse().getStatus());
+        JsonNode nextData = objectMapper.readTree(next.getResponse().getContentAsString()).path("data");
+        assertEquals(50, nextData.path("count").asInt());
+        assertEquals(5, nextData.path("items").size());
+        for (int i = 0; i < 5; i++) {
+            assertEquals("SQL-BASELINE-" + (i + 4), nextData.path("items").get(i).path("identifier").asText());
+        }
+
+        String listPath = "/api/chain/stock-order/list/company/" + companyId;
+        assertEquals(403, mockMvc.perform(get(listPath).cookie(strangerSession)).andReturn().getResponse().getStatus());
+        assertEquals(401, mockMvc.perform(get(listPath)).andReturn().getResponse().getStatus());
+        String dashboardPath = "/api/dashboard/deliveries-aggregated-data?companyId=" + companyId + "&aggregationType=YEAR";
+        assertEquals(403, mockMvc.perform(get(dashboardPath).cookie(strangerSession)).andReturn().getResponse().getStatus());
+        assertEquals(401, mockMvc.perform(get(dashboardPath)).andReturn().getResponse().getStatus());
+    }
+
+    private void addBudgetOrders(int count, int first) {
+        StockOrder template = em.find(StockOrder.class, orderId);
+        for (int i = first; i < first + count; i++) {
+            UserCustomer farmer = new UserCustomer();
+            farmer.setName("SQL budget farmer " + i);
+            farmer.setSurname("Synthetic");
+            farmer.setType(UserCustomerType.FARMER);
+            farmer.setCompany(template.getCompany());
+            em.persist(farmer);
+            StockOrder order = new StockOrder();
+            order.setCompany(template.getCompany());
+            order.setFacility(template.getFacility());
+            order.setSemiProduct(template.getSemiProduct());
+            order.setMeasurementUnitType(template.getMeasurementUnitType());
+            order.setCreatedBy(template.getCreatedBy());
+            order.setProducerUserCustomer(farmer);
+            order.setIdentifier("SQL-BASELINE-" + i);
+            order.setOrderType(OrderType.PURCHASE_ORDER);
+            order.setPurchaseOrder(true);
+            order.setAvailable(true);
+            order.setTotalQuantity(BigDecimal.TEN);
+            order.setTotalGrossQuantity(BigDecimal.TEN);
+            order.setFulfilledQuantity(BigDecimal.TEN);
+            order.setAvailableQuantity(BigDecimal.TEN);
+            order.setProductionDate(LocalDate.of(2025, 8, 18));
+            order.setPreferredWayOfPayment(PreferredWayOfPayment.BANK_TRANSFER);
+            em.persist(order);
+        }
+        em.flush();
+        em.clear();
+    }
+
+    private int measureBudgetList(int expectedCount, int pageSize) throws Exception {
+        em.flush();
+        em.clear();
+        MvcResult result;
+        int count;
+        try (var sample = DeliveryExportSqlObserver.start()) {
+            result = mockMvc.perform(get("/api/chain/stock-order/list/company/" + companyId)
+                    .param("limit", Integer.toString(pageSize)).param("offset", "0").param("sort", "ASC")
+                    .param("isPurchaseOrderOnly", "true").cookie(ownerSession)).andReturn();
+            count = sample.statements();
+            assertTrue(count <= 23, "stock list statement budget exceeded: " + count);
+            assertTrue(sample.stockSelects() > 0);
+            assertEquals(sample.stockSelects(), sample.limitedStockSelects(), "stock queries must paginate in SQL");
+        }
+        assertEquals(200, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+        JsonNode data = objectMapper.readTree(result.getResponse().getContentAsString()).path("data");
+        assertEquals(expectedCount, data.path("count").asInt());
+        assertEquals(pageSize, data.path("items").size());
+        assertEquals(MARKER, data.path("items").get(0).path("identifier").asText());
+        for (int i = 1; i < pageSize; i++) {
+            assertEquals("SQL-BASELINE-" + (i - 1), data.path("items").get(i).path("identifier").asText());
+        }
+        assertFalse(result.getResponse().getContentAsString().contains("RIVAL-QUOTE-ONLY-35"));
+        return count;
+    }
+
+    private int measureBudgetDashboard(int orders) throws Exception {
+        em.flush();
+        em.clear();
+        MvcResult result;
+        int count;
+        try (var sample = DeliveryExportSqlObserver.start()) {
+            result = mockMvc.perform(get("/api/dashboard/deliveries-aggregated-data")
+                    .param("companyId", companyId.toString()).param("aggregationType", "YEAR")
+                    .cookie(ownerSession)).andReturn();
+            count = sample.statements();
+            assertTrue(count <= 5, "dashboard statement budget exceeded: " + count);
+        }
+        assertEquals(200, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+        JsonNode totals = objectMapper.readTree(result.getResponse().getContentAsString()).path("data").path("totals");
+        assertEquals(1, totals.size());
+        assertEquals("2025", totals.get(0).path("unit").asText());
+        BigDecimal expected = new BigDecimal("123.50").add(BigDecimal.TEN.multiply(BigDecimal.valueOf(orders - 1)));
+        assertEquals(0, expected.compareTo(totals.get(0).path("totalQuantity").decimalValue()));
+        return count;
+    }
+
+    @Test
+    void sqlObserverDetectsUnboundedStockSelectAndPerItemQueries() {
+        addBudgetOrders(4, 0);
+        List<Long> farmerIds;
+        try (var sample = DeliveryExportSqlObserver.start()) {
+            farmerIds = em.createQuery("select s.producerUserCustomer.id from StockOrder s "
+                            + "where s.company.id = :company and s.orderType = :type order by s.id", Long.class)
+                    .setParameter("company", companyId).setParameter("type", OrderType.PURCHASE_ORDER).getResultList();
+            assertTrue(sample.stockSelects() > 0);
+            assertEquals(0, sample.limitedStockSelects());
+        }
+        assertEquals(5, farmerIds.size());
+        em.clear();
+        try (var sample = DeliveryExportSqlObserver.start()) {
+            for (Long id : farmerIds) assertNotNull(em.find(UserCustomer.class, id));
+            assertEquals(5, sample.statements());
+            assertThrows(org.opentest4j.AssertionFailedError.class,
+                    () -> assertBoundedGrowth(0, sample.statements()), "growth guard must reject per-item reads");
+        }
+    }
+
+    private static void assertBoundedGrowth(int baseline, int observed) {
+        assertTrue(observed <= baseline + 2, "query growth exceeded: " + baseline + " -> " + observed);
+    }
+
+    @Test
+    void batchedListKeepsEvidenceAndPaymentsOnTheirOwnOrders() throws Exception {
+        addBudgetOrders(1, 0);
+        List<StockOrder> orders = em.createQuery("select s from StockOrder s where s.company.id = :company "
+                        + "and s.orderType = :type order by s.id", StockOrder.class)
+                .setParameter("company", companyId).setParameter("type", OrderType.PURCHASE_ORDER).getResultList();
+        assertEquals(2, orders.size());
+        ProcessingEvidenceField field = new ProcessingEvidenceField();
+        field.setFieldName("batch-evidence");
+        em.persist(field);
+        for (int i = 0; i < orders.size(); i++) {
+            StockOrderPEFieldValue value = new StockOrderPEFieldValue();
+            value.setStockOrder(orders.get(i));
+            value.setProcessingEvidenceField(field);
+            value.setStringValue("evidence-" + i);
+            em.persist(value);
+            Payment payment = new Payment();
+            payment.setStockOrder(orders.get(i));
+            payment.setCreatedBy(em.find(User.class, ownerUserId));
+            payment.setPurchased(BigDecimal.ONE);
+            payment.setReceiptNumber("receipt-" + i);
+            em.persist(payment);
+        }
+        em.flush();
+        em.clear();
+        MvcResult result = mockMvc.perform(get("/api/chain/stock-order/list/company/" + companyId)
+                .param("limit", "5").param("sort", "ASC").param("isPurchaseOrderOnly", "true")
+                .cookie(ownerSession)).andReturn();
+        assertEquals(200, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+        JsonNode items = objectMapper.readTree(result.getResponse().getContentAsString()).path("data").path("items");
+        assertEquals(2, items.size());
+        for (int i = 0; i < 2; i++) {
+            assertEquals("evidence-" + i, items.get(i).path("requiredEvidenceFieldValues").get(0).path("stringValue").asText());
+            assertEquals("receipt-" + i, items.get(i).path("payments").get(0).path("receiptNumber").asText());
+        }
+    }
+
+    @Test
+    void queryBudgetsRejectExtraReadsAfterActualRequests() throws Exception {
+        addBudgetOrders(49, 0);
+        List<Long> ids = em.createQuery("select s.producerUserCustomer.id from StockOrder s "
+                        + "where s.company.id = :company and s.orderType = :type order by s.id desc", Long.class)
+                .setParameter("company", companyId).setParameter("type", OrderType.PURCHASE_ORDER)
+                .setMaxResults(5).getResultList();
+        assertEquals(5, ids.size());
+        int baseline = measureBudgetList(50, 5);
+        em.clear();
+        try (var sample = DeliveryExportSqlObserver.start()) {
+            MvcResult response = mockMvc.perform(get("/api/chain/stock-order/list/company/" + companyId)
+                    .param("limit", "5").param("offset", "0").param("sort", "ASC")
+                    .param("isPurchaseOrderOnly", "true").cookie(ownerSession)).andReturn();
+            assertEquals(200, response.getResponse().getStatus());
+            assertBoundedGrowth(baseline, sample.statements());
+            int before = sample.statements();
+            for (Long id : ids) assertNotNull(em.find(UserCustomer.class, id));
+            assertEquals(5, sample.statements() - before);
+            assertThrows(org.opentest4j.AssertionFailedError.class,
+                    () -> assertBoundedGrowth(baseline, sample.statements()));
+            assertTrue(sample.statements() > 23, "extra reads must exceed the list budget");
+        }
+        em.clear();
+        try (var sample = DeliveryExportSqlObserver.start()) {
+            MvcResult response = mockMvc.perform(get("/api/dashboard/deliveries-aggregated-data")
+                    .param("companyId", companyId.toString()).param("aggregationType", "YEAR")
+                    .cookie(ownerSession)).andReturn();
+            assertEquals(200, response.getResponse().getStatus());
+            assertTrue(sample.statements() <= 5);
+            int before = sample.statements();
+            for (Long id : ids) assertNotNull(em.find(UserCustomer.class, id));
+            assertEquals(5, sample.statements() - before);
+            assertTrue(sample.statements() > 5, "extra reads must exceed the dashboard budget");
+        }
+    }
 
     @BeforeEach
     void seed() {
@@ -780,6 +1007,344 @@ class StockOrderApiAuthTest extends AbstractMySqlIntegrationTest {
             assertEquals(MARKER, workbook.getSheetAt(0).getRow(1).getCell(1).getStringCellValue());
         }
         assertRefused(path, MARKER);
+    }
+
+    @Test
+    void deliveryExportCharacterizesWorkbookAndQueryGrowth() throws Exception {
+        StockOrder original = em.find(StockOrder.class, orderId);
+        original.setTare(new BigDecimal("1.25"));
+        original.setDamagedWeightDeduction(new BigDecimal("2.50"));
+        original.setDamagedPriceDeduction(new BigDecimal("3.75"));
+        original.setBalance(new BigDecimal("90.00"));
+        original.setCurrency("EUR");
+        addExportOrders(4, 0);
+        int small = measureExport(5);
+        assertEquals(small, measureExport(5));
+        assertEquals(small, measureExport(5));
+        addExportOrders(45, 4);
+        int large = measureExport(50);
+        assertEquals(large, measureExport(50));
+        assertEquals(large, measureExport(50));
+        assertExportMatchesList(50);
+        addExportOrders(450, 49);
+        int larger = measureExport(500);
+        assertEquals(larger, measureExport(500));
+        assertEquals(larger, measureExport(500));
+        em.createQuery("update StockOrder s set s.producerUserCustomer = :farmer "
+                        + "where s.company.id = :company and s.orderType = :type")
+                .setParameter("farmer", em.find(UserCustomer.class, farmerId))
+                .setParameter("company", companyId).setParameter("type", OrderType.PURCHASE_ORDER).executeUpdate();
+        int shared = measureExport(500);
+        addExportOrders(1, 499);
+        int secondBatch = measureExport(501);
+        System.out.println("DELIVERY_EXPORT_QUERY_COUNTS 5=" + small + " 50=" + large
+                + " 500=" + larger + " 500-shared-farmer=" + shared + " 501=" + secondBatch);
+        assertTrue(small > 0, "the observer must see the request's SQL");
+        assertTrue(Math.max(Math.max(small, large), Math.max(larger, shared)) <= 8,
+                "the measured request must stay within the reviewed fixed budget");
+        assertEquals(small, large, "more orders must not add per-order SQL");
+        assertEquals(large, larger, "500 distinct products must remain within one translation batch");
+        assertEquals(larger, shared);
+        assertEquals(larger + 1, secondBatch, "the next product batch adds one query, not one per order");
+        if (Boolean.getBoolean("delivery.export.large")) {
+            verifyTenThousandLimit();
+        }
+    }
+
+    private void addExportOrders(int count, int first) {
+        StockOrder template = em.find(StockOrder.class, orderId);
+        for (int i = first; i < first + count; i++) {
+            UserCustomer farmer = new UserCustomer();
+            farmer.setName("Export farmer " + i);
+            farmer.setSurname("Synthetic");
+            farmer.setType(UserCustomerType.FARMER);
+            farmer.setCompany(template.getCompany());
+            em.persist(farmer);
+            SemiProduct semi = new SemiProduct();
+            semi.setName("Export base " + i);
+            semi.setBuyable(true);
+            semi.setMeasurementUnitType(template.getMeasurementUnitType());
+            em.persist(semi);
+            SemiProductTranslation translation = new SemiProductTranslation();
+            translation.setSemiProduct(semi);
+            translation.setLanguage(Language.EN);
+            translation.setName("Acme stock semi");
+            em.persist(translation);
+            StockOrder order = new StockOrder();
+            order.setCompany(template.getCompany());
+            order.setFacility(template.getFacility());
+            order.setSemiProduct(semi);
+            order.setMeasurementUnitType(template.getMeasurementUnitType());
+            order.setCreatedBy(template.getCreatedBy());
+            order.setProducerUserCustomer(farmer);
+            order.setIdentifier("EXPORT-110-" + i);
+            order.setOrderType(OrderType.PURCHASE_ORDER);
+            order.setPurchaseOrder(true);
+            order.setAvailable(true);
+            order.setTotalQuantity(BigDecimal.TEN);
+            order.setTotalGrossQuantity(BigDecimal.TEN);
+            order.setFulfilledQuantity(BigDecimal.TEN);
+            order.setAvailableQuantity(BigDecimal.TEN);
+            order.setProductionDate(LocalDate.of(2025, 8, 18));
+            order.setPreferredWayOfPayment(PreferredWayOfPayment.BANK_TRANSFER);
+            em.persist(order);
+        }
+        em.flush();
+        em.clear();
+    }
+
+    private int measureExport(int orders) throws Exception {
+        em.flush();
+        em.clear();
+        MvcResult export;
+        int statements;
+        try (var sample = DeliveryExportSqlObserver.start()) {
+            export = mockMvc.perform(get("/api/chain/stock-order/export/deliveries/company/" + companyId)
+                    .cookie(ownerSession)).andReturn();
+            statements = sample.statements();
+            assertEquals(1, sample.stockSelects(), "one stock selection is expected");
+            assertEquals(1, sample.limitedStockSelects(), "stock selection must be limited in SQL");
+            assertEquals(0, sample.stockCountSelects(), "export must not count unused results");
+        }
+        assertEquals(200, export.getResponse().getStatus());
+        try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(export.getResponse().getContentAsByteArray()))) {
+            var sheet = workbook.getSheetAt(0);
+            assertEquals("Deliveries", sheet.getSheetName());
+            assertEquals(orders, sheet.getLastRowNum());
+            assertEquals(15, sheet.getRow(0).getLastCellNum());
+            String[] headers = {"Delivery date", "Identifier", "Farmer", "Semi-product", "Quantity",
+                    "Total gross quantity", "Tare", "Damaged weight deduction", "Unit", "Price per unit",
+                    "Damaged price deduction", "Payable", "Balance", "Currency", "Preferred way of payment"};
+            for (int i = 0; i < headers.length; i++) assertEquals(headers[i], sheet.getRow(0).getCell(i).getStringCellValue());
+            for (int row = 1; row <= orders; row++) {
+                var data = sheet.getRow(row);
+                assertEquals(row == orders ? MARKER : "EXPORT-110-" + (orders - 1 - row), data.getCell(1).getStringCellValue());
+                assertEquals(row == orders ? 123.5 : 10.0, data.getCell(4).getNumericCellValue(), 0.001);
+                assertEquals(14, data.getCell(0).getCellStyle().getDataFormat());
+                assertEquals("Acme stock semi", data.getCell(3).getStringCellValue());
+                assertEquals("Stock kilogram", data.getCell(8).getStringCellValue());
+                assertEquals("Bank transfer", data.getCell(14).getStringCellValue());
+            }
+            var original = sheet.getRow(orders);
+            assertEquals("Acme stock farmer Only", original.getCell(2).getStringCellValue());
+            assertEquals(em.find(StockOrder.class, orderId).getProductionDate(), original.getCell(0).getLocalDateTimeCellValue().toLocalDate());
+            assertEquals(123.5, original.getCell(5).getNumericCellValue(), 0.001);
+            assertEquals(1.25, original.getCell(6).getNumericCellValue(), 0.001);
+            assertEquals(2.5, original.getCell(7).getNumericCellValue(), 0.001);
+            assertEquals(4.0, original.getCell(9).getNumericCellValue(), 0.001);
+            assertEquals(3.75, original.getCell(10).getNumericCellValue(), 0.001);
+            assertEquals(494.0, original.getCell(11).getNumericCellValue(), 0.001);
+            assertEquals(90.0, original.getCell(12).getNumericCellValue(), 0.001);
+            assertEquals("EUR", original.getCell(13).getStringCellValue());
+            var optional = sheet.getRow(1);
+            for (int column : new int[]{6, 7, 9, 10, 11, 12}) {
+                assertEquals(org.apache.poi.ss.usermodel.CellType.NUMERIC, optional.getCell(column).getCellType());
+                assertEquals(0.0, optional.getCell(column).getNumericCellValue());
+            }
+            assertEquals(org.apache.poi.ss.usermodel.CellType.BLANK, optional.getCell(13).getCellType());
+        }
+        return statements;
+    }
+
+    private void assertExportMatchesList(int expected) throws Exception {
+        em.flush();
+        em.clear();
+        MvcResult list = mockMvc.perform(get("/api/chain/stock-order/list/company/" + companyId)
+                .param("limit", "10000").param("isPurchaseOrderOnly", "true").cookie(ownerSession)).andReturn();
+        assertEquals(200, list.getResponse().getStatus());
+        var items = objectMapper.readTree(list.getResponse().getContentAsString()).path("data").path("items");
+        assertEquals(expected, items.size());
+        em.clear();
+        MvcResult export = mockMvc.perform(get("/api/chain/stock-order/export/deliveries/company/" + companyId)
+                .cookie(ownerSession)).andReturn();
+        assertEquals(200, export.getResponse().getStatus());
+        try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(export.getResponse().getContentAsByteArray()))) {
+            for (int i = 0; i < expected; i++) {
+                assertEquals(items.get(i).path("identifier").asText(), workbook.getSheetAt(0).getRow(i + 1).getCell(1).getStringCellValue());
+            }
+        }
+    }
+
+    @Test
+    void deliveryExportUsesRequestedTranslationAndKeepsMissingTranslationEmpty() throws Exception {
+        SemiProduct product = em.find(SemiProduct.class, semiProductId);
+        SemiProductTranslation german = new SemiProductTranslation();
+        german.setSemiProduct(product);
+        german.setLanguage(Language.DE);
+        german.setName("Deutsches Produkt");
+        em.persist(german);
+        addExportOrders(1, 0);
+        MvcResult result = mockMvc.perform(get("/api/chain/stock-order/export/deliveries/company/" + companyId)
+                .header("language", "DE").cookie(ownerSession)).andReturn();
+        assertEquals(200, result.getResponse().getStatus());
+        try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(result.getResponse().getContentAsByteArray()))) {
+            assertEquals("", workbook.getSheetAt(0).getRow(1).getCell(3).getStringCellValue());
+            assertEquals("Deutsches Produkt", workbook.getSheetAt(0).getRow(2).getCell(3).getStringCellValue());
+        }
+    }
+
+    @Test
+    void deliveryExportUsesLowestTranslationIdWhenLanguageIsDuplicated() throws Exception {
+        SemiProduct product = em.find(SemiProduct.class, semiProductId);
+        for (String name : List.of("First translation", "Second translation")) {
+            SemiProductTranslation translation = new SemiProductTranslation();
+            translation.setSemiProduct(product);
+            translation.setLanguage(Language.DE);
+            translation.setName(name);
+            em.persist(translation);
+            em.flush();
+        }
+        em.clear();
+        MvcResult result = mockMvc.perform(get("/api/chain/stock-order/export/deliveries/company/" + companyId)
+                .header("language", "DE").cookie(ownerSession)).andReturn();
+        assertEquals(200, result.getResponse().getStatus());
+        try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(result.getResponse().getContentAsByteArray()))) {
+            assertEquals("First translation", workbook.getSheetAt(0).getRow(1).getCell(3).getStringCellValue());
+        }
+    }
+
+    @Test
+    void deliveryExportReturnsHeadersForAnEmptyCompany() throws Exception {
+        em.createQuery("update StockOrder s set s.orderType = :replacement where s.company.id = :company and s.orderType = :purchase")
+                .setParameter("replacement", OrderType.GENERAL_ORDER).setParameter("company", companyId)
+                .setParameter("purchase", OrderType.PURCHASE_ORDER).executeUpdate();
+        em.flush();
+        em.clear();
+        MvcResult result = mockMvc.perform(get("/api/chain/stock-order/export/deliveries/company/" + companyId)
+                .cookie(ownerSession)).andReturn();
+        assertEquals(200, result.getResponse().getStatus());
+        try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(result.getResponse().getContentAsByteArray()))) {
+            assertEquals(0, workbook.getSheetAt(0).getLastRowNum());
+            assertEquals(15, workbook.getSheetAt(0).getRow(0).getLastCellNum());
+        }
+    }
+
+    @Test
+    void deliveryExportLeavesMissingFarmerBlank() throws Exception {
+        em.find(StockOrder.class, orderId).setProducerUserCustomer(null);
+        assertExportLeavesCellBlank(2);
+    }
+
+    @Test
+    void deliveryExportLeavesMissingSemiProductBlank() throws Exception {
+        em.find(StockOrder.class, orderId).setSemiProduct(null);
+        assertExportLeavesCellBlank(3);
+    }
+
+    @Test
+    void deliveryExportLeavesMissingUnitBlank() throws Exception {
+        em.find(StockOrder.class, orderId).setMeasurementUnitType(null);
+        assertExportLeavesCellBlank(8);
+    }
+
+    @Test
+    void deliveryExportLeavesMissingPaymentMethodBlank() throws Exception {
+        em.find(StockOrder.class, orderId).setPreferredWayOfPayment(null);
+        assertExportLeavesCellBlank(14);
+    }
+
+    @Test
+    void deliveryExportLeavesMissingQuantityBlank() throws Exception {
+        em.find(StockOrder.class, orderId).setTotalQuantity(null);
+        assertExportLeavesCellBlank(4);
+    }
+
+    @Test
+    void deliveryExportLeavesMissingDateBlank() throws Exception {
+        em.find(StockOrder.class, orderId).setProductionDate(null);
+        assertExportLeavesCellBlank(0);
+    }
+
+    private void assertExportLeavesCellBlank(int column) throws Exception {
+        addExportOrders(1, 0);
+        em.flush();
+        em.clear();
+        MvcResult result = mockMvc.perform(get("/api/chain/stock-order/export/deliveries/company/" + companyId)
+                .cookie(ownerSession)).andReturn();
+        assertEquals(200, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+        try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(result.getResponse().getContentAsByteArray()))) {
+            var sheet = workbook.getSheetAt(0);
+            assertEquals(2, sheet.getLastRowNum());
+            assertEquals("EXPORT-110-0", sheet.getRow(1).getCell(1).getStringCellValue());
+            assertEquals(MARKER, sheet.getRow(2).getCell(1).getStringCellValue());
+            assertEquals(org.apache.poi.ss.usermodel.CellType.BLANK, sheet.getRow(2).getCell(column).getCellType());
+        }
+    }
+
+    @Test
+    void sqlObserverCountsStatementsOnTheRequestThreadOnly() throws Exception {
+        var executor = Executors.newSingleThreadExecutor();
+        try (var sample = DeliveryExportSqlObserver.start()) {
+            int other = executor.submit(() -> {
+                var otherEm = entityManagerFactory.createEntityManager();
+                try (var ignored = DeliveryExportSqlObserver.start()) {
+                    otherEm.createNativeQuery("SELECT 1").getSingleResult();
+                    return ignored.statements();
+                } finally {
+                    otherEm.close();
+                }
+            }).get(10, TimeUnit.SECONDS);
+            assertEquals(1, other);
+            assertEquals(0, sample.statements());
+            em.createNativeQuery("SELECT 1").getSingleResult();
+            assertEquals(1, sample.statements());
+        } finally {
+            executor.shutdownNow();
+        }
+        assertThrows(IllegalStateException.class, () -> {
+            try (var ignored = DeliveryExportSqlObserver.start()) { throw new IllegalStateException("synthetic failure"); }
+        });
+        try (var fresh = DeliveryExportSqlObserver.start()) { assertEquals(0, fresh.statements()); }
+    }
+
+    private void verifyTenThousandLimit() throws Exception {
+        StockOrder template = em.find(StockOrder.class, orderId);
+        Long unitId = template.getMeasurementUnitType().getId();
+        long started = System.nanoTime();
+        for (int i = 0; i < 9500; i++) {
+            StockOrder order = new StockOrder();
+            order.setCompany(em.getReference(Company.class, companyId));
+            order.setFacility(em.getReference(Facility.class, facilityId));
+            order.setSemiProduct(em.getReference(SemiProduct.class, semiProductId));
+            order.setMeasurementUnitType(em.getReference(MeasureUnitType.class, unitId));
+            order.setCreatedBy(em.getReference(User.class, ownerUserId));
+            order.setProducerUserCustomer(em.getReference(UserCustomer.class, farmerId));
+            order.setIdentifier("EXPORT-110-LARGE-" + i);
+            order.setOrderType(OrderType.PURCHASE_ORDER);
+            order.setPurchaseOrder(true);
+            order.setAvailable(true);
+            order.setTotalQuantity(BigDecimal.TEN);
+            order.setTotalGrossQuantity(BigDecimal.TEN);
+            order.setFulfilledQuantity(BigDecimal.TEN);
+            order.setAvailableQuantity(BigDecimal.TEN);
+            order.setProductionDate(LocalDate.of(2025, 8, 18));
+            order.setPreferredWayOfPayment(PreferredWayOfPayment.BANK_TRANSFER);
+            em.persist(order);
+            if ((i + 1) % 250 == 0) { em.flush(); em.clear(); }
+        }
+        em.flush();
+        em.clear();
+        long beforeMemory = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();
+        MvcResult export;
+        int count;
+        try (var sample = DeliveryExportSqlObserver.start()) {
+            export = mockMvc.perform(get("/api/chain/stock-order/export/deliveries/company/" + companyId)
+                    .cookie(ownerSession)).andReturn();
+            count = sample.statements();
+            assertEquals(1, sample.limitedStockSelects());
+            assertEquals(0, sample.stockCountSelects());
+        }
+        long afterMemory = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();
+        assertEquals(200, export.getResponse().getStatus());
+        try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(export.getResponse().getContentAsByteArray()))) {
+            var sheet = workbook.getSheetAt(0);
+            assertEquals(10000, sheet.getLastRowNum());
+            assertEquals("EXPORT-110-LARGE-9499", sheet.getRow(1).getCell(1).getStringCellValue());
+            assertEquals("EXPORT-110-0", sheet.getRow(10000).getCell(1).getStringCellValue());
+        }
+        assertTrue(count <= 8, "the large case must retain the bounded query budget");
+        System.out.println("DELIVERY_EXPORT_10000 statements=" + count + " elapsedMs="
+                + (System.nanoTime() - started) / 1_000_000 + " approximateHeapDeltaBytes=" + (afterMemory - beforeMemory));
     }
 
     @Test

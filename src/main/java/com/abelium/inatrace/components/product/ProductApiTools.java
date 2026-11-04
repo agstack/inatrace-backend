@@ -371,7 +371,7 @@ public class ProductApiTools {
 	public void updateProductLabelContent(Long userId, ProductLabelContent p, ApiProductLabelContent pu) throws ApiException {
 		updateProductContent(userId, p, pu);
 		if (pu.origin != null) {
-			if (pu.origin.locations != null) updateOriginLocations(p, new ArrayList<>(p.getOriginLocations()), pu.origin.locations);
+			if (pu.origin.locations != null) updateOriginLocations(p, p.getOriginLocations(), pu.origin.locations);
 		}
         
         // Update product journey
@@ -406,7 +406,7 @@ public class ProductApiTools {
 		}
 	}
 
-	private void updateOriginLocations(ProductLabelContent p, List<ProductLocation> pls, List<ApiLocation> als) throws ApiException  {
+	private void updateOriginLocations(ProductLabelContent p, Set<ProductLocation> pls, List<ApiLocation> als) throws ApiException  {
 		pls.clear();
 		for (ApiLocation apl : als) {
 			pls.add(toProductLocation(p, apl));
@@ -696,7 +696,25 @@ public class ProductApiTools {
 		afb.questionnaireAnswers = fb.getQuestionnaireAnswers();
 		afb.setProductName(fb.getLabel().getProduct().getName());
 		return afb;
-	}	
+	}
+
+	/**
+	 * Feedback as shown to anyone holding the label UID (printed in every QR code): without the
+	 * consumer's e-mail, questionnaire answers (age, gender...) or consents.
+	 */
+	/**
+	 * Feedback as anyone holding the label's QR code may read it: built from an allowlist (type, text
+	 * and product name), so a field added later to the private mapper is not published by default.
+	 */
+	public static ApiProductLabelFeedback toPublicApiProductLabelFeedback(ProductLabelFeedback fb) {
+		if (fb == null) return null;
+
+		ApiProductLabelFeedback afb = new ApiProductLabelFeedback();
+		afb.type = fb.getType();
+		afb.feedback = fb.getFeedback();
+		afb.setProductName(fb.getLabel().getProduct().getName());
+		return afb;
+	}
 
 	public static void updateProductLabelFeedback(ProductLabelFeedback fb, ApiProductLabelFeedback afb) {
 		if (afb == null) return;

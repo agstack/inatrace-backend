@@ -15,21 +15,21 @@ its controller has a test class.
 [`routes.tsv`](routes.tsv) records the effective HTTP method, `/api` path, and
 controller method for every application controller registered by Spring MVC.
 `ApiRouteInventoryTest` compares that file to `RequestMappingHandlerMapping`
-and `/v3/api-docs` on every test run. Both expose the same **196** operations
+and `/v3/api-docs` on every test run. Both expose the same **197** operations
 in this commit. This catches additions, removals, and path changes before the
 coverage matrix becomes stale. The TSV is an inventory, **not a claim of
 authorization coverage**.
 
-| Area | Controllers | Issue count | Registered at `018a7f8` | Matrix |
+| Area | Controllers | Issue count | Registered now | Matrix |
 |---|---:|---:|---:|---|
 | Authentication and Users | 1 | part of the historical 45 | 15 | [existing.md](existing.md) |
 | Companies, farmers and plots | 1 | part of the historical 45 | 30 | [existing.md](existing.md) |
 | Supply Chain #35 | 9 | 51 | 51 | pending #35 PR |
-| Products and consumer labels #36 | 2 | 36 | 34 | pending #36 PR |
+| Products and consumer labels #36 | 2 | 36 | 35 | pending #36 PR |
 | Public #37 | 1 | 13 | 13 | [37-public.md](37-public.md) — policy decision pending |
 | Codebooks #38 | 9 | 44 | 41 | [38-codebooks.md](38-codebooks.md) |
 | Files, settings and reporting #39 | 2 | 14 | 12 | [39-files-reporting.md](39-files-reporting.md) — one export finding pending a separate fix |
-| **Total** | **25 current** | **203 historical** | **196** | |
+| **Total** | **25 current** | **203 historical** | **197** | |
 
 The 45 operations in the existing areas are inside `UserController` and
 `CompanyController`. `FarmerAndPlotApiTest` exercises routes on

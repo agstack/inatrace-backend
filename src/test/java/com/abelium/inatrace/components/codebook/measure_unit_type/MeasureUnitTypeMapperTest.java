@@ -13,6 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import java.time.Duration;
+import java.math.BigDecimal;
 
 /**
  * Mapping a measurement unit whose underlying-unit chain loops back on itself terminates.
@@ -91,10 +92,15 @@ class MeasureUnitTypeMapperTest {
 		MeasureUnitType sack = unit(1L, "sack");
 		sack.setUnderlyingMeasurementUnitType(kilogram);
 		kilogram.setUnderlyingMeasurementUnitType(gram);
+		sack.setWeight(new BigDecimal("60.00"));
+		sack.setLabel("Bag of 60 kg");
 
 		ApiMeasureUnitType mapped = MeasureUnitTypeMapper.toApiMeasureUnitType(sack);
 
 		assertEquals("sack", mapped.getCode());
+		assertEquals(1L, mapped.getId());
+		assertEquals("Bag of 60 kg", mapped.getLabel());
+		assertEquals(0, new BigDecimal("60.00").compareTo(mapped.getWeight()));
 		assertEquals("kg", mapped.getUnderlyingMeasurementUnitType().getCode());
 		assertEquals("g", mapped.getUnderlyingMeasurementUnitType()
 				.getUnderlyingMeasurementUnitType().getCode());

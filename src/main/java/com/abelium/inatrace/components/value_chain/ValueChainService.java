@@ -36,6 +36,7 @@ import org.springframework.stereotype.Service;
 import org.torpedoquery.jakarta.jpa.OnGoingLogicalCondition;
 import org.torpedoquery.jakarta.jpa.Torpedo;
 
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -192,6 +193,21 @@ public class ValueChainService extends BaseService {
 	public void deleteValueChain(Long id) throws ApiException {
 
 		ValueChain valueChain = fetchValueChain(id);
+
+		// Companies, facilities, processing actions and products keep a reference to their value chain;
+		// removing it would only fail on the foreign key with a generic error. Its own configuration
+		// (facility types, semi-products, ...) is removed with it.
+		for (String entity : List.of("CompanyValueChain", "FacilityValueChain", "ProcessingActionValueChain", "Product")) {
+			Long uses = em.createQuery(
+							"SELECT COUNT(e) FROM " + entity + " e WHERE e.valueChain.id = :valueChainId", Long.class)
+					.setParameter("valueChainId", id)
+					.getSingleResult();
+			if (uses > 0) {
+				throw new ApiException(ApiStatus.VALIDATION_ERROR,
+						"Cannot delete a value chain that is used by companies, facilities, processing actions or products");
+			}
+		}
+
 		em.remove(valueChain);
 	}
 

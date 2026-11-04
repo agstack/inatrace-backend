@@ -195,6 +195,16 @@ public class ProcessingActionService extends BaseService {
 
 		PermissionsUtil.checkUserIfCompanyEnrolledAndAdminOrSystemAdmin(processingAction.getCompany().getUsers().stream().toList(), user);
 
+		// Processing orders keep a reference to their action; removing it would only fail on the
+		// foreign key with a generic error.
+		Long processingOrders = em.createQuery(
+						"SELECT COUNT(po) FROM ProcessingOrder po WHERE po.processingAction.id = :actionId", Long.class)
+				.setParameter("actionId", id)
+				.getSingleResult();
+		if (processingOrders > 0) {
+			throw new ApiException(ApiStatus.VALIDATION_ERROR, "Cannot delete a processing action that has processing orders");
+		}
+
 		em.remove(processingAction);
 	}
 

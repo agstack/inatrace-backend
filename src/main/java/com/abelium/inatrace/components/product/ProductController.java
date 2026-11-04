@@ -140,6 +140,14 @@ public class ProductController {
         return new ApiResponse<>(productService.getCompanyDocumentsForProductLabel(authUser, id));
     }
 
+    @GetMapping(value = "/label/{id}/feedback/list")
+    @Operation(summary = "List feedback for a product label, with the details given by consumers")
+    public ApiPaginatedResponse<ApiProductLabelFeedback> listProductLabelFeedbacksForLabel(@AuthenticationPrincipal CustomUserDetails authUser,
+            @Valid @Parameter(description = "Label id", required = true) @PathVariable("id") Long id,
+            @Valid ApiListProductLabelFeedbackRequest request) throws ApiException {
+        return new ApiPaginatedResponse<>(productService.listProductLabelFeedbacks(authUser, id, request));
+    }
+
     @PutMapping(value = "/label/{id}/documents")
     @Operation(summary = "Update company document product label list")
     public ApiDefaultResponse updateCompanyDocumentsForProductLabel(@AuthenticationPrincipal CustomUserDetails authUser,
@@ -247,6 +255,15 @@ public class ProductController {
     		@Valid @RequestBody ApiKnowledgeBlog request) throws ApiException {
     	productService.addKnowledgeBlog(authUser, productId, request);
     	return new ApiDefaultResponse();
+    }
+
+    @DeleteMapping(value = "/knowledgeBlog/{id}")
+    @Operation(summary = "Delete knowledge blog")
+    public ApiDefaultResponse deleteProductKnowledgeBlog(
+			@AuthenticationPrincipal CustomUserDetails authUser,
+			@Valid @Parameter(description = "id", required = true) @PathVariable("id") Long id) throws ApiException {
+		productService.deleteKnowledgeBlog(authUser, id);
+		return new ApiDefaultResponse();
     }
     
     @DeleteMapping(value = "/label/feedback/{id}")
