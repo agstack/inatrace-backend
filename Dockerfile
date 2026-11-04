@@ -39,4 +39,4 @@ COPY --from=build /extracted/application/ ./
 # reads ./config/ automatically.
 USER inatrace
 EXPOSE 8080
-ENTRYPOINT ["java", "org.springframework.boot.loader.launch.JarLauncher"]
+ENTRYPOINT ["java", "-Duser.timezone=UTC", "org.springframework.boot.loader.launch.JarLauncher"]
