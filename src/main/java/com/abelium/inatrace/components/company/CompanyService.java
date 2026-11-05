@@ -1294,13 +1294,29 @@ public class CompanyService extends BaseService {
 			throw new ApiException(ApiStatus.INVALID_REQUEST, "Invalid GeoJSON file");
 		}
 
+		if (featureCollection == null) {
+			throw new ApiException(ApiStatus.INVALID_REQUEST, "Invalid GeoJSON file");
+		}
 		if (!CollectionUtils.isEmpty(featureCollection.features())) {
 			int plotIndex = 1;
 			int pointIndex = 1;
 			for (Feature feature : featureCollection.features()) {
+				if (feature == null) {
+					throw new ApiException(ApiStatus.INVALID_REQUEST, "Invalid GeoJSON feature");
+				}
 				if (feature.geometry() instanceof Polygon) {
 
 					Polygon polygon = (Polygon) feature.geometry();
+					if (polygon.coordinates() != null && polygon.coordinates().size() > 1) {
+						throw new ApiException(ApiStatus.INVALID_REQUEST, "GeoJSON polygons with holes are not supported");
+					}
+					if (polygon.coordinates() == null || polygon.coordinates().isEmpty()
+							|| polygon.coordinates().get(0) == null || polygon.coordinates().get(0).size() < 4
+							|| polygon.coordinates().get(0).stream().anyMatch(java.util.Objects::isNull)
+							|| !polygon.coordinates().get(0).get(0).equals(
+									polygon.coordinates().get(0).get(polygon.coordinates().get(0).size() - 1))) {
+						throw new ApiException(ApiStatus.INVALID_REQUEST, "Invalid GeoJSON polygon ring");
+					}
 
 					ApiPlot apiPlot = new ApiPlot();
 					apiPlot.setPlotName("Plot " + plotIndex++);

@@ -1,2 +1,3 @@
-# Java sources already use both LF and CRLF; treat CR at end of line as valid.
+# Preserve existing line endings while checking whitespace.
 *.java whitespace=cr-at-eol
+pom.xml whitespace=cr-at-eol

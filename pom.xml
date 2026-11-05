@@ -215,6 +215,14 @@
 			<version>2.6.0</version>
 		</dependency>
 
+		<!-- Same qualified engine and version used by the spreadsheet properties. -->
+		<dependency>
+			<groupId>net.jqwik</groupId>
+			<artifactId>jqwik</artifactId>
+			<version>1.8.5</version>
+			<scope>test</scope>
+		</dependency>
+
 		<!-- A real MySQL for the smoke tests, started from Docker. Versions come from
 		     the Spring Boot parent, which manages the Testcontainers BOM. -->
 		<dependency>
