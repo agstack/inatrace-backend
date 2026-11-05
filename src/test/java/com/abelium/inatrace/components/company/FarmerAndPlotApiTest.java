@@ -2,6 +2,7 @@ package com.abelium.inatrace.components.company;
 
 import com.abelium.inatrace.support.AbstractMySqlIntegrationTest;
 import com.abelium.inatrace.components.common.TokenService;
+import com.abelium.inatrace.components.agstack.AgStackClientService;
 import com.abelium.inatrace.db.entities.codebook.ProductType;
 import com.abelium.inatrace.db.entities.common.Address;
 import com.abelium.inatrace.db.entities.common.BankInformation;
@@ -33,6 +34,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
@@ -104,6 +106,7 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 	@Autowired private MockMvc mockMvc;
 	@Autowired private EntityManager em;
 	@Autowired private TokenService tokenService;
+	@MockBean private AgStackClientService agStackClientService;
 
 	@Value("${INATrace.auth.accessTokenCookieName}")
 	private String accessCookieName;
@@ -408,6 +411,7 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 		assertRefused(result, "uploading a boundary onto another tenant's farmer");
 		assertEquals(before, plotCount(acmeFarmerId),
 				"a refused upload must not have created a plot");
+		org.mockito.Mockito.verifyNoInteractions(agStackClientService);
 	}
 
 	@Test
@@ -453,6 +457,129 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 		assertEquals(-1.9420, pointPlot.getCoordinates().get(0).getLatitude(), 0.000001);
 		assertNull(pointPlot.getSize(), "point uploads must not receive a polygon area");
 		assertNull(pointPlot.getUnit(), "point uploads must not be labelled as hectares");
+	}
+
+	@Test
+	@DisplayName("independent rectangle areas match imported plots and exported geometry")
+	void rectangleAreasAndCoordinatesSurviveImportAndExport() throws Exception {
+		org.mockito.Mockito.when(agStackClientService.registerFieldBoundaryResponse(org.mockito.ArgumentMatchers.anyList()))
+				.thenReturn(new com.abelium.inatrace.components.agstack.api.ApiRegisterFieldBoundaryResponse());
+		StringBuilder features = new StringBuilder();
+		int count = 8;
+		for (int i = 0; i < count; i++) {
+			double west = 30.0 + i * 0.01;
+			double south = -1.94;
+			double east = west + (i + 1) * 0.0002;
+			double north = south + 0.001;
+			if (i > 0) features.append(',');
+			features.append(Feature.fromGeometry(com.mapbox.geojson.Polygon.fromLngLats(List.of(
+					PlotGeometryPropertiesTest.rectangle(west, south, east, north)))).toJson());
+		}
+		String geoJson = "{\"type\":\"FeatureCollection\",\"features\":[" + features + "]}";
+		long before = plotCount(acmeFarmerId);
+		MockMultipartFile upload = new MockMultipartFile("file", "rectangles.geojson", "application/geo+json",
+				geoJson.getBytes(StandardCharsets.UTF_8));
+		MvcResult result = mockMvc.perform(multipart("/api/company/userCustomers/" + acmeFarmerId + "/uploadGeoData")
+				.file(upload).cookie(aliceSession)).andReturn();
+		assertEquals(200, result.getResponse().getStatus(), body(result));
+		assertEquals(before + count, plotCount(acmeFarmerId));
+		org.mockito.Mockito.verify(agStackClientService, org.mockito.Mockito.times(count))
+				.registerFieldBoundaryResponse(org.mockito.ArgumentMatchers.anyList());
+		em.flush();
+		em.clear();
+		for (int i = 0; i < count; i++) {
+			double west = 30.0 + i * 0.01;
+			double expected = Math.floor(PlotGeometryPropertiesTest.rectangleArea(west, -1.94,
+					west + (i + 1) * 0.0002, -1.939) / 100) / 100;
+			Plot plot = importedPlot("Plot " + (i + 1));
+			assertEquals(expected, plot.getSize(), 0.000001);
+			if (i == 0) {
+				double wrongDivisor = Math.floor(PlotGeometryPropertiesTest.rectangleArea(west, -1.94,
+						west + 0.0002, -1.939) / 10) / 100;
+				assertTrue(Math.abs(plot.getSize() - wrongDivisor) > 0.000001,
+						"persisted area must distinguish the historical tenfold divisor");
+			}
+			assertEquals("ha", plot.getUnit());
+			assertEquals(coffeeProductTypeId, plot.getCrop().getId());
+			assertEquals(5, plot.getCoordinates().size());
+			assertTrue(plot.getCoordinates().stream().anyMatch(p -> Math.abs(p.getLongitude() - west) < 0.000001
+					&& Math.abs(p.getLatitude() + 1.94) < 0.000001));
+		}
+		MvcResult exported = mockMvc.perform(get("/api/company/userCustomers/" + acmeFarmerId + "/exportGeoData")
+				.cookie(aliceSession)).andReturn();
+		assertEquals(200, exported.getResponse().getStatus());
+		var json = new com.fasterxml.jackson.databind.ObjectMapper().readTree(exported.getResponse().getContentAsByteArray());
+		assertEquals(before + count, json.path("features").size());
+		assertEquals("FeatureCollection", json.path("type").asText());
+		for (int i = 0; i < count; i++) {
+			double west = 30.0 + i * 0.01;
+			double east = west + (i + 1) * 0.0002;
+			boolean found = false;
+			for (var feature : json.path("features")) {
+				if (!"Polygon".equals(feature.path("geometry").path("type").asText())) continue;
+				var ring = feature.path("geometry").path("coordinates").path(0);
+				if (ring.size() < 5) continue;
+				java.util.Set<String> actualVertices = new java.util.HashSet<>();
+				java.util.List<String> actualRing = new java.util.ArrayList<>();
+				for (var point : ring) {
+					String coordinate = String.format(java.util.Locale.ROOT, "%.6f,%.6f",
+							point.path(0).asDouble(), point.path(1).asDouble());
+					actualVertices.add(coordinate);
+					actualRing.add(coordinate);
+				}
+				java.util.Set<String> expectedVertices = new java.util.HashSet<>();
+				for (var point : PlotGeometryPropertiesTest.rectangle(west, -1.94, east, -1.939)) {
+					expectedVertices.add(String.format(java.util.Locale.ROOT, "%.6f,%.6f", point.longitude(), point.latitude()));
+				}
+				if (expectedVertices.equals(actualVertices) && ring.get(0).equals(ring.get(ring.size() - 1))) {
+					while (actualRing.size() > 1 && actualRing.get(actualRing.size() - 1).equals(actualRing.get(0))) {
+						actualRing.remove(actualRing.size() - 1);
+					}
+					List<String> expectedRing = new ArrayList<>();
+					for (var point : PlotGeometryPropertiesTest.rectangle(west, -1.94, east, -1.939).subList(0, 4)) {
+						expectedRing.add(String.format(java.util.Locale.ROOT, "%.6f,%.6f", point.longitude(), point.latitude()));
+					}
+					boolean sameRing = false;
+					for (int direction : new int[]{1, -1}) {
+						for (int start = 0; start < 4; start++) {
+							List<String> candidate = new ArrayList<>();
+							for (int vertex = 0; vertex < 4; vertex++) {
+								candidate.add(expectedRing.get(Math.floorMod(start + direction * vertex, 4)));
+							}
+							sameRing |= candidate.equals(actualRing);
+						}
+					}
+					assertTrue(sameRing, "exported vertices must form the original boundary");
+					assertTrue(feature.path("properties").has("geoID"));
+					found = true;
+					break;
+				}
+			}
+			assertTrue(found, "missing exported rectangle " + i);
+		}
+	}
+
+	@Test
+	@DisplayName("small polygons truncate on either side of one hundred square metres")
+	void smallPolygonAreasRespectHectareThreshold() throws Exception {
+		org.mockito.Mockito.when(agStackClientService.registerFieldBoundaryResponse(org.mockito.ArgumentMatchers.anyList()))
+				.thenReturn(new com.abelium.inatrace.components.agstack.api.ApiRegisterFieldBoundaryResponse());
+		List<Feature> features = new ArrayList<>();
+		for (double north : new double[]{0.0008, 0.0010}) {
+			features.add(Feature.fromGeometry(com.mapbox.geojson.Polygon.fromLngLats(List.of(
+					PlotGeometryPropertiesTest.rectangle(30.0, 0.0, 30.00001, north)))));
+		}
+		String json = FeatureCollection.fromFeatures(features).toJson();
+		MvcResult result = mockMvc.perform(multipart("/api/company/userCustomers/" + acmeFarmerId + "/uploadGeoData")
+				.file(new MockMultipartFile("file", "small.geojson", "application/geo+json", json.getBytes(StandardCharsets.UTF_8)))
+				.cookie(aliceSession)).andReturn();
+		assertEquals(200, result.getResponse().getStatus(), body(result));
+		em.flush();
+		em.clear();
+		assertEquals(0.00, importedPlot("Plot 1").getSize(), 0.000001);
+		assertEquals(0.01, importedPlot("Plot 2").getSize(), 0.000001);
+		assertTrue(PlotGeometryPropertiesTest.rectangleArea(30.0, 0, 30.00001, 0.0008) < 100);
+		assertTrue(PlotGeometryPropertiesTest.rectangleArea(30.0, 0, 30.00001, 0.0010) > 100);
 	}
 
 	@Test
