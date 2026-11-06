@@ -2,6 +2,8 @@ package com.abelium.inatrace.security.configuration;
 
 import com.abelium.inatrace.components.common.TokenService;
 import com.abelium.inatrace.components.user.UserService;
+import com.abelium.inatrace.configuration.ApiRequestObservability;
+import com.abelium.inatrace.configuration.SafeExceptionLog;
 import com.abelium.inatrace.db.entities.common.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,10 +47,11 @@ public class TokenAuthenticationFilter extends OncePerRequestFilter {
 	                PreAuthenticatedAuthenticationToken authentication = new PreAuthenticatedAuthenticationToken(userDetails, null, userDetails.getAuthorities());
 	                authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(httpServletRequest));
 	                SecurityContextHolder.getContext().setAuthentication(authentication);
+	                ApiRequestObservability.captureActor(httpServletRequest, userDetails);
             	}
             }
         } catch (Exception e) {
-            logger.debug("Unable to authenticate access-token cookie", e);
+            SafeExceptionLog.warn(logger, "Unable to authenticate access-token cookie", e);
         }
 
         filterChain.doFilter(httpServletRequest, httpServletResponse);

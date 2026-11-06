@@ -30,6 +30,11 @@ import com.mapbox.geojson.Point;
 import com.mapbox.geojson.Polygon;
 import com.mapbox.turf.TurfMeasurement;
 import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.EmptyFileException;
+import org.apache.poi.openxml4j.exceptions.NotOfficeXmlFileException;
+import org.apache.poi.openxml4j.exceptions.InvalidFormatException;
+import org.apache.poi.ooxml.POIXMLException;
+import org.apache.xmlbeans.XmlException;
 import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
@@ -101,8 +106,21 @@ public class UserCustomerImportService extends BaseService {
         try {
             inputStream = new ByteArrayInputStream(documentData.file);
             mainWorkbook = new XSSFWorkbook(inputStream);
+            if (mainWorkbook.getNumberOfSheets() == 0) {
+                mainWorkbook.close();
+                throw new ApiException(ApiStatus.INVALID_REQUEST, "The file is not a valid XLSX spreadsheet. Please check the file and try again.");
+            }
+        } catch (NotOfficeXmlFileException | EmptyFileException e) {
+            throw new ApiException(ApiStatus.INVALID_REQUEST, "The file is not a valid XLSX spreadsheet. Please check the file and try again.");
+        } catch (POIXMLException e) {
+            // POI 5.3.0 reports unsupported Strict OOXML without a typed cause.
+            if (e.getCause() instanceof InvalidFormatException || e.getCause() instanceof XmlException
+                    || "Strict OOXML isn't currently supported, please see bug #57699".equals(e.getMessage())) {
+                throw new ApiException(ApiStatus.INVALID_REQUEST, "The file is not a valid XLSX spreadsheet. Please check the file and try again.");
+            }
+            throw e;
         } catch (IOException e) {
-            throw new ApiException(ApiStatus.ERROR, "Could not read file");
+            throw new ApiException(ApiStatus.INVALID_REQUEST, "The file is not a valid XLSX spreadsheet. Please check the file and try again.");
         }
 
         XSSFSheet mainSheet = mainWorkbook.getSheetAt(0);

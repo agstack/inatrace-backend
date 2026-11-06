@@ -7,6 +7,7 @@ import com.abelium.inatrace.db.entities.common.User;
 import com.abelium.inatrace.db.entities.company.Company;
 import com.abelium.inatrace.db.entities.company.CompanyUser;
 import com.abelium.inatrace.db.entities.processingaction.ProcessingAction;
+import com.abelium.inatrace.db.entities.processingorder.ProcessingOrder;
 import com.abelium.inatrace.db.entities.processingaction.ProcessingActionTranslation;
 import com.abelium.inatrace.db.entities.value_chain.ValueChain;
 import com.abelium.inatrace.db.entities.value_chain.enums.ValueChainStatus;
@@ -125,6 +126,9 @@ class ProcessingActionApiAuthTest extends AbstractMySqlIntegrationTest {
             MvcResult allowed = mockMvc.perform(get(path).cookie(ownerSession)).andReturn();
             String ownerBody = allowed.getResponse().getContentAsString();
             assertEquals(200, allowed.getResponse().getStatus(), path + ": " + ownerBody);
+            assertTrue(allowed.getResponse().getContentType().startsWith(MediaType.APPLICATION_JSON_VALUE),
+                    path + " must retain its JSON response contract");
+            assertTrue(ownerBody.contains("\"status\":\"OK\""), path + ": " + ownerBody);
             assertTrue(ownerBody.contains(MARKER), path + ": " + ownerBody);
 
             MvcResult refused = mockMvc.perform(get(path).cookie(strangerSession)).andReturn();
@@ -197,6 +201,21 @@ class ProcessingActionApiAuthTest extends AbstractMySqlIntegrationTest {
         em.flush();
         em.clear();
         assertNull(em.find(ProcessingAction.class, actionId));
+    }
+
+    @Test
+    void deleteRefusesActionWithProcessingOrders() throws Exception {
+        ProcessingOrder order = new ProcessingOrder();
+        order.setProcessingAction(em.find(ProcessingAction.class, actionId));
+        em.persist(order);
+        em.flush();
+        em.clear();
+
+        MvcResult refused = mockMvc.perform(delete("/api/chain/processing-action/" + actionId).cookie(ownerSession)).andReturn();
+        assertEquals(400, refused.getResponse().getStatus(), refused.getResponse().getContentAsString());
+        assertTrue(refused.getResponse().getContentAsString().contains("Cannot delete a processing action that has processing orders"));
+        em.clear();
+        assertNotNull(em.find(ProcessingAction.class, actionId));
     }
 
     private String actionBody(Long id, Long companyId, String prefix) {

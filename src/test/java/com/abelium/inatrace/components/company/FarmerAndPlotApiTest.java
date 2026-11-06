@@ -194,6 +194,9 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 				.andReturn();
 
 		assertEquals(200, result.getResponse().getStatus(), body(result));
+		assertTrue(result.getResponse().getContentType().startsWith(MediaType.APPLICATION_JSON_VALUE),
+				"Farmer lists must retain their JSON response contract");
+		assertTrue(body(result).contains("\"status\":\"OK\""), body(result));
 		assertTrue(body(result).contains(FARMER_SURNAME),
 				"Acme's own farmer should be listed for Acme: " + body(result));
 	}
@@ -263,6 +266,12 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 				.andReturn();
 
 		assertEquals(200, result.getResponse().getStatus(), body(result));
+		assertTrue(result.getResponse().getContentType().startsWith(MediaType.APPLICATION_JSON_VALUE),
+				"Plot lists must retain their JSON response contract");
+		assertTrue(body(result).contains("\"status\":\"OK\""), body(result));
+		assertTrue(body(result).contains("\"plotName\":\"" + PLOT_NAME + "\""), body(result));
+		assertTrue(body(result).contains("\"geoId\":\"" + PLOT_GEO_ID + "\""), body(result));
+		assertTrue(body(result).contains("\"coordinates\":"), body(result));
 		assertTrue(body(result).contains(PLOT_NAME), body(result));
 		assertTrue(body(result).contains(PLOT_GEO_ID), body(result));
 	}
@@ -464,6 +473,37 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 				"malformed GeoJSON must be rejected as an invalid request: " + body(result));
 		assertEquals(before, plotCount(acmeFarmerId),
 				"a rejected GeoJSON file must not create any plots");
+	}
+
+	@Test
+	@DisplayName("Malformed GeoJSON does not disclose the uploaded filename or payload in logs")
+	void malformedGeoDataDoesNotDiscloseUploadedContentInLogs() throws Exception {
+		ch.qos.logback.classic.Logger root = (ch.qos.logback.classic.Logger)
+				org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+		ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> appender =
+				new ch.qos.logback.core.read.ListAppender<>();
+		appender.start();
+		root.addAppender(appender);
+		try {
+			MockMultipartFile upload = new MockMultipartFile("file", "private-filename-marker.geojson",
+					"application/geo+json", "{ coordinates: private-coordinate-marker"
+					.getBytes(StandardCharsets.UTF_8));
+			MvcResult result = mockMvc.perform(multipart("/api/company/userCustomers/" + acmeFarmerId + "/uploadGeoData")
+					.file(upload).cookie(aliceSession)).andReturn();
+			assertEquals(400, result.getResponse().getStatus());
+			for (ch.qos.logback.classic.spi.ILoggingEvent event : appender.list) {
+				assertFalse(event.getFormattedMessage().contains("private-filename-marker"));
+				assertFalse(event.getFormattedMessage().contains("private-coordinate-marker"));
+				if (event.getThrowableProxy() != null) {
+					String throwable = ch.qos.logback.classic.spi.ThrowableProxyUtil.asString(event.getThrowableProxy());
+					assertFalse(throwable.contains("private-filename-marker"));
+					assertFalse(throwable.contains("private-coordinate-marker"));
+				}
+			}
+		} finally {
+			root.detachAppender(appender);
+			appender.stop();
+		}
 	}
 
 	@Test

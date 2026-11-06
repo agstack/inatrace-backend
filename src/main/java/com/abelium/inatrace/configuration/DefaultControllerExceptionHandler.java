@@ -9,7 +9,6 @@ import com.abelium.inatrace.api.errors.validation.ApiValidationError;
 import com.abelium.inatrace.api.exceptions.ApiUpstreamServiceException;
 import com.abelium.inatrace.components.exceptionhandling.SpringExceptionConverter;
 import com.abelium.inatrace.components.exceptionhandling.SpringExceptionResponseBuilder;
-import com.abelium.inatrace.tools.SecurityTools;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
@@ -58,7 +57,7 @@ public class DefaultControllerExceptionHandler {
     // ApiImageException - do not log (either a consequence of an exception that was logged before or a valid error return)
     @ExceptionHandler
     public ResponseEntity<?> handleApiImageException(ApiImageException exc, HttpServletRequest request) {
-        warnOrError(exc.getHttpStatus(), "ApiImageException: {} {} {}", exc.getHttpStatus(), exc.getHttpStatus().getReasonPhrase(), exc.getMessage());
+        warnOrError(exc.getHttpStatus(), "ApiImageException", exc.getApiStatus());
         return ResponseEntity.status(exc.getHttpStatus()).build(); // return empty body
     }
     
@@ -66,16 +65,16 @@ public class DefaultControllerExceptionHandler {
     @ExceptionHandler
     public ResponseEntity<?> handleApiException(ApiException exc, HttpServletRequest request) {
         if (exc instanceof ApiUpstreamServiceException) {
-        	logAndUpdate(exc, request);
+            SafeExceptionLog.error(logger, "Upstream service error", exc);
         } else {
-            warnOrError(exc.getHttpStatus(), "ApiException: {} {}", exc.getApiStatus(), exc.getMessage());
+            warnOrError(exc.getHttpStatus(), "ApiException", exc.getApiStatus());
         }
         return exceptionResponseBuilder.getAcceptableResponse(exc.responseHttpStatus(), exc.createResponseBody(), request);
     }
     
     @ExceptionHandler
     public ResponseEntity<String> handleHtmlPageException(HtmlPageException exc, HttpServletRequest request) {
-        warnOrError(exc.getStatus(), "HtmlPageException: {} {}", exc.getStatus(), exc.getText());
+        warnOrError(exc.getStatus(), "HtmlPageException", null);
         return exceptionResponseBuilder.getAcceptableResponse(exc.getStatus(), exc.getText(), request);
     }
     
@@ -103,22 +102,16 @@ public class DefaultControllerExceptionHandler {
             return handleJsonMappingException((JsonMappingException) exc.getCause(), request);
         }
         // probably unparsable body
-        updateErrorCounter();
-        logger.error("Bad http request: {}", exc.getMessage());
         return exceptionResponseBuilder.getAcceptableResponse(HttpStatus.BAD_REQUEST, ApiStatus.REQUEST_BODY_ERROR, exc.getMessage(), request);
     }
 
     private ResponseEntity<?> handleJsonMappingException(JsonMappingException exc, HttpServletRequest request) {
-        updateErrorCounter();
-        logger.error(exc.getMessage());
         ApiValidationError response = SpringExceptionConverter.buildValidationError(exc);
         return exceptionResponseBuilder.getAcceptableResponse(HttpStatus.BAD_REQUEST, response, request);
     }
 
     @ExceptionHandler
     public ResponseEntity<?> handleMethodArgumentTypeMismatchException(MethodArgumentTypeMismatchException exc, HttpServletRequest request) {
-        updateErrorCounter();
-        logger.error(exc.getMessage());
         String message = "Method parameter " + exc.getName() + " is of wrong type, required type is " + exc.getRequiredType();
         return exceptionResponseBuilder.getAcceptableResponse(HttpStatus.BAD_REQUEST, ApiStatus.REQUEST_BODY_ERROR, message, request);
     }
@@ -126,50 +119,37 @@ public class DefaultControllerExceptionHandler {
     @ExceptionHandler
     public ResponseEntity<?> handleConstaintValidationException(ConstraintViolationException exc, HttpServletRequest request) {
         ApiValidationError response = SpringExceptionConverter.buildValidationError(exc);
-        updateErrorCounter();
-        logger.error("{} {}", response.getErrorMessage(), response.getValidationErrorDetails().getFieldErrors());
         return exceptionResponseBuilder.getAcceptableResponse(HttpStatus.BAD_REQUEST, response, request);
     }
 
     @ExceptionHandler
     public ResponseEntity<?> handleMediaTypeException(HttpMediaTypeNotSupportedException exc, HttpServletRequest request) {
-        updateErrorCounter();
-        logger.error(exc.getMessage());
         return exceptionResponseBuilder.getAcceptableResponse(HttpStatus.UNSUPPORTED_MEDIA_TYPE, ApiStatus.REQUEST_BODY_ERROR, exc.getMessage(), request);
     }
 
     @ExceptionHandler
     public ResponseEntity<?> handleMediaTypeException(HttpMediaTypeNotAcceptableException exc, HttpServletRequest request) {
-        updateErrorCounter();
-        logger.error(exc.getMessage());
         return exceptionResponseBuilder.getAcceptableResponse(HttpStatus.NOT_ACCEPTABLE, ApiStatus.ERROR, exc.getMessage(), request);
     }
 
     @ExceptionHandler
     public ResponseEntity<?> handleMethodException(HttpRequestMethodNotSupportedException exc, HttpServletRequest request) {
-        updateErrorCounter();
-        logger.error(exc.getMessage());
         return exceptionResponseBuilder.getAcceptableResponse(HttpStatus.METHOD_NOT_ALLOWED, ApiStatus.ERROR, exc.getMessage(), request);
     }
 
     @ExceptionHandler
     public ResponseEntity<?> handleNotFoundException(NoHandlerFoundException exc, HttpServletRequest request) {
-        updateErrorCounter();
-        logger.error(exc.getMessage());
         return exceptionResponseBuilder.getAcceptableResponse(HttpStatus.NOT_FOUND, ApiStatus.ERROR, exc.getMessage(), request);
     }
 
     @ExceptionHandler
     public ResponseEntity<?> handleNoResourceFoundException(NoResourceFoundException exc, HttpServletRequest request) {
-        logger.warn("No resource found: {}", exc.getMessage());
         return exceptionResponseBuilder.getAcceptableResponse(HttpStatus.NOT_FOUND, ApiStatus.ERROR, exc.getMessage(), request);
     }
     
     @ExceptionHandler
     public ResponseEntity<?> handleValidationException(MethodArgumentNotValidException exc, HttpServletRequest request) {
         ApiValidationError response = SpringExceptionConverter.buildValidationError(exc);
-        updateErrorCounter();
-        logger.error("{} {}", response.getErrorMessage(), response.getValidationErrorDetails().getFieldErrors());
         return exceptionResponseBuilder.getAcceptableResponse(HttpStatus.BAD_REQUEST, response, request);
     }
     
@@ -178,37 +158,29 @@ public class DefaultControllerExceptionHandler {
         ApiStatus status = ApiStatus.UNAUTHORIZED;
         String message = "Unauthorized";
         String details = exc.getMessage();
-        updateErrorCounter();
-        logger.error(message);
         return exceptionResponseBuilder.getAcceptableResponse(HttpStatus.FORBIDDEN, new ApiError(status, message, null, details), request);
     }
     
     @ExceptionHandler
     public ResponseEntity<?> handleBindException(BindException exc, HttpServletRequest request) {
          ApiValidationError response = SpringExceptionConverter.buildValidationError(exc);
-         updateErrorCounter();
-         logger.error("{} {}", response.getErrorMessage(), response.getValidationErrorDetails().getFieldErrors());
          return exceptionResponseBuilder.getAcceptableResponse(HttpStatus.BAD_REQUEST, response, request);
     }
 
     @ExceptionHandler
     public ResponseEntity<?> handleMissingServletRequestPartException(MissingServletRequestPartException exc, HttpServletRequest request) {
-        updateErrorCounter();
-        logger.error(exc.getMessage());
         return exceptionResponseBuilder.getAcceptableResponse(HttpStatus.BAD_REQUEST, ApiStatus.REQUEST_BODY_ERROR, exc.getMessage(), request);
     }
 
     @ExceptionHandler
     public void handleClientAbortException(ClientAbortException exc, HttpServletRequest request) {
-        String message = ExceptionUtils.getRootCauseMessage(exc);
-        logger.warn("Socket closed during processing ({}) in {}", message, request.getRequestURI());
+        logger.warn("Client connection closed request_id={}", ApiRequestObservability.requestId());
     }
     
     @ExceptionHandler
     public ResponseEntity<?> handleIOException(IOException exc, HttpServletRequest request) {
         if (isClientConnectionAbort(exc)) {
-            String message = ExceptionUtils.getRootCauseMessage(exc);
-            logger.warn("Socket closed during processing ({}) in {}", message, request.getRequestURI());
+            logger.warn("Client connection closed request_id={}", ApiRequestObservability.requestId());
             return null;    // socket is closed, cannot return any response
         }
         return handleUnknownException(exc, request);
@@ -226,37 +198,18 @@ public class DefaultControllerExceptionHandler {
     }
     
     private ResponseEntity<?> handleUnknownException(Throwable exc, HttpServletRequest request) {
-    	logAndUpdate(exc, request);
+        SafeExceptionLog.error(logger, "Unexpected API error", exc);
         
         // Keep technical details in the server log only; response bodies must not expose exception classes or messages.
         return exceptionResponseBuilder.getAcceptableResponse(HttpStatus.INTERNAL_SERVER_ERROR, ApiStatus.ERROR,
                 INTERNAL_SERVER_ERROR_MESSAGE, request);
     }
     
-    private void logAndUpdate(Throwable exc, HttpServletRequest request) {
-    	// log unknown exceptions 
-    	logError(exc, request);
-        // update error counter
-        updateErrorCounter();
-    }
-    
-    private void logError(Throwable exc, HttpServletRequest request) {
-    	logger.error("IP: {}, exception: {}, message: {}", 
-    			SecurityTools.getClientIP(request), 
-    			exc.getClass().getName(),
-    			exc.getMessage(), 
-    			exc);
-    }
-    
-    private void warnOrError(HttpStatus status, String format, Object... args) {
+    private void warnOrError(HttpStatus status, String category, ApiStatus apiStatus) {
         if (status == null || status.is5xxServerError()) {
-            updateErrorCounter();
-            logger.error(format, args);
+            logger.error("API error category={} status={} api_status={} request_id={}", category, status, apiStatus, ApiRequestObservability.requestId());
         } else {
-            logger.warn(format, args);
+            logger.warn("API error category={} status={} api_status={} request_id={}", category, status, apiStatus, ApiRequestObservability.requestId());
         }
-    }
-
-    public void updateErrorCounter() {
     }
 }

@@ -1,5 +1,7 @@
 package com.abelium.inatrace.components.analytics;
 
+import com.abelium.inatrace.configuration.SafeExceptionLog;
+
 import com.abelium.inatrace.db.entities.analytics.RequestGeoLocation;
 import com.maxmind.geoip2.DatabaseReader;
 import com.maxmind.geoip2.exception.GeoIp2Exception;
@@ -35,7 +37,7 @@ public class IpGeoLocationEngine {
 		        File database = new File(dbPath);
 				reader = new DatabaseReader.Builder(database).build();
 			} catch (IOException e) {
-				logger.error("maxmind.geoip2.DatabaseReader can not be created", e);
+				SafeExceptionLog.error(logger, "GeoIP database cannot be created", e);
 			}
 		}
 	}
@@ -56,7 +58,7 @@ public class IpGeoLocationEngine {
 			return result;
 		} catch (IOException | GeoIp2Exception e) {
 			// TODO: needed? too much logs
-			logger.info("Can not get location for {}", ipAddress);
+			logger.debug("Cannot resolve client location");
 			return null;
 		}
 	}

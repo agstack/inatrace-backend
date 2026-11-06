@@ -1,9 +1,11 @@
 package com.abelium.inatrace.components.mail;
 
+import com.abelium.inatrace.configuration.ApiRequestObservability;
+import com.abelium.inatrace.configuration.SafeExceptionLog;
+
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -15,12 +17,12 @@ import java.util.concurrent.TimeUnit;
 import jakarta.mail.Address;
 import jakarta.mail.Message.RecipientType;
 import jakarta.mail.MessagingException;
-import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeMessage;
 
 import jakarta.annotation.PostConstruct;
 
 import org.apache.commons.lang3.StringUtils;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
@@ -168,8 +170,7 @@ public class MailEngine
 
 		MimeMessage mimeMessage = message.getMimeMessage();
 		sendMimeMessageWrapper(mimeMessage);
-		logger.debug("Message sent, id = '{}', addresses = {}", mimeMessage.getMessageID(),
-				getAllAddresses(mimeMessage));
+		logger.debug("Message sent request_id={}", ApiRequestObservability.requestId());
 		return mimeMessage.getMessageID();
 	}
 
@@ -198,19 +199,26 @@ public class MailEngine
      * @return a completable future that is fulfilled with message ID when mail is sent and failed if error occurs
      */
 	public CompletableFuture<String> sendMailAsync(MimeMessageBuilder builder) {
+		String requestId = ApiRequestObservability.requestId();
 		return CompletableFuture.supplyAsync(() -> {
+			Map<String, String> previous = MDC.getCopyOfContextMap();
 			try {
+				if ("none".equals(requestId)) MDC.remove(ApiRequestObservability.MDC_KEY);
+				else MDC.put(ApiRequestObservability.MDC_KEY, requestId);
 				MimeMessageHelper helper = builder.build();
 				return sendMail(helper);
 			} catch (MailSendingException e) {
 				// alert was already sent, so don't log anything here
 				throw new CompletionException(e);
 			} catch (MessagingException e) {
-				logger.error("Error building or sending email", e);
+				SafeExceptionLog.error(logger, "Error building or sending email", e);
 				throw new CompletionException(e);
 			} catch (RuntimeException e) {
-				logger.error("Unknown error building or sending email", e);
+				SafeExceptionLog.error(logger, "Unknown error building or sending email", e);
 				throw e;
+			} finally {
+				if (previous == null) MDC.clear();
+				else MDC.setContextMap(previous);
 			}
 		}, executorService);
 	}
@@ -251,20 +259,9 @@ public class MailEngine
 			}
 			return subject + "  [" + StringUtils.join(recipientStrs, ";  ") + "]";
 		} catch (Exception e) {
-			logger.error("Error getting original recipients", e);
+			SafeExceptionLog.error(logger, "Error getting original recipients", e);
 			return subject + "  [redirected]";
 		}
-	}
-    
-	private static Set<String> getAllAddresses(MimeMessage message) throws MessagingException {
-		Set<String> result = new LinkedHashSet<>();
-		Address[] recipients = message.getAllRecipients();
-		if (recipients != null) {
-			for (Address address : recipients)
-				if (address instanceof InternetAddress)
-					result.add(((InternetAddress) address).getAddress());
-		}
-		return result;
 	}
     
     private BlockingQueue<Runnable> executorQueue = new LinkedBlockingQueue<>(10000);

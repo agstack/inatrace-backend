@@ -2,6 +2,7 @@ package com.abelium.inatrace.components.common;
 
 import com.abelium.inatrace.api.ApiStatus;
 import com.abelium.inatrace.api.errors.ApiException;
+import com.abelium.inatrace.configuration.SafeExceptionLog;
 import com.abelium.inatrace.db.entities.common.Document;
 import com.abelium.inatrace.tools.ImageTools;
 import com.abelium.inatrace.tools.ImageTools.ImageSizeData;
@@ -44,7 +45,7 @@ public class StorageService extends BaseService
             try {
                 Files.createDirectories(path);
             } catch (IOException e) {
-                logger.error("Error creating type directory", e);
+                SafeExceptionLog.error(logger, "Error creating type directory", e);
                 throw new ApiException(ApiStatus.ERROR, "Error saving file");
             }
         }
@@ -53,7 +54,7 @@ public class StorageService extends BaseService
         try {
             Files.write(path, file);
         } catch (IOException e) {
-            logger.error("Error writing file", e);
+            SafeExceptionLog.error(logger, "Error writing file", e);
             throw new ApiException(ApiStatus.ERROR, "Error saving file");
         }
 
@@ -78,10 +79,10 @@ public class StorageService extends BaseService
     			outputStream.write(chunk, 0, bytesRead);
     		}
     	} catch(MalformedURLException e) {
-    		logger.error("Url to download file from is malformed: " + url, e);
+			SafeExceptionLog.error(logger, "Malformed file download URL", e);
     		return null;
     	} catch (Exception e) {
-    		logger.error("Cannot download file from url: " + url, e);
+			SafeExceptionLog.error(logger, "Cannot download file", e);
     		return null;
     	}
     	return outputStream.toByteArray();
@@ -94,7 +95,7 @@ public class StorageService extends BaseService
 		try {
 			return Files.readAllBytes(Paths.get(absolutePath));
 		} catch (IOException e) {
-			logger.error("cannot read file on path: " + absolutePath, e);
+			SafeExceptionLog.error(logger, "Cannot read local file", e);
 			return null;
 		}
 	}
@@ -132,7 +133,7 @@ public class StorageService extends BaseService
             byte[] bytes = Files.readAllBytes(getPath(document));
             return new DocumentData(bytes, document);
         } catch (IOException e) {
-            logger.error("Error reading file", e);
+            SafeExceptionLog.error(logger, "Error reading file", e);
             throw new ApiException(ApiStatus.ERROR, "Error reading file");
         }
     }
@@ -143,7 +144,7 @@ public class StorageService extends BaseService
             try {
                 Files.createDirectory(path);
             } catch (IOException e) {
-                logger.error("Error creating type directory", e);
+                SafeExceptionLog.error(logger, "Error creating type directory", e);
                 throw new ApiException(ApiStatus.ERROR, "Error saving file");
             }
         }
@@ -152,7 +153,7 @@ public class StorageService extends BaseService
         try {
             Files.write(path, file);
         } catch (IOException e) {
-            logger.error("Error writing file", e);
+            SafeExceptionLog.error(logger, "Error writing file", e);
             throw new ApiException(ApiStatus.ERROR, "Error saving file");
         }
         return path.toString();
@@ -170,7 +171,7 @@ public class StorageService extends BaseService
 	            try {
 	                Files.createDirectories(path);
 	            } catch (IOException e) {
-	                logger.error("Error creating type directory", e);
+	                SafeExceptionLog.error(logger, "Error creating type directory", e);
 	                throw new ApiException(ApiStatus.ERROR, "Error saving file");
 	            }
 	        }
@@ -181,7 +182,7 @@ public class StorageService extends BaseService
 	        	}
 	            Files.write(path, ImageTools.resize(file, is));
 	        } catch (IOException e) {
-	            logger.error("Error writing file", e);
+	            SafeExceptionLog.error(logger, "Error writing file", e);
 	            throw new ApiException(ApiStatus.ERROR, "Error saving file");
 	        }
 		}
@@ -200,7 +201,7 @@ public class StorageService extends BaseService
             byte[] bytes = Files.readAllBytes(path);
             return new DocumentData(bytes, document);
         } catch (IOException e) {
-            logger.error("Error reading file", e);
+            SafeExceptionLog.error(logger, "Error reading file", e);
             throw new ApiException(ApiStatus.ERROR, "Error reading file");
         }
     }

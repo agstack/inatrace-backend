@@ -54,7 +54,11 @@ public class ProductLabelContent extends ProductContent {
 		plc.setSustainability(p.getSustainability().copy());
 		plc.setSettings(p.getSettings().copy());
 		plc.setCompany(p.getCompany()); // no copy -- read only!
-		plc.setOriginLocations(p.getOriginLocations().stream().map(ProductLocation::copy).collect(Collectors.toSet()));
+		plc.setOriginLocations(p.getOriginLocations().stream().map(location -> {
+			ProductLocation copy = location.copy();
+			copy.setContent(plc);
+			return copy;
+		}).collect(Collectors.toSet()));
 
 		// If product has journey points set, copy them to the Product label
 		if (p.getJourney() != null) {

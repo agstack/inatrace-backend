@@ -15,6 +15,7 @@ import org.springframework.validation.ObjectError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 
 import com.abelium.inatrace.api.errors.validation.ApiValidationError;
+import com.abelium.inatrace.configuration.SafeExceptionLog;
 import com.fasterxml.jackson.databind.JsonMappingException;
 
 public class SpringExceptionConverter {
@@ -59,7 +60,7 @@ public class SpringExceptionConverter {
             Map<String, String> fieldErrors = createFieldErrors(exc.getBindingResult().getAllErrors(), exc.getParameter());
             return new ApiValidationError(ApiValidationError.DEFAULT_MESSAGE, null, fieldErrors);
         } catch ( Exception e ) {
-            logger.error("Problem formatting validation error message", e);
+            SafeExceptionLog.error(logger, "Problem formatting validation error message", e);
             return new ApiValidationError();
         }
     }
@@ -81,7 +82,7 @@ public class SpringExceptionConverter {
             Map<String, String> fieldErrors = createFieldErrors(exc.getBindingResult().getAllErrors(), null);
             return new ApiValidationError(ApiValidationError.DEFAULT_MESSAGE, null, fieldErrors);
         } catch ( Exception e ) {
-            logger.error("Problem formatting validation error message", e);
+            SafeExceptionLog.error(logger, "Problem formatting validation error message", e);
             return new ApiValidationError();
         }
     }
