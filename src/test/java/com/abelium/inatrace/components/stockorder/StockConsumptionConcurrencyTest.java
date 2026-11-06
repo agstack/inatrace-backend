@@ -32,6 +32,7 @@ import com.abelium.inatrace.types.UserRole;
 import com.abelium.inatrace.types.UserStatus;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import net.jqwik.api.Arbitraries;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.AfterEach;
@@ -58,6 +59,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -171,6 +173,77 @@ class StockConsumptionConcurrencyTest extends AbstractMySqlIntegrationTest {
         assertEquals(2, state.inputTransactions());
         assertEquals(2, state.outputStockOrders());
         assertReservationInvariant(state, new BigDecimal("200.00"));
+    }
+
+    @Test
+    @DisplayName("reservations accept exact available stock and reject one cent more")
+    void reservationsCoverExactExhaustionAndJustOverAvailable() {
+        Fixture exact = seedFixture(ONE_HUNDRED);
+        String first = "boundary-first-" + UUID.randomUUID();
+        ResponseEntity<String> firstResponse = processingRequest(exact, exact.primarySourceId(), THIRTY,
+                "GENERAL_ORDER", first);
+        assertEquals(HttpStatus.OK, firstResponse.getStatusCode(), firstResponse::getBody);
+        String last = "boundary-last-" + UUID.randomUUID();
+        ResponseEntity<String> lastResponse = processingRequest(exact, exact.primarySourceId(),
+                sourceRequestState(exact.primarySourceId()), SEVENTY, "GENERAL_ORDER", last);
+        assertEquals(HttpStatus.OK, lastResponse.getStatusCode(), lastResponse::getBody);
+        assertSuccessfulProcessingGraph(exact.primarySourceId(), first, THIRTY, THIRTY);
+        assertSuccessfulProcessingGraph(exact.primarySourceId(), last, SEVENTY, SEVENTY);
+        PersistedState exhausted = persistedState(exact, exact.primarySourceId());
+        assertEquals(0, BigDecimal.ZERO.compareTo(exhausted.availableQuantity()));
+        assertEquals(0, ONE_HUNDRED.compareTo(exhausted.committedInputQuantity()));
+
+        Fixture excessive = seedFixture(ONE_HUNDRED);
+        String identifier = "boundary-excessive-" + UUID.randomUUID();
+        ResponseEntity<String> refused = processingRequest(excessive, excessive.primarySourceId(),
+                new BigDecimal("100.01"), "GENERAL_ORDER", identifier);
+        assertTrue(refused.getStatusCode().is4xxClientError(), refused::getBody);
+        assertNoProcessingOutput(identifier);
+        PersistedState unchanged = persistedState(excessive, excessive.primarySourceId());
+        assertEquals(0, ONE_HUNDRED.compareTo(unchanged.availableQuantity()));
+        assertEquals(0, BigDecimal.ZERO.compareTo(unchanged.committedInputQuantity()));
+        assertEquals(0, unchanged.processingOrders());
+        assertEquals(0, unchanged.inputTransactions());
+        assertEquals(0, unchanged.outputStockOrders());
+    }
+
+    @Test
+    @DisplayName("generated serial reservations reconcile HTTP results and persisted quantities")
+    void generatedSequentialReservationsReconcilePersistedGraphs() {
+        Random random = new Random(982026L);
+        var quantities = Arbitraries.integers().between(1, 4000).generator(100);
+        for (int sample = 0; sample < 10; sample++) {
+            BigDecimal firstQuantity = BigDecimal.valueOf(quantities.next(random).value(), 2);
+            BigDecimal secondQuantity = BigDecimal.valueOf(quantities.next(random).value(), 2);
+            Fixture fixture = seedFixture(ONE_HUNDRED);
+            String first = "generated-first-" + UUID.randomUUID();
+            String second = "generated-second-" + UUID.randomUUID();
+            ResponseEntity<String> firstResponse = processingRequest(fixture, fixture.primarySourceId(),
+                    firstQuantity, "GENERAL_ORDER", first);
+            assertEquals(HttpStatus.OK, firstResponse.getStatusCode(), firstResponse::getBody);
+            ResponseEntity<String> secondResponse = processingRequest(fixture, fixture.primarySourceId(),
+                    sourceRequestState(fixture.primarySourceId()), secondQuantity, "GENERAL_ORDER", second);
+            assertEquals(HttpStatus.OK, secondResponse.getStatusCode(), secondResponse::getBody);
+            assertSuccessfulProcessingGraph(fixture.primarySourceId(), first, firstQuantity, firstQuantity);
+            assertSuccessfulProcessingGraph(fixture.primarySourceId(), second, secondQuantity, secondQuantity);
+            PersistedState state = persistedState(fixture, fixture.primarySourceId());
+            assertEquals(0, firstQuantity.add(secondQuantity).compareTo(state.committedInputQuantity()));
+            assertEquals(0, ONE_HUNDRED.subtract(firstQuantity).subtract(secondQuantity).compareTo(state.availableQuantity()));
+            assertEquals(2, state.processingOrders());
+            assertEquals(2, state.inputTransactions());
+            assertEquals(2, state.outputStockOrders());
+            assertReservationInvariant(state, ONE_HUNDRED);
+            String rejected = "generated-invalid-" + UUID.randomUUID();
+            ResponseEntity<String> invalid = processingRequest(fixture, fixture.primarySourceId(),
+                    sourceRequestState(fixture.primarySourceId()), firstQuantity, "PURCHASE_ORDER", rejected);
+            assertTrue(invalid.getStatusCode().is4xxClientError(), invalid::getBody);
+            assertNoProcessingOutput(rejected);
+            PersistedState afterFailure = persistedState(fixture, fixture.primarySourceId());
+            assertEquals(0, state.availableQuantity().compareTo(afterFailure.availableQuantity()));
+            assertEquals(state.processingOrders(), afterFailure.processingOrders());
+            assertEquals(state.inputTransactions(), afterFailure.inputTransactions());
+            assertEquals(state.outputStockOrders(), afterFailure.outputStockOrders());
+        }
     }
 
     @Test
@@ -361,6 +434,43 @@ class StockConsumptionConcurrencyTest extends AbstractMySqlIntegrationTest {
         assertEquals(HttpStatus.OK, response.getStatusCode(), response::getBody);
         assertSuccessfulProcessingGraph(fixture.primarySourceId(), identifier, ONE_HUNDRED, new BigDecimal("25.00"));
         assertYieldState(fixture.primarySourceId(), new BigDecimal("25.00"), false);
+    }
+
+    @Test
+    @DisplayName("processing yield converts sixty kilogram input bags into output kilograms")
+    void configuredYieldNormalizesInputBagsIntoKilograms() {
+        Fixture fixture = seedFixture(ONE_HUNDRED);
+        tx().executeWithoutResult(status -> {
+            em.find(MeasureUnitType.class, fixture.measureId()).setWeight(new BigDecimal("60"));
+            em.find(MeasureUnitType.class, fixture.outputMeasureId()).setWeight(BigDecimal.ONE);
+        });
+        String identifier = "yield-bags-to-kg-" + UUID.randomUUID();
+        BigDecimal outputKilograms = new BigDecimal("3000.00");
+        ResponseEntity<String> response = yieldProcessingRequest(fixture, identifier, fixture.outputSemiProductId(),
+                outputKilograms);
+        assertEquals(HttpStatus.OK, response.getStatusCode(), response::getBody);
+        assertSuccessfulProcessingGraph(fixture.primarySourceId(), identifier, ONE_HUNDRED, outputKilograms);
+        assertYieldState(fixture.primarySourceId(), outputKilograms, false);
+    }
+
+    @Test
+    @DisplayName("a missing unit weight rejects the processing order without partial writes")
+    void yieldWithoutConvertibleUnitRollsBackReservation() {
+        Fixture fixture = seedFixture(ONE_HUNDRED);
+        tx().executeWithoutResult(status ->
+                em.find(MeasureUnitType.class, fixture.outputMeasureId()).setWeight(null));
+        String identifier = "yield-invalid-unit-" + UUID.randomUUID();
+        ResponseEntity<String> response = yieldProcessingRequest(fixture, identifier, fixture.outputSemiProductId(),
+                new BigDecimal("50.00"));
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode(), response::getBody);
+        assertTrue(response.getBody().contains("VALIDATION_ERROR"), response::getBody);
+        assertNoProcessingOutput(identifier);
+        PersistedState state = persistedState(fixture, fixture.primarySourceId());
+        assertEquals(0, ONE_HUNDRED.compareTo(state.availableQuantity()));
+        assertEquals(0, BigDecimal.ZERO.compareTo(state.committedInputQuantity()));
+        assertEquals(0, state.processingOrders());
+        assertEquals(0, state.inputTransactions());
+        assertEquals(0, state.outputStockOrders());
     }
 
     private List<ProcessingRequestResult> concurrentProcessingRequests(Fixture fixture, List<Long> sourceIds,
