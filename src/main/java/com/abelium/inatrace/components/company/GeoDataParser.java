@@ -227,7 +227,9 @@ public final class GeoDataParser {
 		if (rings == null || rings.isEmpty()) {
 			throw new IllegalArgumentException("GeoJSON Polygon has no ring");
 		}
-		// Interior rings (holes) are dropped - a plot is stored as a single boundary.
+		if (rings.size() > 1) {
+			throw new IllegalArgumentException("Polygon interior rings are not supported");
+		}
 		return pointsOf(rings.get(0));
 	}
 
@@ -254,7 +256,9 @@ public final class GeoDataParser {
 
 		JsonNode first = array.get(0);
 		if (first.isArray() && !first.isEmpty() && first.get(0).isArray()) {
-			// Nested one level deeper: a list of rings, of which we keep the outer one.
+			if (array.size() > 1) {
+				throw new IllegalArgumentException("Polygon interior rings are not supported");
+			}
 			return ringFromCoordinatesArray(first);
 		}
 
@@ -298,7 +302,9 @@ public final class GeoDataParser {
 				if (rings.isEmpty()) {
 					throw new IllegalArgumentException("POLYGON must contain a ring");
 				}
-				// Interior rings (holes) are dropped - a plot is stored as a single boundary.
+				if (rings.size() > 1) {
+					throw new IllegalArgumentException("Polygon interior rings are not supported");
+				}
 				return List.of(polygonPlot(label, orientPoints(coordinatePairs(rings.get(0)), countryCode)));
 			}
 			case "MULTIPOLYGON": {
@@ -311,6 +317,9 @@ public final class GeoDataParser {
 					List<String> rings = topLevelGroups(polygons.get(i));
 					if (rings.isEmpty()) {
 						throw new IllegalArgumentException("MULTIPOLYGON member must contain a ring");
+					}
+					if (rings.size() > 1) {
+						throw new IllegalArgumentException("Polygon interior rings are not supported");
 					}
 					plots.add(polygonPlot(labelIndexed(label, i, polygons.size()),
 							orientPoints(coordinatePairs(rings.get(0)), countryCode)));
@@ -553,6 +562,9 @@ public final class GeoDataParser {
 	/** Validates global latitude/longitude ranges, returning the same list for chaining. */
 	private static List<double[]> validated(List<double[]> points) {
 		for (double[] point : points) {
+			if (!Double.isFinite(point[0]) || !Double.isFinite(point[1])) {
+				throw new IllegalArgumentException("Coordinates must be finite numbers");
+			}
 			if (point[0] < -90 || point[0] > 90) {
 				throw new IllegalArgumentException("Latitude out of range: " + point[0]);
 			}

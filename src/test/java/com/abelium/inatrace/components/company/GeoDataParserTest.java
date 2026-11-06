@@ -73,13 +73,22 @@ class GeoDataParserTest {
 	}
 
 	@Test
-	void polygonHoles_areDropped() {
-		List<GeoDataParser.ParsedPlot> plots = GeoDataParser.parse(
+	void polygonHoles_areRejected() {
+		assertThrows(IllegalArgumentException.class, () -> GeoDataParser.parse(
 				"POLYGON((5.10 10.10, 5.90 10.10, 5.90 10.90, 5.10 10.90),(5.40 10.40, 5.60 10.40, 5.60 10.60))",
-				null);
+				null));
+		assertThrows(IllegalArgumentException.class, () -> GeoDataParser.parse(
+				"{\"type\":\"Polygon\",\"coordinates\":[[[1,1],[2,1],[2,2],[1,1]],[[1.1,1.1],[1.2,1.1],[1.2,1.2],[1.1,1.1]]]}", null));
+		assertThrows(IllegalArgumentException.class, () -> GeoDataParser.parse(
+				"[[[1,1],[2,1],[2,2],[1,1]],[[1.1,1.1],[1.2,1.1],[1.2,1.2],[1.1,1.1]]]", null));
+		assertThrows(IllegalArgumentException.class, () -> GeoDataParser.parse(
+				"MULTIPOLYGON(((1 1, 2 1, 2 2, 1 1),(1.1 1.1, 1.2 1.1, 1.2 1.2, 1.1 1.1)))", null));
+	}
 
-		assertEquals(1, plots.size());
-		assertEquals(4, plots.get(0).getPoints().size());
+	@Test
+	void nonFiniteCoordinates_areRejected() {
+		assertThrows(IllegalArgumentException.class, () -> GeoDataParser.parse("POINT(NaN 10)", null));
+		assertThrows(IllegalArgumentException.class, () -> GeoDataParser.parse("NaN 10", null));
 	}
 
 	@Test

@@ -37,6 +37,7 @@ import org.apache.poi.ooxml.POIXMLException;
 import org.apache.xmlbeans.XmlException;
 import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.util.CellReference;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -84,6 +85,15 @@ public class UserCustomerImportService extends BaseService {
 
     @Transactional
     public ApiUserCustomerImportResponse importFarmersSpreadsheet(Long companyId, Long documentId, CustomUserDetails authUser, Language language) throws ApiException {
+        return importFarmersSpreadsheet(companyId, documentId, authUser, language, List.of());
+    }
+
+    @Transactional
+    public ApiUserCustomerImportResponse importFarmersSpreadsheet(Long companyId, Long documentId, CustomUserDetails authUser, Language language, List<String> koboSelections) throws ApiException {
+        return importFarmersSpreadsheet(companyId, documentId, authUser, language, false, null, koboSelections);
+    }
+
+    private ApiUserCustomerImportResponse importFarmersSpreadsheet(Long companyId, Long documentId, CustomUserDetails authUser, Language language, boolean preview, ApiUserCustomer selection, List<String> koboSelections) throws ApiException {
 
         // If importing as a Regional admin, check that it is enrolled in the company
         if (authUser.getUserRole() == UserRole.REGIONAL_ADMIN) {
@@ -128,7 +138,7 @@ public class UserCustomerImportService extends BaseService {
         // A KoboToolbox / ODK export is read directly rather than making the user re-key it into
         // the template - re-keying is where plots get attached to the wrong farmer or dropped.
         if (KoboExportReader.isKoboExport(mainWorkbook)) {
-            return importKoboExport(mainWorkbook, companyId, authUser, language);
+            return importKoboExport(mainWorkbook, companyId, authUser, language, preview, selection, koboSelections);
         }
 
         // boolean means that the second product is also present in the Excel
@@ -181,9 +191,14 @@ public class UserCustomerImportService extends BaseService {
             // a new one, so the farmer columns are not required on it.
             if (geoOnlyRow(row)) {
 
+                if (preview && (lastFarmer == null || !matchesImportSelection(lastFarmer, selection))) {
+                    rowIndex++;
+                    continue;
+                }
+
                 ApiUserCustomerImportRowValidationError geoValidation =
                         new ApiUserCustomerImportRowValidationError(row.getRowNum());
-                validateGeoCells(row, geoValidation);
+                validateGeoCells(row, geoValidation, companyProductTypes.get(0).getId(), geoIdCache);
 
                 if (!geoValidation.getColumnValidationErrors().isEmpty()) {
                     response.getValidationErrors().add(geoValidation);
@@ -203,7 +218,11 @@ public class UserCustomerImportService extends BaseService {
                 continue;
             }
 
-            ApiUserCustomerImportRowValidationError rowValidation = validateRow(row);
+            boolean selectedRow = !preview || (sameFarmerField(getStringOrNumeric(row.getCell(0)), selection.getFarmerCompanyInternalId())
+                    && sameFarmerField(getString(row.getCell(1)), selection.getSurname())
+                    && sameFarmerField(getString(row.getCell(2)), selection.getName())
+                    && sameFarmerField(getString(row.getCell(11)), selection.getLocation().getAddress().getCity()));
+            ApiUserCustomerImportRowValidationError rowValidation = validateRow(row, companyProductTypes.get(0).getId(), geoIdCache, selectedRow);
 
             // If there are no column validation errors, the row is valid
             if (rowValidation.getColumnValidationErrors().isEmpty()) {
@@ -213,9 +232,21 @@ public class UserCustomerImportService extends BaseService {
                 // A farmer already seen in this file gains the plot of this row instead of a twin
                 if (groupable && farmersMap.containsKey(internalId)) {
                     ApiUserCustomer existingFarmer = farmersMap.get(internalId);
-                    addPlotsToFarmer(existingFarmer,
-                            createUserGeoData(row, companyProductTypes.get(0).getId(), geoIdCache));
-                    lastFarmer = existingFarmer;
+                    if (!sameFarmerField(existingFarmer.getSurname(), getString(row.getCell(1)))
+                            || !sameFarmerField(existingFarmer.getName(), getString(row.getCell(2)))
+                            || !sameFarmerField(existingFarmer.getLocation().getAddress().getCity(), getString(row.getCell(11)))
+                            || !sameFarmerField(existingFarmer.getLocation().getAddress().getCountry().getCode(), getString(row.getCell(15)))) {
+                        rowValidation.getColumnValidationErrors().add(new ApiUserCustomerImportColumnValidationError(
+                                getCellAddress(row.getCell(0)), UserCustomerImportCellErrorType.INVALID_VALUE));
+                        response.getValidationErrors().add(rowValidation);
+                        lastFarmer = null;
+                    } else {
+                        if (selectedRow) {
+                            addPlotsToFarmer(existingFarmer,
+                                    createUserGeoData(row, companyProductTypes.get(0).getId(), geoIdCache));
+                        }
+                        lastFarmer = existingFarmer;
+                    }
                 } else {
 
                     ApiUserCustomer apiUserCustomer = new ApiUserCustomer();
@@ -288,7 +319,8 @@ public class UserCustomerImportService extends BaseService {
                     apiUserCustomer.getBank().setAdditionalInformation(getStringOrNumeric(row.getCell(32)));
 
                     // GeoData - from the Geo Data cell, the GeoID cell, or both
-                    apiUserCustomer.setPlots(createUserGeoData(row, companyProductTypes.get(0).getId(), geoIdCache));
+                    apiUserCustomer.setPlots(selectedRow
+                            ? createUserGeoData(row, companyProductTypes.get(0).getId(), geoIdCache) : new ArrayList<>());
                     nameFarmerPlots(apiUserCustomer);
 
                     if (groupable) {
@@ -306,27 +338,82 @@ public class UserCustomerImportService extends BaseService {
             rowIndex++;
         }
 
-        persistFarmers(farmers, companyId, authUser, language, response);
+        persistFarmers(farmers, companyId, authUser, language, response, preview, selection);
 
         return response;
+    }
+
+    private boolean sameFarmerField(String first, String second) {
+        return first == null ? second == null : second != null && first.trim().equalsIgnoreCase(second.trim());
+    }
+
+    private boolean matchesImportSelection(ApiUserCustomer farmer, ApiUserCustomer selection) {
+        return sameFarmerField(farmer.getFarmerCompanyInternalId(), selection.getFarmerCompanyInternalId())
+                && sameFarmerField(farmer.getName(), selection.getName())
+                && sameFarmerField(farmer.getSurname(), selection.getSurname())
+                && sameFarmerField(farmer.getLocation().getAddress().getCity(), selection.getLocation().getAddress().getCity());
+    }
+
+    @Transactional
+    public void confirmImportedFarmerPlots(Long companyId, Long documentId, ApiUserCustomer selection,
+                                           CustomUserDetails authUser, Language language) throws ApiException {
+        confirmImportedFarmerPlots(companyId, documentId, selection, authUser, language, List.of());
+    }
+
+    @Transactional
+    public void confirmImportedFarmerPlots(Long companyId, Long documentId, ApiUserCustomer selection,
+                                           CustomUserDetails authUser, Language language, List<String> koboSelections) throws ApiException {
+        ApiUserCustomer source = findConfirmedImport(companyId, documentId, selection, authUser, language, koboSelections);
+        companyService.applyConfirmedFarmerImport(companyId, documentId, source, authUser, language, false);
+    }
+
+    @Transactional
+    public void createSeparateImportedFarmer(Long companyId, Long documentId, ApiUserCustomer selection,
+                                             CustomUserDetails authUser, Language language) throws ApiException {
+        createSeparateImportedFarmer(companyId, documentId, selection, authUser, language, List.of());
+    }
+
+    @Transactional
+    public void createSeparateImportedFarmer(Long companyId, Long documentId, ApiUserCustomer selection,
+                                             CustomUserDetails authUser, Language language, List<String> koboSelections) throws ApiException {
+        ApiUserCustomer source = findConfirmedImport(companyId, documentId, selection, authUser, language, koboSelections);
+        companyService.applyConfirmedFarmerImport(companyId, documentId, source, authUser, language, true);
+    }
+
+    private ApiUserCustomer findConfirmedImport(Long companyId, Long documentId, ApiUserCustomer selection,
+                                                 CustomUserDetails authUser, Language language, List<String> koboSelections) throws ApiException {
+        if (selection == null || selection.getLocation() == null || selection.getLocation().getAddress() == null) {
+            throw new ApiException(ApiStatus.INVALID_REQUEST, "Invalid farmer selection.");
+        }
+        ApiUserCustomerImportResponse preview = importFarmersSpreadsheet(companyId, documentId, authUser, language, true, selection, koboSelections);
+        if (!preview.getValidationErrors().isEmpty() || preview.getDuplicates() == null) {
+            throw new ApiException(ApiStatus.INVALID_REQUEST, "The import must be valid before confirming plots.");
+        }
+        List<ApiUserCustomer> matches = preview.getDuplicates();
+        if (matches.size() != 1) {
+            throw new ApiException(ApiStatus.INVALID_REQUEST, "The selected import row could not be identified unambiguously.");
+        }
+        return matches.get(0);
     }
 
     /**
      * Persists the farmers an import produced, unless the file had validation errors - in which
      * case nothing at all is persisted, so a partly-rejected file never leaves half its farmers
-     * behind. Farmers that already exist are reported back as duplicates for the user to accept or
-     * reject, but their new plots are attached straight away.
+     * behind. Existing farmers are returned for an explicit decision before plots are attached.
      */
     private void persistFarmers(List<ApiUserCustomer> farmers,
                                 Long companyId,
                                 CustomUserDetails authUser,
                                 Language language,
-                                ApiUserCustomerImportResponse response) throws ApiException {
+                                ApiUserCustomerImportResponse response, boolean preview, ApiUserCustomer selection) throws ApiException {
 
         List<ApiUserCustomer> duplicates = new ArrayList<>();
         List<ApiUserCustomer> toAdd = new ArrayList<>();
 
         for (ApiUserCustomer farmer : farmers) {
+            if (preview && !matchesImportSelection(farmer, selection)) {
+                continue;
+            }
             if (companyService.existsUserCustomer(farmer)) {
                 duplicates.add(farmer);
             } else {
@@ -338,16 +425,11 @@ public class UserCustomerImportService extends BaseService {
 
         if (response.getValidationErrors().isEmpty()) {
             // Farmers that are new to the company
-            for (ApiUserCustomer apiUserCustomer : toAdd) {
-                companyService.addUserCustomer(companyId, apiUserCustomer, authUser, language);
-                successful++;
-            }
-
-            // Farmers already on file: their plots are attached to the farmer that is already
-            // there. A failure here is reported to the caller rather than dropped, so an import
-            // never claims to have succeeded while losing plots.
-            for (ApiUserCustomer duplicate : duplicates) {
-                companyService.addPlotsToExistingFarmer(duplicate);
+            if (!preview) {
+                for (ApiUserCustomer apiUserCustomer : toAdd) {
+                    companyService.addImportedUserCustomer(companyId, apiUserCustomer, authUser, language);
+                    successful++;
+                }
             }
             response.setDuplicates(duplicates);
         }
@@ -363,7 +445,8 @@ public class UserCustomerImportService extends BaseService {
     private ApiUserCustomerImportResponse importKoboExport(XSSFWorkbook workbook,
                                                            Long companyId,
                                                            CustomUserDetails authUser,
-                                                           Language language) throws ApiException {
+                                                           Language language,
+                                                           boolean preview, ApiUserCustomer selection, List<String> koboSelections) throws ApiException {
 
         List<ApiProductType> companyProductTypes = readCompanyProductTypes(companyId, language);
         if (companyProductTypes.isEmpty()) {
@@ -372,7 +455,23 @@ public class UserCustomerImportService extends BaseService {
         }
         ApiProductType firstProductType = companyProductTypes.get(0);
 
-        KoboExportReader.KoboExport export = KoboExportReader.read(workbook);
+        KoboExportReader.KoboExport export;
+        try {
+            Map<String, Integer> choices = new LinkedHashMap<>();
+            for (String choice : koboSelections) {
+                String[] parts = choice.split(":", -1);
+                if (parts.length != 2) throw new IllegalArgumentException("Invalid repeat sheet selection");
+                int sheetIndex = Integer.parseInt(parts[0]);
+                int column = Integer.parseInt(parts[1]);
+                if (sheetIndex < 1 || sheetIndex >= workbook.getNumberOfSheets()
+                        || choices.putIfAbsent(workbook.getSheetName(sheetIndex), column) != null) {
+                    throw new IllegalArgumentException("Invalid repeat sheet selection");
+                }
+            }
+            export = KoboExportReader.read(workbook, choices);
+        } catch (IllegalArgumentException e) {
+            throw new ApiException(ApiStatus.INVALID_REQUEST, "Invalid Kobo export: " + e.getMessage());
+        }
 
         if (!export.getMissingConcepts().isEmpty()) {
             throw new ApiException(ApiStatus.INVALID_REQUEST, String.format(
@@ -382,30 +481,57 @@ public class UserCustomerImportService extends BaseService {
                     export.getMissingConcepts(), export.getHeaders()));
         }
 
+        if (!export.getUnresolvedSheets().isEmpty()) {
+            if (preview) throw new ApiException(ApiStatus.INVALID_REQUEST, "Repeat sheet selections are incomplete.");
+            ApiUserCustomerImportResponse pending = new ApiUserCustomerImportResponse();
+            Map<String, List<String>> sheets = new LinkedHashMap<>();
+            export.getUnresolvedSheets().forEach((name, headers) ->
+                    sheets.put(workbook.getSheetIndex(name) + ":" + name, headers));
+            pending.setUnresolvedKoboSheets(sheets);
+            return pending;
+        }
+
         ApiUserCustomerImportResponse response = new ApiUserCustomerImportResponse();
         List<ApiUserCustomer> farmers = new ArrayList<>();
 
+        // Cell-level problems found while reading repeat groups (missing geometry, orphan or
+        // conflicting references) are reported like template errors instead of aborting the file.
+        for (KoboExportReader.KoboCellError cellError : export.getErrors()) {
+            ApiUserCustomerImportRowValidationError rowValidation =
+                    new ApiUserCustomerImportRowValidationError(cellError.getRowNum());
+            String cell = "'" + cellError.getSheetName().replace("'", "''") + "'!"
+                    + new CellReference(cellError.getRowNum(), cellError.getColumnNum()).formatAsString();
+            rowValidation.getColumnValidationErrors().add(new ApiUserCustomerImportColumnValidationError(
+                    cell, cellError.getErrorType()));
+            response.getValidationErrors().add(rowValidation);
+        }
+
         for (KoboExportReader.KoboFarmer koboFarmer : export.getFarmers()) {
+
+            if (koboFarmer.get(KoboExportReader.Concept.LAST_NAME) == null) {
+                response.getValidationErrors().add(rowError(
+                        koboFarmer, KoboExportReader.Concept.LAST_NAME, UserCustomerImportCellErrorType.REQUIRED));
+                continue;
+            }
 
             Country country = getCountryByNameOrCode(koboFarmer.get(KoboExportReader.Concept.COUNTRY));
             Gender gender = toGender(koboFarmer.get(KoboExportReader.Concept.GENDER));
 
             if (country == null || gender == null) {
-                response.getValidationErrors().add(
-                        rowError(koboFarmer.getRowNum(), UserCustomerImportCellErrorType.INVALID_VALUE));
+                if (country == null) {
+                    response.getValidationErrors().add(rowError(
+                            koboFarmer, KoboExportReader.Concept.COUNTRY, UserCustomerImportCellErrorType.INVALID_VALUE));
+                }
+                if (gender == null) {
+                    response.getValidationErrors().add(rowError(
+                            koboFarmer, KoboExportReader.Concept.GENDER, UserCustomerImportCellErrorType.INVALID_VALUE));
+                }
                 continue;
             }
 
-            List<ApiPlot> plots;
-            try {
-                plots = koboPlots(koboFarmer, firstProductType.getId());
-            } catch (ApiException e) {
-                // The row is rejected rather than imported without its plots; because the response
-                // then carries validation errors, nothing at all from this file is persisted.
-                logger.warn("Row {} of the KoboToolbox export carries unreadable geo data: {}",
-                        koboFarmer.getRowNum() + 1, e.getMessage());
-                response.getValidationErrors().add(
-                        rowError(koboFarmer.getRowNum(), UserCustomerImportCellErrorType.INVALID_GEODATA));
+            int previousErrors = response.getValidationErrors().size();
+            List<ApiPlot> plots = koboPlots(koboFarmer, firstProductType.getId(), response);
+            if (response.getValidationErrors().size() > previousErrors) {
                 continue;
             }
 
@@ -438,27 +564,50 @@ public class UserCustomerImportService extends BaseService {
             farmers.add(apiUserCustomer);
         }
 
-        persistFarmers(farmers, companyId, authUser, language, response);
+        persistFarmers(farmers, companyId, authUser, language, response, preview, selection);
 
         return response;
     }
 
     /** A validation error against a whole row, for sheets that have no per-cell addresses to point at. */
-    private ApiUserCustomerImportRowValidationError rowError(int rowNum, UserCustomerImportCellErrorType errorType) {
+    /**
+     * Row-level error addressed to the cell that holds the offending concept, so the client can show
+     * a spreadsheet address instead of a pseudo-address such as "row 5".
+     */
+    private ApiUserCustomerImportRowValidationError rowError(KoboExportReader.KoboFarmer koboFarmer,
+                                                             KoboExportReader.Concept concept,
+                                                             UserCustomerImportCellErrorType errorType) {
 
-        ApiUserCustomerImportRowValidationError rowValidation = new ApiUserCustomerImportRowValidationError(rowNum);
+        ApiUserCustomerImportRowValidationError rowValidation =
+                new ApiUserCustomerImportRowValidationError(koboFarmer.getRowNum());
+        int column = koboFarmer.getColumn(concept);
+        String cellAddress = column < 0
+                ? "row " + (koboFarmer.getRowNum() + 1)
+                : new CellReference(koboFarmer.getRowNum(), column).formatAsString();
         rowValidation.getColumnValidationErrors().add(
-                new ApiUserCustomerImportColumnValidationError("row " + (rowNum + 1), errorType));
+                new ApiUserCustomerImportColumnValidationError(cellAddress, errorType));
         return rowValidation;
     }
 
     /** Converts the plots of one Kobo submission, preferring the surveyed size over the computed area. */
-    private List<ApiPlot> koboPlots(KoboExportReader.KoboFarmer koboFarmer, Long productTypeId) throws ApiException {
+    private List<ApiPlot> koboPlots(KoboExportReader.KoboFarmer koboFarmer, Long productTypeId,
+                                    ApiUserCustomerImportResponse response) {
 
         List<ApiPlot> plots = new ArrayList<>();
 
         for (KoboExportReader.KoboPlot koboPlot : koboFarmer.getPlots()) {
-            List<ApiPlot> built = buildPlots(koboPlot.getGeoData(), null, productTypeId);
+            List<ApiPlot> built;
+            try {
+                built = buildPlots(koboPlot.getGeoData(), null, productTypeId);
+            } catch (ApiException e) {
+                ApiUserCustomerImportRowValidationError error = new ApiUserCustomerImportRowValidationError(koboPlot.getRowNum());
+                String cell = "'" + koboPlot.getSheetName().replace("'", "''") + "'!"
+                        + new CellReference(koboPlot.getRowNum(), koboPlot.getColumnNum()).formatAsString();
+                error.getColumnValidationErrors().add(new ApiUserCustomerImportColumnValidationError(
+                        cell, UserCustomerImportCellErrorType.INVALID_GEODATA));
+                response.getValidationErrors().add(error);
+                continue;
+            }
             for (ApiPlot plot : built) {
                 if (koboPlot.getSize() != null && koboPlot.getSize() > 0) {
                     plot.setSize(koboPlot.getSize());
@@ -581,7 +730,7 @@ public class UserCustomerImportService extends BaseService {
         return cell.getAddress().formatAsString();
     }
 
-    private ApiUserCustomerImportRowValidationError validateRow(Row row) {
+    private ApiUserCustomerImportRowValidationError validateRow(Row row, Long productTypeId, Map<String, List<ApiPlot>> geoIdCache, boolean validateGeometry) {
 
         ApiUserCustomerImportRowValidationError rowValidation = new ApiUserCustomerImportRowValidationError(row.getRowNum());
 
@@ -772,7 +921,7 @@ public class UserCustomerImportService extends BaseService {
             rowValidation.getColumnValidationErrors().add(new ApiUserCustomerImportColumnValidationError(getCellAddress(row.getCell(32)), UserCustomerImportCellErrorType.INCORRECT_TYPE));
         }
 
-        validateGeoCells(row, rowValidation);
+        if (validateGeometry) validateGeoCells(row, rowValidation, productTypeId, geoIdCache);
 
         return rowValidation;
     }
@@ -781,7 +930,8 @@ public class UserCustomerImportService extends BaseService {
      * Validates the Geo Data and GeoID cells. Both are optional; when present, Geo Data must parse
      * as one of the formats {@link GeoDataParser} supports and the GeoID must look like a GeoID.
      */
-    private void validateGeoCells(Row row, ApiUserCustomerImportRowValidationError rowValidation) {
+    private void validateGeoCells(Row row, ApiUserCustomerImportRowValidationError rowValidation,
+                                  Long productTypeId, Map<String, List<ApiPlot>> geoIdCache) {
 
         Cell geoCell = row.getCell(GEO_DATA_COLUMN);
         if (!emptyCell(geoCell)) {
@@ -801,6 +951,9 @@ public class UserCustomerImportService extends BaseService {
             if (invalidCell(geoIdCell, List.of(CellType.STRING))) {
                 rowValidation.getColumnValidationErrors().add(new ApiUserCustomerImportColumnValidationError(getCellAddress(geoIdCell), UserCustomerImportCellErrorType.INCORRECT_TYPE));
             } else if (!FaoGeoIdClientService.isGeoIdFormat(geoIdCell.getStringCellValue().trim())) {
+                rowValidation.getColumnValidationErrors().add(new ApiUserCustomerImportColumnValidationError(getCellAddress(geoIdCell), UserCustomerImportCellErrorType.INVALID_GEODATA));
+            } else if ((emptyCell(geoCell) || (geoCell.getCellType() == CellType.STRING && geoCell.getStringCellValue().isBlank()))
+                    && resolveGeoId(geoIdCell.getStringCellValue().trim(), productTypeId, geoIdCache).isEmpty()) {
                 rowValidation.getColumnValidationErrors().add(new ApiUserCustomerImportColumnValidationError(getCellAddress(geoIdCell), UserCustomerImportCellErrorType.INVALID_GEODATA));
             }
         }
@@ -907,9 +1060,9 @@ public class UserCustomerImportService extends BaseService {
      *
      * <p>When a GeoID is present it wins: it is the registry's immutable handle for the boundary,
      * so its geometry is authoritative and interoperable. If it cannot be resolved - unknown id,
-     * registry unreachable, or resolution disabled - the row falls back to whatever geometry the
-     * Geo Data cell carried, so a registry outage never costs an import. Either way the GeoID
-     * itself is kept on the plot.</p>
+     * registry unreachable, or resolution disabled - the row falls back to the Geo Data cell.
+     * The unresolved identifier is not assigned to unverified fallback geometry. If there is no
+     * fallback geometry, the import is rejected instead of silently losing the plot.</p>
      */
     private List<ApiPlot> createUserGeoData(Row row, Long productTypeId, Map<String, List<ApiPlot>> geoIdCache)
             throws ApiException {
@@ -928,15 +1081,14 @@ public class UserCustomerImportService extends BaseService {
                 return plots;
             }
             logger.warn("GeoID {} could not be resolved; falling back to the Geo Data cell", geoId);
+			if (geoData == null || geoData.isBlank()) {
+				throw new ApiException(ApiStatus.INVALID_REQUEST,
+						"Unable to resolve GeoID in cell " + getCellAddress(row.getCell(GEO_ID_COLUMN))
+								+ "; provide valid Geo Data or configure the registry.");
+			}
         }
 
         plots.addAll(buildPlots(geoData, countryCode, productTypeId));
-
-        // Keep the identifier even when its geometry could not be fetched, so the plot stays linked
-        // to the registry entry and can be refreshed later.
-        if (geoId != null && !geoId.isBlank()) {
-            plots.forEach(plot -> plot.setGeoId(geoId));
-        }
 
         return plots;
     }
@@ -959,7 +1111,12 @@ public class UserCustomerImportService extends BaseService {
         if (geoJson != null && !geoJson.isBlank()) {
             try {
                 resolved = buildPlots(geoJson, null, productTypeId);
-                resolved.forEach(plot -> plot.setGeoId(geoId));
+                if (resolved.size() != 1) {
+                    logger.warn("GeoID {} resolved to multiple plots and cannot be assigned to one boundary", geoId);
+                    resolved = List.of();
+                } else {
+                    resolved.get(0).setGeoId(geoId);
+                }
             } catch (ApiException e) {
                 // The registry, not the user, produced this geometry, so the row falls back to its
                 // own Geo Data cell rather than being rejected over something it cannot fix.

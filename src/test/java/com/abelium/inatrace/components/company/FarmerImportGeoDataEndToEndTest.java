@@ -60,6 +60,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -89,9 +90,11 @@ class FarmerImportGeoDataEndToEndTest extends AbstractMySqlIntegrationTest {
     /** What the registry answers for {@link #KNOWN_GEOID}: a triangle near (5.40, 10.40). */
     private static final String REGISTRY_GEOJSON =
             "{\"type\":\"Feature\",\"properties\":{},\"geometry\":{\"type\":\"Polygon\",\"coordinates\":"
-                    + "[[[10.40,5.40],[10.41,5.41],[10.42,5.40],[10.40,5.40]]]}}";
+                    + "[[[10.400000123,5.400000123],[10.41,5.41],[10.42,5.40],[10.400000123,5.400000123]]]}}";
 
     private static final AtomicInteger REGISTRY_REQUESTS = new AtomicInteger();
+    private static volatile java.util.concurrent.CountDownLatch registryBlocked;
+    private static volatile java.util.concurrent.CountDownLatch registryRelease;
 
     /** Started before the Spring context so that {@link #geoIdRegistry} can hand out its port. */
     private static final HttpServer REGISTRY = startStubRegistry();
@@ -101,6 +104,16 @@ class FarmerImportGeoDataEndToEndTest extends AbstractMySqlIntegrationTest {
             HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             server.createContext("/", exchange -> {
                 REGISTRY_REQUESTS.incrementAndGet();
+                var blocked = registryBlocked;
+                var release = registryRelease;
+                if (blocked != null && release != null) {
+                    blocked.countDown();
+                    try {
+                        release.await(10, java.util.concurrent.TimeUnit.SECONDS);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
                 byte[] body;
                 int status;
                 if (exchange.getRequestURI().getPath().endsWith(KNOWN_GEOID)) {
@@ -255,6 +268,9 @@ class FarmerImportGeoDataEndToEndTest extends AbstractMySqlIntegrationTest {
             }
             em.flush();
 
+            em.createQuery("DELETE FROM FarmerImportDecision d WHERE d.company.id = :companyId")
+                    .setParameter("companyId", companyId).executeUpdate();
+
             for (Long documentId : createdDocumentIds) {
                 deleteIfPresent(com.abelium.inatrace.db.entities.common.Document.class, documentId);
             }
@@ -317,10 +333,10 @@ class FarmerImportGeoDataEndToEndTest extends AbstractMySqlIntegrationTest {
                     .sorted((a, b) -> a.getId().compareTo(b.getId()))
                     .toList();
 
-            // The vertices keep the cell's order, rounded to six decimals.
+            // The vertices retain the cell's order and precision.
             assertEquals(3, coordinates.size());
-            assertEquals(5.221737, coordinates.get(0).getLatitude());
-            assertEquals(10.285243, coordinates.get(0).getLongitude());
+            assertEquals(5.2217367, coordinates.get(0).getLatitude());
+            assertEquals(10.2852433, coordinates.get(0).getLongitude());
         });
     }
 
@@ -376,8 +392,8 @@ class FarmerImportGeoDataEndToEndTest extends AbstractMySqlIntegrationTest {
             List<PlotCoordinate> coordinates = plot.getCoordinates().stream()
                     .sorted((a, b) -> a.getId().compareTo(b.getId()))
                     .toList();
-            assertEquals(5.221737, coordinates.get(0).getLatitude(), "altitude and accuracy are discarded");
-            assertEquals(10.285243, coordinates.get(0).getLongitude());
+            assertEquals(5.2217367, coordinates.get(0).getLatitude(), "altitude and accuracy are discarded");
+            assertEquals(10.2852433, coordinates.get(0).getLongitude());
         });
     }
 
@@ -494,11 +510,25 @@ class FarmerImportGeoDataEndToEndTest extends AbstractMySqlIntegrationTest {
         JsonNode first = callImportEndpoint(uploadDocument(buildWorkbook(internalId, FIRST_PLOT)));
         assertEquals(1, first.get("successful").asInt(), "first import: " + first);
 
-        JsonNode second = callImportEndpoint(uploadDocument(buildWorkbook(internalId, SECOND_PLOT)));
+        Long secondDocument = uploadDocument(buildWorkbook(internalId, SECOND_PLOT));
+        JsonNode second = callImportEndpoint(secondDocument);
 
         assertEquals(0, second.get("successful").asInt(), "the farmer is not created a second time: " + second);
         assertTrue(second.get("validationErrors").isEmpty(), "expected no validation errors: " + second);
         assertEquals(1, second.get("duplicates").size(), "the row is reported as a duplicate: " + second);
+
+        new TransactionTemplate(txManager).executeWithoutResult(status ->
+                assertEquals(1, farmerByInternalId(internalId).getPlots().size(), "no plot is added before confirmation"));
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.add(HttpHeaders.COOKIE, accessTokenCookieName + "=" + accessToken);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        String url = "/api/company/userCustomers/import/farmers/" + companyId + "/" + secondDocument + "/confirm-plots";
+        var selection = (com.fasterxml.jackson.databind.node.ObjectNode) second.get("duplicates").get(0).deepCopy();
+        ((com.fasterxml.jackson.databind.node.ObjectNode) selection.get("plots").get(0)).put("plotName", "forged name");
+        HttpEntity<String> confirmation = new HttpEntity<>(selection.toString(), headers);
+        assertEquals(HttpStatus.OK, restTemplate.exchange(url, HttpMethod.POST, confirmation, String.class).getStatusCode());
+        assertEquals(HttpStatus.OK, restTemplate.exchange(url, HttpMethod.POST, confirmation, String.class).getStatusCode());
 
         new TransactionTemplate(txManager).executeWithoutResult(status -> {
             assertEquals(1L, countFarmersByInternalId(internalId), "still exactly one farmer with this id");
@@ -511,6 +541,8 @@ class FarmerImportGeoDataEndToEndTest extends AbstractMySqlIntegrationTest {
                     .toList();
             List<PlotCoordinate> attached = orderedCoordinates(plots.get(1).getCoordinates());
 
+            assertNotEquals("forged name", plots.get(1).getPlotName(), "plot data comes from the uploaded file");
+
             assertEquals(3, attached.size());
             assertEquals(5.2, attached.get(0).getLatitude());
             assertEquals(10.3, attached.get(0).getLongitude());
@@ -519,6 +551,140 @@ class FarmerImportGeoDataEndToEndTest extends AbstractMySqlIntegrationTest {
     }
 
     // ---------------------------------------------------------------- GeoID column
+
+    @Test
+    void concurrentConfirmations_addThePlotOnlyOnce() throws Exception {
+        String internalId = runId + "-concurrent";
+        callImportEndpoint(uploadDocument(buildWorkbook(internalId, FIRST_PLOT)));
+        Long document = uploadDocument(buildWorkbook(internalId, SECOND_PLOT));
+        JsonNode preview = callImportEndpoint(document);
+        HttpHeaders headers = new HttpHeaders();
+        headers.add(HttpHeaders.COOKIE, accessTokenCookieName + "=" + accessToken);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpEntity<String> request = new HttpEntity<>(preview.get("duplicates").get(0).toString(), headers);
+        String url = "/api/company/userCustomers/import/farmers/" + companyId + "/" + document + "/confirm-plots";
+        var ready = new java.util.concurrent.CountDownLatch(2);
+        var start = new java.util.concurrent.CountDownLatch(1);
+        var executor = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            java.util.concurrent.Callable<org.springframework.http.HttpStatusCode> call = () -> {
+                ready.countDown();
+                if (!start.await(10, java.util.concurrent.TimeUnit.SECONDS)) throw new IllegalStateException("start timed out");
+                return restTemplate.exchange(url, HttpMethod.POST, request, String.class).getStatusCode();
+            };
+            var first = executor.submit(call);
+            var second = executor.submit(call);
+            assertTrue(ready.await(10, java.util.concurrent.TimeUnit.SECONDS));
+            start.countDown();
+            assertEquals(HttpStatus.OK, first.get(30, java.util.concurrent.TimeUnit.SECONDS));
+            assertEquals(HttpStatus.OK, second.get(30, java.util.concurrent.TimeUnit.SECONDS));
+        } finally {
+            executor.shutdownNow();
+        }
+        new TransactionTemplate(txManager).executeWithoutResult(status ->
+                assertEquals(2, farmerByInternalId(internalId).getPlots().size()));
+    }
+
+    @Test
+    void confirmingAPlotAfterTheFarmerChangedIsRejectedWithoutWriting() throws Exception {
+        String internalId = runId + "-concurrent-change";
+        callImportEndpoint(uploadDocument(buildWorkbook(internalId, FIRST_PLOT)));
+        Long document = uploadDocument(buildWorkbook(internalId, SECOND_PLOT));
+        JsonNode preview = callImportEndpoint(document);
+        assertEquals(1, preview.get("duplicates").size(), "preview: " + preview);
+
+        // Simulate another operator editing the identifying fields between preview and confirmation.
+        new TransactionTemplate(txManager).executeWithoutResult(status -> {
+            UserCustomer farmer = farmerByInternalId(internalId);
+            farmer.setSurname("Renamed meanwhile");
+            farmer.setFarmerCompanyInternalId(internalId + "-edited");
+        });
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.add(HttpHeaders.COOKIE, accessTokenCookieName + "=" + accessToken);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        String url = "/api/company/userCustomers/import/farmers/" + companyId + "/" + document + "/confirm-plots";
+        assertEquals(HttpStatus.BAD_REQUEST, restTemplate.exchange(url, HttpMethod.POST,
+                new HttpEntity<>(preview.get("duplicates").get(0).toString(), headers), String.class).getStatusCode());
+
+        new TransactionTemplate(txManager).executeWithoutResult(status ->
+                assertEquals(1, farmerByInternalId(internalId + "-edited").getPlots().size(),
+                        "no plot is attached after the farmer no longer matches the selection"));
+    }
+
+    @Test
+    void distinctPlotsThatDifferBeyondSixDecimalsAreNotDiscarded() throws Exception {
+        String internalId = runId + "-distinct-precision";
+        callImportEndpoint(uploadDocument(buildWorkbook(internalId, FIRST_PLOT)));
+        String nearbyPlot = FIRST_PLOT.replace("5.2217367", "5.2217368");
+        Long document = uploadDocument(buildWorkbook(internalId, nearbyPlot));
+        JsonNode preview = callImportEndpoint(document);
+        HttpHeaders headers = new HttpHeaders();
+        headers.add(HttpHeaders.COOKIE, accessTokenCookieName + "=" + accessToken);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        String url = "/api/company/userCustomers/import/farmers/" + companyId + "/" + document + "/confirm-plots";
+        assertEquals(HttpStatus.OK, restTemplate.exchange(url, HttpMethod.POST,
+                new HttpEntity<>(preview.get("duplicates").get(0).toString(), headers), String.class).getStatusCode());
+        new TransactionTemplate(txManager).executeWithoutResult(status ->
+                assertEquals(2, farmerByInternalId(internalId).getPlots().size()));
+    }
+
+    @Test
+    void reimportedPlotWithTheSameRingRotatedOrReversed_isNotDuplicated() throws Exception {
+        String internalId = runId + "-same-ring";
+        callImportEndpoint(uploadDocument(buildWorkbook(internalId, FIRST_PLOT)));
+
+        // Same three vertices, starting at the last one and written in the opposite direction.
+        String rotated = FIRST_PLOT.replace(
+                "POLYGON((5.2217367 10.2852433, 5.2218067 10.285235, 5.2219302 10.2852027))",
+                "POLYGON((5.2219302 10.2852027, 5.2218067 10.285235, 5.2217367 10.2852433))");
+        Long document = uploadDocument(buildWorkbook(internalId, rotated));
+        JsonNode preview = callImportEndpoint(document);
+        assertEquals(1, preview.get("duplicates").size(), "the farmer is still a duplicate: " + preview);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.add(HttpHeaders.COOKIE, accessTokenCookieName + "=" + accessToken);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        String url = "/api/company/userCustomers/import/farmers/" + companyId + "/" + document + "/confirm-plots";
+        assertEquals(HttpStatus.OK, restTemplate.exchange(url, HttpMethod.POST,
+                new HttpEntity<>(preview.get("duplicates").get(0).toString(), headers), String.class).getStatusCode());
+
+        new TransactionTemplate(txManager).executeWithoutResult(status ->
+                assertEquals(1, farmerByInternalId(internalId).getPlots().size(),
+                        "the same ring must not be attached twice"));
+    }
+
+    @Test
+    void slowGeoIdLookupDoesNotHoldTheCompanyLock() throws Exception {
+        String internalId = runId + "-slow-geoid";
+        callImportEndpoint(uploadDocument(buildWorkbook(internalId, FIRST_PLOT)));
+        Long document = uploadDocument(buildWorkbook(List.of(new FarmerRow(internalId, "Tester", null, KNOWN_GEOID))));
+        JsonNode preview = callImportEndpoint(document);
+        HttpHeaders headers = new HttpHeaders();
+        headers.add(HttpHeaders.COOKIE, accessTokenCookieName + "=" + accessToken);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        var request = new HttpEntity<>(preview.get("duplicates").get(0).toString(), headers);
+        String url = "/api/company/userCustomers/import/farmers/" + companyId + "/" + document + "/confirm-plots";
+        registryBlocked = new java.util.concurrent.CountDownLatch(1);
+        registryRelease = new java.util.concurrent.CountDownLatch(1);
+        var executor = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            var confirmation = executor.submit(() -> restTemplate.exchange(url, HttpMethod.POST, request, String.class));
+            assertTrue(registryBlocked.await(10, java.util.concurrent.TimeUnit.SECONDS));
+            var lock = executor.submit(() -> new TransactionTemplate(txManager).execute(status -> {
+                em.find(Company.class, companyId, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+                return true;
+            }));
+            assertTrue(lock.get(3, java.util.concurrent.TimeUnit.SECONDS), "company must not be locked during GeoID lookup");
+            registryRelease.countDown();
+            assertEquals(HttpStatus.OK, confirmation.get(20, java.util.concurrent.TimeUnit.SECONDS).getStatusCode());
+        } finally {
+            registryRelease.countDown();
+            registryBlocked = null;
+            registryRelease = null;
+            executor.shutdownNow();
+        }
+    }
 
     @Test
     void knownGeoId_withoutGeoData_getsItsBoundaryFromTheRegistry() throws Exception {
@@ -541,15 +707,85 @@ class FarmerImportGeoDataEndToEndTest extends AbstractMySqlIntegrationTest {
 
             // The registry's GeoJSON is [lon, lat]; the plot stores it as lat/lon in the given order.
             assertEquals(4, coordinates.size());
-            assertEquals(5.40, coordinates.get(0).getLatitude());
-            assertEquals(10.40, coordinates.get(0).getLongitude());
+            assertEquals(5.400000123, coordinates.get(0).getLatitude());
+            assertEquals(10.400000123, coordinates.get(0).getLongitude());
+            assertEquals(coordinates.get(0).getLatitude(), coordinates.get(3).getLatitude());
+            assertEquals(coordinates.get(0).getLongitude(), coordinates.get(3).getLongitude());
             assertEquals(5.41, coordinates.get(1).getLatitude());
             assertEquals(10.41, coordinates.get(1).getLongitude());
             assertEquals("ha", plot.getUnit());
-            // The GeoID the import put on the ApiPlot does not survive persistence:
-            // CompanyService.addUserCustomer replaces it with generatePlotGeoID (AgStack), which is
-            // null while AgStack is unconfigured, as it is here.
+            assertEquals(KNOWN_GEOID, plot.getGeoId());
         });
+
+        Long farmerId = new TransactionTemplate(txManager).execute(status -> farmerByInternalId(internalId).getId());
+        HttpHeaders headers = new HttpHeaders();
+        headers.add(HttpHeaders.COOKIE, accessTokenCookieName + "=" + accessToken);
+        ResponseEntity<String> exported = restTemplate.exchange(
+                "/api/company/userCustomers/" + farmerId + "/exportGeoData",
+                HttpMethod.GET, new HttpEntity<>(headers), String.class);
+        assertEquals(HttpStatus.OK, exported.getStatusCode());
+        JsonNode feature = objectMapper.readTree(exported.getBody()).get("features").get(0);
+        assertEquals(KNOWN_GEOID, feature.get("properties").get("geoID").asText());
+        JsonNode ring = feature.get("geometry").get("coordinates").get(0);
+        assertEquals(4, ring.size(), "already closed geometry must not gain another closing point");
+        assertEquals(10.400000123, ring.get(0).get(0).asDouble());
+        assertEquals(5.400000123, ring.get(0).get(1).asDouble());
+        assertEquals(ring.get(0), ring.get(3));
+    }
+
+    @Test
+    void createSeparateFarmer_preservesVerifiedGeoIdFromOriginalDocument() throws Exception {
+        String internalId = runId + "-separate-geoid";
+        callImportEndpoint(uploadDocument(buildWorkbook(internalId, FIRST_PLOT)));
+        Long document = uploadDocument(buildWorkbook(List.of(new FarmerRow(internalId, "Tester", null, KNOWN_GEOID))));
+        JsonNode preview = callImportEndpoint(document);
+        var selection = (com.fasterxml.jackson.databind.node.ObjectNode) preview.get("duplicates").get(0).deepCopy();
+        ((com.fasterxml.jackson.databind.node.ObjectNode) selection.get("plots").get(0)).put("geoId", UNKNOWN_GEOID);
+        HttpHeaders headers = new HttpHeaders();
+        headers.add(HttpHeaders.COOKIE, accessTokenCookieName + "=" + accessToken);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        String url = "/api/company/userCustomers/import/farmers/" + companyId + "/" + document + "/create-separate";
+        var request = new HttpEntity<>(selection.toString(), headers);
+        var ready = new java.util.concurrent.CountDownLatch(2);
+        var start = new java.util.concurrent.CountDownLatch(1);
+        var executor = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            java.util.concurrent.Callable<org.springframework.http.HttpStatusCode> call = () -> {
+                ready.countDown();
+                if (!start.await(10, java.util.concurrent.TimeUnit.SECONDS)) throw new IllegalStateException("start timed out");
+                return restTemplate.exchange(url, HttpMethod.POST, request, String.class).getStatusCode();
+            };
+            var first = executor.submit(call);
+            var second = executor.submit(call);
+            assertTrue(ready.await(10, java.util.concurrent.TimeUnit.SECONDS));
+            start.countDown();
+            assertEquals(HttpStatus.OK, first.get(30, java.util.concurrent.TimeUnit.SECONDS));
+            assertEquals(HttpStatus.OK, second.get(30, java.util.concurrent.TimeUnit.SECONDS));
+            assertEquals(HttpStatus.OK, restTemplate.exchange(url, HttpMethod.POST, request, String.class).getStatusCode());
+        } finally {
+            executor.shutdownNow();
+        }
+        new TransactionTemplate(txManager).executeWithoutResult(status -> {
+            var farmers = em.createQuery("SELECT u FROM UserCustomer u WHERE u.farmerCompanyInternalId = :id ORDER BY u.id", UserCustomer.class)
+                    .setParameter("id", internalId).getResultList();
+            assertEquals(2, farmers.size());
+            assertEquals(KNOWN_GEOID, farmers.get(1).getPlots().iterator().next().getGeoId());
+        });
+        new TransactionTemplate(txManager).executeWithoutResult(status -> {
+            assertEquals(1L, em.createQuery("SELECT COUNT(d) FROM FarmerImportDecision d WHERE d.document.id = :id", Long.class)
+                    .setParameter("id", document).getSingleResult());
+            em.remove(em.find(com.abelium.inatrace.db.entities.common.Document.class, document));
+            em.flush();
+            em.clear();
+            assertEquals(0L, em.createQuery("SELECT COUNT(d) FROM FarmerImportDecision d WHERE d.document.id = :id", Long.class)
+                    .setParameter("id", document).getSingleResult());
+        });
+        Long newDocument = uploadDocument(buildWorkbook(List.of(new FarmerRow(internalId, "Tester", null, KNOWN_GEOID))));
+        JsonNode newPreview = callImportEndpoint(newDocument);
+        String newUrl = "/api/company/userCustomers/import/farmers/" + companyId + "/" + newDocument + "/create-separate";
+        assertEquals(HttpStatus.OK, restTemplate.exchange(newUrl, HttpMethod.POST,
+                new HttpEntity<>(newPreview.get("duplicates").get(0).toString(), headers), String.class).getStatusCode());
+        assertEquals(3L, countFarmersByInternalId(internalId), "a new document represents a new explicit decision");
     }
 
     @Test
@@ -572,8 +808,8 @@ class FarmerImportGeoDataEndToEndTest extends AbstractMySqlIntegrationTest {
 
             // The Geo Data cell's own triangle, not the registry's.
             assertEquals(3, coordinates.size());
-            assertEquals(5.221737, coordinates.get(0).getLatitude());
-            assertEquals(10.285243, coordinates.get(0).getLongitude());
+            assertEquals(5.2217367, coordinates.get(0).getLatitude());
+            assertEquals(10.2852433, coordinates.get(0).getLongitude());
         });
     }
 
@@ -598,6 +834,227 @@ class FarmerImportGeoDataEndToEndTest extends AbstractMySqlIntegrationTest {
     }
 
     @Test
+    void unknownGeoIdWithoutFallback_doesNotCreateFarmer() throws Exception {
+        String internalId = runId + "-geoid-unknown";
+        JsonNode response = callImportEndpoint(uploadDocument(buildWorkbook(
+                List.of(new FarmerRow(internalId, "Tester", null, UNKNOWN_GEOID)))));
+        assertEquals(0, response.get("successful").asInt());
+        JsonNode error = response.get("validationErrors").get(0).get("columnValidationErrors").get(0);
+        assertEquals("INVALID_GEODATA", error.get("errorType").asText());
+        assertEquals("AI6", error.get("cellAddress").asText());
+        assertEquals(0L, countFarmersByInternalId(internalId));
+    }
+
+    @Test
+    void repeatedInternalIdWithDifferentFarmer_rejectsTheWholeFile() throws Exception {
+        String internalId = runId + "-conflicting-farmer";
+        JsonNode response = callImportEndpoint(uploadDocument(buildWorkbook(List.of(
+                new FarmerRow(internalId, "First", FIRST_PLOT, null),
+                new FarmerRow(internalId, "Different", SECOND_PLOT, null)))));
+
+        assertEquals(0, response.get("successful").asInt());
+        assertEquals("INVALID_VALUE", response.get("validationErrors").get(0)
+                .get("columnValidationErrors").get(0).get("errorType").asText());
+        assertEquals(0L, countFarmersByInternalId(internalId));
+    }
+
+    @Test
+    void koboWithInvalidGpsColumn_rejectsTheFileWithoutCreatingFarmer() throws Exception {
+        String internalId = runId + "-invalid-kobo";
+        byte[] xlsx;
+        try (XSSFWorkbook workbook = new XSSFWorkbook(); var output = new java.io.ByteArrayOutputStream()) {
+            var submissions = workbook.createSheet("submissions");
+            var header = submissions.createRow(0);
+            var row = submissions.createRow(1);
+            String[] headers = {"Last name", "City", "State", "Country", "Gender", "Farmer ID", "_id", "_index"};
+            String[] values = {"Tester", "Testville", "Test Region", "Cameroon", "Female", internalId, "42", "1"};
+            for (int i = 0; i < headers.length; i++) {
+                header.createCell(i).setCellValue(headers[i]);
+                row.createCell(i).setCellValue(values[i]);
+            }
+            var plots = workbook.createSheet("plots");
+            plots.createRow(0).createCell(0).setCellValue("_submission__id");
+            plots.getRow(0).createCell(1).setCellValue("GPS");
+            plots.createRow(1).createCell(0).setCellValue("42");
+            plots.getRow(1).createCell(1).setCellValue("5.1 10.1");
+            plots.createRow(2).createCell(0).setCellValue("42");
+            plots.getRow(2).createCell(1).setCellValue("invalid geometry");
+            workbook.write(output);
+            xlsx = output.toByteArray();
+        }
+
+        JsonNode response = callImportEndpoint(uploadDocument(xlsx));
+        assertEquals(0, response.get("successful").asInt());
+        assertEquals("INVALID_GEODATA", response.get("validationErrors").get(0)
+                .get("columnValidationErrors").get(0).get("errorType").asText());
+        assertEquals(2, response.get("validationErrors").get(0).get("rowIndex").asInt());
+        assertEquals("'plots'!B3", response.get("validationErrors").get(0)
+                .get("columnValidationErrors").get(0).get("cellAddress").asText());
+        assertEquals(0L, countFarmersByInternalId(internalId));
+    }
+
+    @Test
+    void koboMissingSurnameRejectsEntireFileInsteadOfSkippingSubmission() throws Exception {
+        String internalId = runId + "-missing-surname";
+        byte[] xlsx;
+        try (XSSFWorkbook workbook = new XSSFWorkbook(); var output = new java.io.ByteArrayOutputStream()) {
+            var sheet = workbook.createSheet("submissions");
+            var header = sheet.createRow(0);
+            String[] headers = {"Last name", "City", "State", "Country", "Gender", "Farmer ID", "_id", "_index"};
+            String[] values = {"Tester", "Testville", "Test Region", "Cameroon", "Female", internalId, "42", "1"};
+            var valid = sheet.createRow(1);
+            var missing = sheet.createRow(2);
+            for (int i = 0; i < headers.length; i++) {
+                header.createCell(i).setCellValue(headers[i]);
+                valid.createCell(i).setCellValue(values[i]);
+                if (i != 0) missing.createCell(i).setCellValue(i == 5 ? internalId + "-other" : values[i]);
+            }
+            missing.getCell(6).setCellValue("43");
+            missing.getCell(7).setCellValue("2");
+            workbook.write(output);
+            xlsx = output.toByteArray();
+        }
+        JsonNode response = callImportEndpoint(uploadDocument(xlsx));
+        assertEquals(0, response.get("successful").asInt());
+        assertEquals(2, response.get("validationErrors").get(0).get("rowIndex").asInt());
+        assertEquals("REQUIRED", response.get("validationErrors").get(0)
+                .get("columnValidationErrors").get(0).get("errorType").asText());
+        assertEquals("A3", response.get("validationErrors").get(0)
+                .get("columnValidationErrors").get(0).get("cellAddress").asText(),
+                "the error is addressed to the missing surname cell");
+        assertEquals(0L, countFarmersByInternalId(internalId));
+    }
+
+    @Test
+    void koboFilledRepeatRowWithoutGeometryFailsTheCellAndPersistsNothing() throws Exception {
+        String internalId = runId + "-missing-geometry";
+        byte[] xlsx;
+        try (XSSFWorkbook workbook = new XSSFWorkbook(); var output = new java.io.ByteArrayOutputStream()) {
+            var sheet = workbook.createSheet("submissions");
+            var header = sheet.createRow(0);
+            String[] headers = {"Last name", "City", "State", "Country", "Gender", "Farmer ID", "_id", "_index"};
+            String[] values = {"Tester", "Testville", "Test Region", "Cameroon", "Female", internalId, "42", "1"};
+            var row = sheet.createRow(1);
+            for (int i = 0; i < headers.length; i++) {
+                header.createCell(i).setCellValue(headers[i]);
+                row.createCell(i).setCellValue(values[i]);
+            }
+            var plots = workbook.createSheet("plots");
+            plots.createRow(0).createCell(0).setCellValue("_submission__id");
+            plots.getRow(0).createCell(1).setCellValue("GPS");
+            plots.getRow(0).createCell(2).setCellValue("plot size");
+            plots.createRow(1).createCell(0).setCellValue("42");
+            // The geometry cell is left blank while the row carries a surveyed size.
+            plots.getRow(1).createCell(2).setCellValue("1.5");
+            workbook.write(output);
+            xlsx = output.toByteArray();
+        }
+        JsonNode response = callImportEndpoint(uploadDocument(xlsx));
+        assertEquals(0, response.get("successful").asInt(), "nothing is persisted: " + response);
+        JsonNode cellError = response.get("validationErrors").get(0).get("columnValidationErrors").get(0);
+        assertEquals("INVALID_GEODATA", cellError.get("errorType").asText());
+        assertTrue(cellError.get("cellAddress").asText().startsWith("'plots'!"), cellError.toString());
+        assertEquals(0L, countFarmersByInternalId(internalId));
+    }
+
+    @Test
+    void koboRepeatSheetsRequireExplicitChoicesBeforeAnyPersistence() throws Exception {
+        String internalId = runId + "-kobo-choice";
+        byte[] xlsx;
+        try (XSSFWorkbook workbook = new XSSFWorkbook(); var output = new java.io.ByteArrayOutputStream()) {
+            var submissions = workbook.createSheet("submissions");
+            var header = submissions.createRow(0);
+            var row = submissions.createRow(1);
+            String[] headers = {"Last name", "City", "State", "Country", "Gender", "Farmer ID", "_id", "_index"};
+            String[] values = {"Tester", "Testville", "Test Region", "Cameroon", "Female", internalId, "42", "1"};
+            for (int i = 0; i < headers.length; i++) {
+                header.createCell(i).setCellValue(headers[i]);
+                row.createCell(i).setCellValue(values[i]);
+            }
+            var plots = workbook.createSheet("plots");
+            plots.createRow(0).createCell(0).setCellValue("_submission__id");
+            plots.getRow(0).createCell(1).setCellValue("field location");
+            plots.createRow(1).createCell(0).setCellValue("42");
+            plots.getRow(1).createCell(1).setCellValue("5.1 10.1");
+            var other = workbook.createSheet("survey");
+            other.createRow(0).createCell(0).setCellValue("_submission__id");
+            other.getRow(0).createCell(1).setCellValue("answer");
+            other.createRow(1).createCell(0).setCellValue("42");
+            other.getRow(1).createCell(1).setCellValue("yes");
+            workbook.write(output);
+            xlsx = output.toByteArray();
+        }
+        Long document = uploadDocument(xlsx);
+        JsonNode pending = callImportEndpoint(document);
+        assertEquals(2, pending.get("unresolvedKoboSheets").size());
+        assertEquals(0, countFarmersByInternalId(internalId));
+        HttpHeaders headers = new HttpHeaders();
+        headers.add(HttpHeaders.COOKIE, accessTokenCookieName + "=" + accessToken);
+        ResponseEntity<String> response = restTemplate.exchange(
+                "/api/company/userCustomers/import/farmers/" + companyId + "/" + document
+                        + "?koboSelections=1:1&koboSelections=2:-1",
+                HttpMethod.POST, new HttpEntity<>(headers), String.class);
+        assertEquals(HttpStatus.OK, response.getStatusCode(), response.getBody());
+        assertEquals(1, objectMapper.readTree(response.getBody()).get("successful").asInt());
+        assertEquals(1, countFarmersByInternalId(internalId));
+        ResponseEntity<String> repeated = restTemplate.exchange(
+                "/api/company/userCustomers/import/farmers/" + companyId + "/" + document
+                        + "?koboSelections=1:1&koboSelections=2:-1",
+                HttpMethod.POST, new HttpEntity<>(headers), String.class);
+        JsonNode duplicate = objectMapper.readTree(repeated.getBody()).get("duplicates").get(0);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        ResponseEntity<String> confirmation = restTemplate.exchange(
+                "/api/company/userCustomers/import/farmers/" + companyId + "/" + document
+                        + "/confirm-plots?koboSelections=1:1&koboSelections=2:-1",
+                HttpMethod.POST, new HttpEntity<>(duplicate.toString(), headers), String.class);
+        assertEquals(HttpStatus.OK, confirmation.getStatusCode(), confirmation.getBody());
+        assertEquals(1, countFarmersByInternalId(internalId));
+    }
+
+    @Test
+    void confirmPlotsRequiresAuthentication() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        for (String action : List.of("confirm-plots", "create-separate")) {
+            ResponseEntity<String> response = restTemplate.exchange(
+                    "/api/company/userCustomers/import/farmers/" + companyId + "/1/" + action,
+                    HttpMethod.POST, new HttpEntity<>("{}", headers), String.class);
+            assertEquals(HttpStatus.UNAUTHORIZED, response.getStatusCode());
+        }
+    }
+
+    @Test
+    void confirmPlotsRejectsRegionalAdminOutsideCompany() throws Exception {
+        Long documentId = uploadDocument(buildWorkbook(runId + "-tenant", FIRST_PLOT));
+        Long otherUserId = new TransactionTemplate(txManager).execute(status -> {
+            User user = new User();
+            user.setEmail(runId + "-other@example.test");
+            user.setName("Other");
+            user.setSurname("Admin");
+            user.setStatus(UserStatus.ACTIVE);
+            user.setLanguage(Language.EN);
+            user.setRole(UserRole.REGIONAL_ADMIN);
+            em.persist(user);
+            em.flush();
+            return user.getId();
+        });
+        try {
+            String token = new TransactionTemplate(txManager).execute(status -> tokenService.createAccessToken(em.find(User.class, otherUserId)));
+            HttpHeaders headers = new HttpHeaders();
+            headers.add(HttpHeaders.COOKIE, accessTokenCookieName + "=" + token);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            for (String action : List.of("confirm-plots", "create-separate")) {
+                ResponseEntity<String> response = restTemplate.exchange(
+                        "/api/company/userCustomers/import/farmers/" + companyId + "/" + documentId + "/" + action,
+                        HttpMethod.POST, new HttpEntity<>("{\"location\":{\"address\":{}}}", headers), String.class);
+                assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
+            }
+        } finally {
+            new TransactionTemplate(txManager).executeWithoutResult(status -> em.remove(em.find(User.class, otherUserId)));
+        }
+    }
+
+    @Test
     void rowsSharingAGeoId_hitTheRegistryOnce() throws Exception {
         String firstId = runId + "-shared-1";
         String secondId = runId + "-shared-2";
@@ -617,10 +1074,32 @@ class FarmerImportGeoDataEndToEndTest extends AbstractMySqlIntegrationTest {
                 assertEquals(1, farmer.getPlots().size(), internalId);
                 List<PlotCoordinate> coordinates = orderedCoordinates(farmer.getPlots().iterator().next().getCoordinates());
                 assertEquals(4, coordinates.size(), internalId);
-                assertEquals(5.40, coordinates.get(0).getLatitude(), internalId);
-                assertEquals(10.40, coordinates.get(0).getLongitude(), internalId);
+                assertEquals(5.400000123, coordinates.get(0).getLatitude(), internalId);
+                assertEquals(10.400000123, coordinates.get(0).getLongitude(), internalId);
             }
         });
+    }
+
+    @Test
+    void confirmingOneFarmerDoesNotResolveOtherFarmersGeoIds() throws Exception {
+        String firstId = runId + "-selection-1";
+        String secondId = runId + "-selection-2";
+        callImportEndpoint(uploadDocument(buildWorkbook(List.of(
+                new FarmerRow(firstId, "First", FIRST_PLOT, null),
+                new FarmerRow(secondId, "Second", FIRST_PLOT, null)))));
+        Long document = uploadDocument(buildWorkbook(List.of(
+                new FarmerRow(firstId, "First", null, KNOWN_GEOID),
+                new FarmerRow(secondId, "Second", FIRST_PLOT, UNKNOWN_GEOID))));
+        JsonNode preview = callImportEndpoint(document);
+        assertEquals(2, preview.get("duplicates").size());
+        REGISTRY_REQUESTS.set(0);
+        HttpHeaders headers = new HttpHeaders();
+        headers.add(HttpHeaders.COOKIE, accessTokenCookieName + "=" + accessToken);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        String url = "/api/company/userCustomers/import/farmers/" + companyId + "/" + document + "/confirm-plots";
+        assertEquals(HttpStatus.OK, restTemplate.exchange(url, HttpMethod.POST,
+                new HttpEntity<>(preview.get("duplicates").get(0).toString(), headers), String.class).getStatusCode());
+        assertEquals(1, REGISTRY_REQUESTS.get(), "the unrelated farmer's GeoID must not be resolved again");
     }
 
     /** Plot coordinates in the order they were written, which is the order their ids were assigned. */

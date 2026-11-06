@@ -8,6 +8,8 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.abelium.inatrace.components.company.types.UserCustomerImportCellErrorType;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -35,8 +37,8 @@ import java.util.Set;
  * <p>An export has one sheet per form, plus one extra sheet per repeat group. Kobo adds its own
  * {@code _}-prefixed system columns, which are stable across forms and languages and are what this
  * reader keys on; the question columns are named by whoever built the form, so they are matched
- * against {@code /geo/kobo-header-synonyms.csv}. The geo column is found by the shape of its
- * values rather than by its header, which makes it immune to the form's wording entirely.</p>
+ * against {@code /geo/kobo-header-synonyms.csv}. Geometry questions require a recognisable
+ * header; unknown or ambiguous repeat sheets are reported instead of guessing from values.</p>
  */
 public final class KoboExportReader {
 
@@ -65,12 +67,22 @@ public final class KoboExportReader {
 		private final String geoData;
 		private final Double size;
 		private final Integer numberOfPlants;
+		private final String sheetName;
+		private final int rowNum;
+		private final int columnNum;
 
-		KoboPlot(String geoData, Double size, Integer numberOfPlants) {
+		KoboPlot(String geoData, Double size, Integer numberOfPlants, String sheetName, int rowNum, int columnNum) {
 			this.geoData = geoData;
 			this.size = size;
 			this.numberOfPlants = numberOfPlants;
+			this.sheetName = sheetName;
+			this.rowNum = rowNum;
+			this.columnNum = columnNum;
 		}
+
+		public String getSheetName() { return sheetName; }
+		public int getRowNum() { return rowNum; }
+		public int getColumnNum() { return columnNum; }
 
 		public String getGeoData() {
 			return geoData;
@@ -90,11 +102,13 @@ public final class KoboExportReader {
 
 		private final int rowNum;
 		private final Map<Concept, String> fields;
+		private final Map<Concept, Integer> columns;
 		private final List<KoboPlot> plots = new ArrayList<>();
 
-		KoboFarmer(int rowNum, Map<Concept, String> fields) {
+		KoboFarmer(int rowNum, Map<Concept, String> fields, Map<Concept, Integer> columns) {
 			this.rowNum = rowNum;
 			this.fields = fields;
+			this.columns = columns;
 		}
 
 		/** 0-based sheet row this submission came from, for validation error addresses. */
@@ -106,9 +120,40 @@ public final class KoboExportReader {
 			return fields.get(concept);
 		}
 
+		/** Zero-based column of a concept on the submission sheet, or {@code -1} when unmatched. */
+		public int getColumn(Concept concept) {
+			Integer column = columns.get(concept);
+			return column == null ? -1 : column;
+		}
+
 		public List<KoboPlot> getPlots() {
 			return plots;
 		}
+	}
+
+	/**
+	 * A problem found on a specific spreadsheet cell, so the import can answer with the same
+	 * cell-addressed validation errors it uses for the INATrace template instead of aborting the
+	 * whole file with a single message.
+	 */
+	public static final class KoboCellError {
+
+		private final String sheetName;
+		private final int rowNum;
+		private final int columnNum;
+		private final UserCustomerImportCellErrorType errorType;
+
+		KoboCellError(String sheetName, int rowNum, int columnNum, UserCustomerImportCellErrorType errorType) {
+			this.sheetName = sheetName;
+			this.rowNum = rowNum;
+			this.columnNum = columnNum;
+			this.errorType = errorType;
+		}
+
+		public String getSheetName() { return sheetName; }
+		public int getRowNum() { return rowNum; }
+		public int getColumnNum() { return columnNum; }
+		public UserCustomerImportCellErrorType getErrorType() { return errorType; }
 	}
 
 	/** What a read produced, including the concepts no column could be matched to. */
@@ -117,11 +162,34 @@ public final class KoboExportReader {
 		private final List<KoboFarmer> farmers;
 		private final Set<Concept> missingConcepts;
 		private final List<String> headers;
+		private final Map<String, List<String>> unresolvedSheets;
+		private final List<KoboCellError> errors;
 
 		KoboExport(List<KoboFarmer> farmers, Set<Concept> missingConcepts, List<String> headers) {
+			this(farmers, missingConcepts, headers, Map.of(), List.of());
+		}
+
+		KoboExport(List<KoboFarmer> farmers, Set<Concept> missingConcepts, List<String> headers,
+				Map<String, List<String>> unresolvedSheets) {
+			this(farmers, missingConcepts, headers, unresolvedSheets, List.of());
+		}
+
+		KoboExport(List<KoboFarmer> farmers, Set<Concept> missingConcepts, List<String> headers,
+				Map<String, List<String>> unresolvedSheets, List<KoboCellError> errors) {
 			this.farmers = farmers;
 			this.missingConcepts = missingConcepts;
 			this.headers = headers;
+			this.unresolvedSheets = unresolvedSheets;
+			this.errors = errors;
+		}
+
+		public Map<String, List<String>> getUnresolvedSheets() {
+			return unresolvedSheets;
+		}
+
+		/** Cell-level problems found while reading; the import reports them and persists nothing. */
+		public List<KoboCellError> getErrors() {
+			return errors;
 		}
 
 		public List<KoboFarmer> getFarmers() {
@@ -173,6 +241,11 @@ public final class KoboExportReader {
 	// ---------------------------------------------------------------- reading
 
 	public static KoboExport read(XSSFWorkbook workbook) {
+		return read(workbook, Map.of());
+	}
+
+	/** A selection is a zero-based column index, or -1 to explicitly ignore a repeat sheet. */
+	public static KoboExport read(XSSFWorkbook workbook, Map<String, Integer> selections) {
 
 		Sheet submissions = workbook.getSheetAt(0);
 		List<String> headers = rawHeaders(submissions);
@@ -190,9 +263,12 @@ public final class KoboExportReader {
 		}
 
 		int indexColumn = headers.indexOf("_index");
+		int idColumn = headers.indexOf("_id");
 
 		List<KoboFarmer> farmers = new ArrayList<>();
+		List<KoboCellError> errors = new ArrayList<>();
 		Map<String, KoboFarmer> byIndex = new LinkedHashMap<>();
+		Map<String, KoboFarmer> byId = new LinkedHashMap<>();
 
 		for (int r = 1; r <= submissions.getLastRowNum(); r++) {
 			Row row = submissions.getRow(r);
@@ -208,42 +284,71 @@ public final class KoboExportReader {
 				}
 			}
 
-			if (fields.get(Concept.LAST_NAME) == null) {
-				continue; // not a submission row
+			if (fields.isEmpty() && !hasNonSystemValues(row, headers, -1)) {
+				continue; // empty submission row
 			}
 
-			KoboFarmer farmer = new KoboFarmer(r, fields);
+			KoboFarmer farmer = new KoboFarmer(r, fields, columns);
 			farmers.add(farmer);
 
 			if (indexColumn >= 0) {
 				String index = stringValue(row.getCell(indexColumn));
-				if (index != null && !index.isBlank()) {
-					byIndex.put(index.trim(), farmer);
+				if (index != null && !index.isBlank() && byIndex.putIfAbsent(index.trim(), farmer) != null) {
+					errors.add(new KoboCellError(submissions.getSheetName(), r, indexColumn,
+							UserCustomerImportCellErrorType.INVALID_VALUE));
+				}
+			}
+			if (idColumn >= 0) {
+				String id = stringValue(row.getCell(idColumn));
+				if (id != null && !id.isBlank() && byId.putIfAbsent(id.trim(), farmer) != null) {
+					errors.add(new KoboCellError(submissions.getSheetName(), r, idColumn,
+							UserCustomerImportCellErrorType.INVALID_VALUE));
 				}
 			}
 		}
 
+		Map<String, List<String>> unresolved = new LinkedHashMap<>();
+		Set<String> usedSelections = new LinkedHashSet<>();
 		for (int s = 1; s < workbook.getNumberOfSheets(); s++) {
-			readRepeatSheet(workbook.getSheetAt(s), farmers, byIndex);
+			Sheet sheet = workbook.getSheetAt(s);
+			List<String> sheetHeaders = rawHeaders(sheet);
+			if (!sheetHeaders.contains(PARENT_INDEX) && !sheetHeaders.contains(SUBMISSION_ID)) continue;
+			boolean populated = false;
+			for (int r = 1; r <= sheet.getLastRowNum(); r++) {
+				if (hasNonSystemValues(sheet.getRow(r), sheetHeaders, -1)) { populated = true; break; }
+			}
+			if (!populated) continue;
+			int detected = findGeoColumn(sheet, sheetHeaders);
+			Integer selected = selections.get(sheet.getSheetName());
+			if (selected != null) {
+				usedSelections.add(sheet.getSheetName());
+				if (detected >= 0 || selected < -1 || selected >= sheetHeaders.size()
+						|| (selected >= 0 && (sheetHeaders.get(selected).isBlank() || sheetHeaders.get(selected).startsWith("_")))) {
+					throw new IllegalArgumentException("Invalid selection for repeat sheet \"" + sheet.getSheetName() + "\"");
+				}
+				if (selected == -1) continue;
+				detected = selected;
+			} else if (detected < 0) {
+				unresolved.put(sheet.getSheetName(), sheetHeaders);
+				continue;
+			}
+			readRepeatSheet(sheet, farmers, byIndex, byId, detected, errors);
 		}
+		if (usedSelections.size() != selections.size()) throw new IllegalArgumentException("Invalid repeat sheet selection");
 
-		return new KoboExport(farmers, Set.of(), headers);
+		return new KoboExport(farmers, Set.of(), headers, unresolved, errors);
 	}
 
 	/** Attaches the plots of one repeat-group sheet to the submissions they belong to. */
-	private static void readRepeatSheet(Sheet sheet, List<KoboFarmer> farmers, Map<String, KoboFarmer> byIndex) {
+	private static void readRepeatSheet(Sheet sheet, List<KoboFarmer> farmers, Map<String, KoboFarmer> byIndex,
+			Map<String, KoboFarmer> byId, int geoColumn, List<KoboCellError> errors) {
 
 		List<String> headers = rawHeaders(sheet);
 
 		int parentColumn = headers.indexOf(PARENT_INDEX);
+		int submissionColumn = headers.indexOf(SUBMISSION_ID);
 		if (parentColumn < 0 && !headers.contains(SUBMISSION_ID)) {
 			return; // not a repeat group of the submission sheet
-		}
-
-		int geoColumn = findGeoColumn(sheet, headers.size());
-		if (geoColumn < 0) {
-			logger.debug("Repeat sheet \"{}\" carries no geo data column; skipped", sheet.getSheetName());
-			return;
 		}
 
 		Map<Concept, Integer> columns = matchColumns(headers);
@@ -258,6 +363,10 @@ public final class KoboExportReader {
 
 			String geoData = stringValue(row.getCell(geoColumn));
 			if (geoData == null || geoData.isBlank()) {
+				if (hasNonSystemValues(row, headers, geoColumn)) {
+					errors.add(new KoboCellError(sheet.getSheetName(), r, geoColumn,
+							UserCustomerImportCellErrorType.INVALID_GEODATA));
+				}
 				continue;
 			}
 
@@ -268,16 +377,30 @@ public final class KoboExportReader {
 					farmer = byIndex.get(parentIndex.trim());
 				}
 			}
+			if (submissionColumn >= 0) {
+				String submissionId = stringValue(row.getCell(submissionColumn));
+				if (submissionId != null && !submissionId.isBlank()) {
+					KoboFarmer bySubmissionId = byId.get(submissionId.trim());
+					if (farmer != null && bySubmissionId != farmer) {
+						errors.add(new KoboCellError(sheet.getSheetName(), r, submissionColumn,
+								UserCustomerImportCellErrorType.INVALID_VALUE));
+						continue;
+					}
+					farmer = bySubmissionId;
+				}
+			}
 			if (farmer == null) {
-				logger.warn("Plot on row {} of sheet \"{}\" references an unknown submission; skipped",
-						r + 1, sheet.getSheetName());
+				errors.add(new KoboCellError(sheet.getSheetName(), r,
+						parentColumn >= 0 ? parentColumn : submissionColumn,
+						UserCustomerImportCellErrorType.INVALID_VALUE));
 				continue;
 			}
 
 			farmer.getPlots().add(new KoboPlot(
 					geoData.trim(),
 					sizeColumn == null ? null : doubleValue(row.getCell(sizeColumn)),
-					plantsColumn == null ? null : integerValue(row.getCell(plantsColumn))));
+					plantsColumn == null ? null : integerValue(row.getCell(plantsColumn)),
+					sheet.getSheetName(), r, geoColumn));
 		}
 
 		if (farmers.isEmpty()) {
@@ -287,38 +410,34 @@ public final class KoboExportReader {
 	}
 
 	/**
-	 * Finds the geo data column by the shape of its values rather than its header: the first column
-	 * whose non-blank values all parse as geo data. Form authors name this question anything from
-	 * "Prise du polygone de la parcelle" to "GPS", so the header is no help.
+	 * Identify geometry by its question name, not just by parseable numeric values: arbitrary
+	 * survey answers can look like coordinates and must never silently become plot boundaries.
 	 */
-	private static int findGeoColumn(Sheet sheet, int columnCount) {
-
-		for (int c = 0; c < columnCount; c++) {
-
-			int parsed = 0;
-			boolean allParsed = true;
-
-			for (int r = 1; r <= sheet.getLastRowNum() && parsed < 3; r++) {
-				Row row = sheet.getRow(r);
-				String value = row == null ? null : stringValue(row.getCell(c));
-				if (value == null || value.isBlank()) {
-					continue;
-				}
-				try {
-					GeoDataParser.parse(value.trim(), null);
-					parsed++;
-				} catch (IllegalArgumentException e) {
-					allParsed = false;
-					break;
-				}
-			}
-
-			if (allParsed && parsed > 0) {
-				return c;
+	private static int findGeoColumn(Sheet sheet, List<String> headers) {
+		int identified = -1;
+		for (int c = 0; c < headers.size(); c++) {
+			List<String> terms = words(headers.get(c));
+			boolean counting = terms.stream().anyMatch(Set.of("count", "number", "nombre", "cantidad", "numero")::contains);
+			boolean geometry = terms.stream().anyMatch(Set.of("gps", "geodata", "geojson", "geoshape", "geopoint",
+					"geotrace", "geometry", "geometrie", "geometria", "polygon", "polygone", "coordinates",
+					"coordonnees", "coordenadas")::contains)
+					|| (terms.contains("geo") && terms.contains("data"));
+			if (geometry && !counting) {
+				if (identified >= 0) return -2;
+				identified = c;
 			}
 		}
+		return identified;
+	}
 
-		return -1;
+	private static boolean hasNonSystemValues(Row row, List<String> headers, int excludedColumn) {
+		if (row == null) return false;
+		for (int c = 0; c < headers.size(); c++) {
+			if (c == excludedColumn || headers.get(c).startsWith("_")) continue;
+			String value = stringValue(row.getCell(c));
+			if (value != null && !value.isBlank()) return true;
+		}
+		return false;
 	}
 
 	// ---------------------------------------------------------------- header matching

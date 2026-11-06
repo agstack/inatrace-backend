@@ -149,6 +149,8 @@ POST	/api/company/create	CompanyController#createCompany
 POST	/api/company/execute/{action}	CompanyController#executeAction
 POST	/api/company/userCustomers/add/{companyId}	CompanyController#addUserCustomer
 POST	/api/company/userCustomers/import/farmers/{companyId}/{documentId}	CompanyController#importFarmersSpreadsheet
+POST	/api/company/userCustomers/import/farmers/{companyId}/{documentId}/confirm-plots	CompanyController#confirmImportedFarmerPlots
+POST	/api/company/userCustomers/import/farmers/{companyId}/{documentId}/create-separate	CompanyController#createSeparateImportedFarmer
 POST	/api/company/userCustomers/{id}/plots/add	CompanyController#createUserCustomerPlot
 POST	/api/company/userCustomers/{id}/plots/{plotId}/updateGeoID	CompanyController#refreshGeoIDForUserCustomerPlot
 POST	/api/company/userCustomers/{id}/uploadGeoData	CompanyController#uploadUserCustomerGeoData
