@@ -1427,24 +1427,34 @@ public class StockOrderService extends BaseService {
                         .map(Transaction::getOutputQuantity)
                         .reduce(BigDecimal.ZERO, BigDecimal::add);
 
+                if (procAction.getInputSemiProduct() == null || stockOrder.getSemiProduct() == null
+                        || procAction.getInputSemiProduct().getMeasurementUnitType() == null
+                        || stockOrder.getSemiProduct().getMeasurementUnitType() == null) {
+                    throw new ApiException(ApiStatus.VALIDATION_ERROR,
+                            "Processing yield requires input and output measurement units");
+                }
                 BigDecimal inputUnitWeight = procAction.getInputSemiProduct().getMeasurementUnitType().getWeight();
                 BigDecimal outputUnitWeight = stockOrder.getSemiProduct().getMeasurementUnitType().getWeight();
 
-                // Calculate the input quantity normalized in the output measuring unit (important when we have different input and output measure units)
-                BigDecimal totalInputQuantityNormalized = totalInputQuantity.divide(inputUnitWeight,
-                        RoundingMode.HALF_UP).divide(outputUnitWeight, RoundingMode.HALF_UP);
+                if (inputUnitWeight == null || outputUnitWeight == null
+                        || inputUnitWeight.signum() <= 0 || outputUnitWeight.signum() <= 0) {
+                    throw new ApiException(ApiStatus.VALIDATION_ERROR,
+                            "Processing yield requires positive weights for input and output units");
+                }
 
-                // Calculate the expected total output quantity
-                BigDecimal totalExpectedOutQuantity = totalInputQuantityNormalized.multiply(expectedTotalQuantityPerUnit);
+                // Work in mass until the final division, avoiding intermediate
+                // rounding at a two-decimal range boundary.
+                BigDecimal inputMass = totalInputQuantity.multiply(inputUnitWeight);
+                BigDecimal expectedOutputMass = inputMass.multiply(expectedTotalQuantityPerUnit);
 
                 // Calculate the expected total output quantity allowed range (+/- 20% of the total expected output quantity)
-                BigDecimal outQuantityRangeLow = totalExpectedOutQuantity
+                BigDecimal outQuantityRangeLow = expectedOutputMass
                         .multiply(new BigDecimal("0.8"))
-                        .setScale(2, RoundingMode.HALF_UP);
-                BigDecimal outQuantityRangeHigh = totalExpectedOutQuantity
+                        .divide(outputUnitWeight, 2, RoundingMode.HALF_UP);
+                BigDecimal outQuantityRangeHigh = expectedOutputMass
                         .multiply(new BigDecimal("1.2"))
-                        .min(totalInputQuantityNormalized)
-                        .setScale(2, RoundingMode.HALF_UP);
+                        .min(inputMass)
+                        .divide(outputUnitWeight, 2, RoundingMode.HALF_UP);
 
                 // Check if the total output quantity set in the stock order is within the allowed range
                 BigDecimal totalQuantity = stockOrder.getTotalQuantity();
