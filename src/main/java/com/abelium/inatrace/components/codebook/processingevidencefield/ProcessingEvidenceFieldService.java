@@ -109,6 +109,12 @@ public class ProcessingEvidenceFieldService extends BaseService {
 	public void deleteProcessingEvidenceField(Long id) throws ApiException {
 
 		ProcessingEvidenceField processingEvidenceField = fetchProcessingEvidenceField(id);
+		if (Queries.isReferenced(em, id,
+				"ValueChainProcessingEvidenceField.processingEvidenceField",
+				"ProcessingActionPEF.processingEvidenceField",
+				"StockOrderPEFieldValue.processingEvidenceField")) {
+			throw new ApiException(ApiStatus.VALIDATION_ERROR, "Cannot delete a processing evidence field that is in use");
+		}
 		em.remove(processingEvidenceField);
 	}
 

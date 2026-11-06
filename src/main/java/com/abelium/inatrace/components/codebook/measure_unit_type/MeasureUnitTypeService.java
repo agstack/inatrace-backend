@@ -104,6 +104,15 @@ public class MeasureUnitTypeService extends BaseService {
 	public void deleteMeasureUnitType(Long id) throws ApiException {
 
 		MeasureUnitType measureUnitType = fetchMeasureUnitType(id);
+		if (Queries.isReferenced(em, id,
+				"MeasureUnitType.underlyingMeasurementUnitType",
+				"SemiProduct.measurementUnitType",
+				"FinalProduct.measurementUnitType",
+				"ValueChainMeasureUnitType.measureUnitType",
+				"StockOrder.measurementUnitType",
+				"Transaction.inputMeasureUnitType")) {
+			throw new ApiException(ApiStatus.VALIDATION_ERROR, "Cannot delete a measure unit type that is in use");
+		}
 		em.remove(measureUnitType);
 	}
 
