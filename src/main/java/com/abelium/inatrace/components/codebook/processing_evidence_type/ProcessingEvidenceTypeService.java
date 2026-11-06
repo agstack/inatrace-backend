@@ -119,6 +119,12 @@ public class ProcessingEvidenceTypeService extends BaseService {
 	public void deleteProcessingEvidenceType(Long id) throws ApiException {
 
 		ProcessingEvidenceType processingEvidenceType = fetchProcessingEvidenceType(id);
+		if (Queries.isReferenced(em, id,
+				"ValueChainProcEvidenceType.processingEvidenceType",
+				"ProcessingActionPET.processingEvidenceType",
+				"StockOrderPETypeValue.processingEvidenceType")) {
+			throw new ApiException(ApiStatus.VALIDATION_ERROR, "Cannot delete a processing evidence type that is in use");
+		}
 		em.remove(processingEvidenceType);
 	}
 

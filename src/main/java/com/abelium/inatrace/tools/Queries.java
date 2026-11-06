@@ -13,6 +13,26 @@ import java.util.function.Function;
 
 public class Queries
 {
+    /**
+     * Whether any of the given entity attributes references the row with this id, for example
+     * {@code "Facility.facilityType"}. Removing a row that is still referenced only fails on the
+     * foreign key at commit, as a generic error, so delete operations check this first and answer
+     * a client error. The attributes are constants in the calling code, never user input.
+     */
+    public static boolean isReferenced(EntityManager em, Long id, String... entityAttributes) {
+        for (String entityAttribute : entityAttributes) {
+            int dot = entityAttribute.indexOf('.');
+            Long references = em.createQuery("SELECT COUNT(e) FROM " + entityAttribute.substring(0, dot)
+                            + " e WHERE e." + entityAttribute.substring(dot + 1) + ".id = :id", Long.class)
+                    .setParameter("id", id)
+                    .getSingleResult();
+            if (references > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // for BaseEntity (to automatically convert int -> long if needed)
     public static <T> T get(EntityManager em, Class<T> cls, long id) {
         return em.find(cls, id);

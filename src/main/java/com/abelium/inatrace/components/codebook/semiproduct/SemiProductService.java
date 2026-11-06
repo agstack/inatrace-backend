@@ -144,6 +144,15 @@ public class SemiProductService extends BaseService {
 	public void deleteSemiProduct(Long id) throws ApiException {
 
 		SemiProduct semiProduct = fetchSemiProduct(id);
+		if (Queries.isReferenced(em, id,
+				"ValueChainSemiProduct.semiProduct",
+				"FacilitySemiProduct.semiProduct",
+				"ProcessingAction.inputSemiProduct",
+				"ProcessingActionOutputSemiProduct.outputSemiProduct",
+				"StockOrder.semiProduct",
+				"Transaction.semiProduct")) {
+			throw new ApiException(ApiStatus.VALIDATION_ERROR, "Cannot delete a semi-product that is in use");
+		}
 		em.remove(semiProduct);
 	}
 

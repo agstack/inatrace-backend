@@ -6,6 +6,7 @@ import com.abelium.inatrace.components.common.BaseService;
 import com.abelium.inatrace.components.product.api.ApiProductType;
 import com.abelium.inatrace.db.entities.codebook.ProductType;
 import com.abelium.inatrace.db.entities.codebook.ProductTypeTranslation;
+import com.abelium.inatrace.tools.Queries;
 import com.abelium.inatrace.types.Language;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
@@ -145,6 +146,14 @@ public class ProductTypeService extends BaseService {
 
         if (productType == null) {
             throw new ApiException(ApiStatus.NOT_FOUND, PRODUCT_TYPE_DOES_NOT_EXIST);
+        }
+
+        if (Queries.isReferenced(em, id,
+                "ValueChain.productType",
+                "FarmPlantInformation.productType",
+                "UserCustomerProductType.productType",
+                "Plot.crop")) {
+            throw new ApiException(ApiStatus.VALIDATION_ERROR, "Cannot delete a product type that is in use");
         }
 
         em.remove(productType);

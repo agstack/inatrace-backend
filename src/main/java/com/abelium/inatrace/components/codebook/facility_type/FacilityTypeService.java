@@ -87,6 +87,11 @@ public class FacilityTypeService extends BaseService {
 	public void deleteFacilityType(Long id) throws ApiException {
 
 		FacilityType facilityType = fetchFacilityType(id);
+		if (Queries.isReferenced(em, id,
+				"Facility.facilityType",
+				"ValueChainFacilityType.facilityType")) {
+			throw new ApiException(ApiStatus.VALIDATION_ERROR, "Cannot delete a facility type that is in use");
+		}
 		em.remove(facilityType);
 	}
 
