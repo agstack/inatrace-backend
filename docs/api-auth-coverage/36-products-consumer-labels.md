@@ -17,7 +17,7 @@ refused writes are checked against persisted state.
 | GET | `/api/product/admin/list` | System admin | System-admin control; company user and anonymous refusal |
 | GET | `/api/product/{id}` | Owner or associated company | Associate control; foreign and anonymous refusal |
 | PUT | `/api/product/` | Owner or associated company | Foreign and anonymous update refused; product marker unchanged |
-| DELETE | `/api/product/{id}` | Owner only | Associate, foreign and anonymous refusal; product retained |
+| DELETE | `/api/product/{id}` | Owner only | Owner control in `ProductDeletionTest`: product, company associations, knowledge blogs and labels with their feedback, batches and content tree removed. Associate, foreign and anonymous refusal; product retained |
 | GET | `/api/product/{id}/labels` | Owner or associated company | Associate control; foreign and anonymous refusal |
 | POST | `/api/product/label/create` | Owner or associated company | Foreign and anonymous creation refused; label count unchanged |
 | GET | `/api/product/label/{id}` | Owner or associated company | Associate control; foreign and anonymous refusal |
@@ -34,7 +34,7 @@ refused writes are checked against persisted state.
 | PUT | `/api/product/label_batch` | Owner or associated company | Foreign and anonymous refusal; batch number unchanged |
 | DELETE | `/api/product/label_batch/{id}` | Owner or associated company | Foreign and anonymous refusal; batch retained |
 | GET | `/api/product/label/{id}/batches` | Owner only | Owner control; associate, foreign and anonymous refusal |
-| GET | `/api/product/label/{id}/instructions` | Owner or associated company | Foreign refusal occurs before document generation; anonymous refusal |
+| GET | `/api/product/label/{id}/instructions` | Owner or associated company | Owner control returns a PDF with the label and product names and the QR-code overlay; missing templates fail with 500 without leaking label data. Foreign refusal occurs before document generation; anonymous refusal |
 | GET | `/api/product/knowledgeBlog/list/{productId}` | Owner or associated company | Associate control; foreign and anonymous refusal |
 | GET | `/api/product/knowledgeBlog/{id}` | Owner or associated company | Associate control; foreign and anonymous refusal |
 | PUT | `/api/product/knowledgeBlog` | Owner or associated company | Foreign and anonymous refusal |

@@ -42,7 +42,23 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.text.PDFTextStripper;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+import org.apache.poi.xwpf.usermodel.XWPFRun;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTBookmark;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTPageSz;
+
+import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -66,11 +82,15 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 class ProductAndLabelApiTest extends AbstractMySqlIntegrationTest {
 
     private static final String MARKER = "OWNER-PRODUCT-36-PRIVATE";
+    private static final String INSTRUCTIONS_TEXT_TEMPLATE = "INATrace_labels_text.docx";
+    private static final String INSTRUCTIONS_OVERLAY_TEMPLATE = "INATrace-labele-o-A4.pdf";
+    private static final String TEMPLATE_PLACEHOLDER = "TEMPLATE-PLACEHOLDER";
 
     @Autowired private MockMvc mockMvc;
     @Autowired private EntityManager em;
     @Autowired private TokenService tokenService;
     @Value("${INATrace.auth.accessTokenCookieName}") private String accessCookieName;
+    @Value("${INATrace.documents.root}") private String documentsRoot;
 
     private Long ownerCompanyId;
     private Long valueChainId;
@@ -230,6 +250,34 @@ class ProductAndLabelApiTest extends AbstractMySqlIntegrationTest {
         String instructions = "/api/product/label/" + labelId + "/instructions";
         assertRefused(get(instructions).cookie(strangerSession), 403);
         assertRefused(get(instructions), 401);
+    }
+
+    @Test
+    void ownerReceivesTheGeneratedInstructionsPdfForTheirLabel() throws Exception {
+        provideInstructionTemplates();
+
+        MvcResult result = mockMvc.perform(get("/api/product/label/" + labelId + "/instructions")
+                .cookie(ownerSession)).andReturn();
+
+        assertEquals(200, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+        assertEquals(MediaType.APPLICATION_PDF_VALUE, result.getResponse().getContentType());
+        byte[] body = result.getResponse().getContentAsByteArray();
+        try (PDDocument pdf = Loader.loadPDF(body)) {
+            assertTrue(pdf.getNumberOfPages() >= 1);
+            String text = new PDFTextStripper().getText(pdf);
+            assertTrue(text.contains("Label: " + MARKER + " LABEL"), text);
+            assertTrue(text.contains("Product: " + MARKER), text);
+            assertFalse(text.contains(TEMPLATE_PLACEHOLDER), text);
+            assertTrue(pdf.getPage(0).getResources().getXObjectNames().iterator().hasNext(),
+                    "QR-code overlay is missing from the first page");
+        }
+    }
+
+    @Test
+    void instructionsFailWithoutLeakingLabelDataWhenTemplatesAreMissing() throws Exception {
+        removeInstructionTemplates();
+
+        assertRefused(get("/api/product/label/" + labelId + "/instructions").cookie(ownerSession), 500);
     }
 
     @Test
@@ -476,6 +524,62 @@ class ProductAndLabelApiTest extends AbstractMySqlIntegrationTest {
 
     private long count(Class<?> entity) {
         return em.createQuery("SELECT count(e) FROM " + entity.getSimpleName() + " e", Long.class).getSingleResult();
+    }
+
+    /**
+     * The real templates are not in the repository at documents/ folder (they are supplied at deployment), so we build
+     * minimal ones that satisfy what ProductDocumentService needs: a .docx with the label_name and
+     * product_name bookmarks, and a one-page A4 PDF for the QR-code overlay.
+     */
+    private void provideInstructionTemplates() throws Exception {
+        Path dir = Files.createDirectories(Paths.get(documentsRoot));
+        Files.write(dir.resolve(INSTRUCTIONS_TEXT_TEMPLATE), labelTextTemplate());
+        Files.write(dir.resolve(INSTRUCTIONS_OVERLAY_TEMPLATE), overlayTemplate());
+    }
+
+    private void removeInstructionTemplates() throws Exception {
+        Path dir = Paths.get(documentsRoot);
+        Files.deleteIfExists(dir.resolve(INSTRUCTIONS_TEXT_TEMPLATE));
+        Files.deleteIfExists(dir.resolve(INSTRUCTIONS_OVERLAY_TEMPLATE));
+    }
+
+    private static byte[] labelTextTemplate() throws Exception {
+        try (XWPFDocument doc = new XWPFDocument(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+
+            doc.createStyles();
+            bookmarkedParagraph(doc, "Label: ", "label_name", 1);
+            bookmarkedParagraph(doc, "Product: ", "product_name", 2);
+            CTPageSz a4 = doc.getDocument().getBody().addNewSectPr().addNewPgSz();
+            a4.setW(BigInteger.valueOf(11906));
+            a4.setH(BigInteger.valueOf(16838));
+            doc.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    private static void bookmarkedParagraph(XWPFDocument doc, String caption, String bookmark, long id) {
+        XWPFParagraph paragraph = doc.createParagraph();
+        textRun(paragraph, caption);
+        CTBookmark start = paragraph.getCTP().addNewBookmarkStart();
+        start.setName(bookmark);
+        start.setId(BigInteger.valueOf(id));
+        textRun(paragraph, TEMPLATE_PLACEHOLDER);
+        paragraph.getCTP().addNewBookmarkEnd().setId(BigInteger.valueOf(id));
+    }
+
+    /** PdfFontProvider fails on runs without a font family; Calibri maps to the bundled Archivo Narrow. */
+    private static void textRun(XWPFParagraph paragraph, String text) {
+        XWPFRun run = paragraph.createRun();
+        run.setFontFamily("Calibri");
+        run.setText(text);
+    }
+
+    private static byte[] overlayTemplate() throws Exception {
+        try (PDDocument pdf = new PDDocument(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            pdf.addPage(new PDPage(PDRectangle.A4));
+            pdf.save(out);
+            return out.toByteArray();
+        }
     }
 
     private Company company(String name) {
