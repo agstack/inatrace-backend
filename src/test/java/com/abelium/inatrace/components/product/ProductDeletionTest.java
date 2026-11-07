@@ -7,6 +7,7 @@ import com.abelium.inatrace.db.entities.company.Company;
 import com.abelium.inatrace.db.entities.company.CompanyUser;
 import com.abelium.inatrace.db.entities.codebook.ProductType;
 import com.abelium.inatrace.db.entities.process.Process;
+import com.abelium.inatrace.db.entities.product.BusinessToCustomerSettings;
 import com.abelium.inatrace.db.entities.product.FinalProduct;
 import com.abelium.inatrace.db.entities.product.KnowledgeBlog;
 import com.abelium.inatrace.db.entities.product.Product;
@@ -15,6 +16,7 @@ import com.abelium.inatrace.db.entities.product.ProductLabel;
 import com.abelium.inatrace.db.entities.product.ProductLabelBatch;
 import com.abelium.inatrace.db.entities.product.ProductLabelContent;
 import com.abelium.inatrace.db.entities.product.ProductLabelFeedback;
+import com.abelium.inatrace.db.entities.product.ProductJourney;
 import com.abelium.inatrace.db.entities.product.ProductSettings;
 import com.abelium.inatrace.db.entities.product.Responsibility;
 import com.abelium.inatrace.db.entities.product.Sustainability;
@@ -164,6 +166,9 @@ class ProductDeletionTest extends AbstractMySqlIntegrationTest {
         assertEquals(0L, em.createQuery("SELECT count(kb) FROM KnowledgeBlog kb WHERE kb.id = :id", Long.class)
                 .setParameter("id", blogId)
                 .getSingleResult());
+        assertEquals(0L, em.createQuery("SELECT count(pc) FROM ProductCompany pc WHERE pc.product.id = :id", Long.class)
+                .setParameter("id", productId)
+                .getSingleResult());
     }
 
     @Test
@@ -182,6 +187,9 @@ class ProductDeletionTest extends AbstractMySqlIntegrationTest {
         assertContentTreeGone(firstTree);
         assertContentTreeGone(secondTree);
         assertEquals(0L, em.createQuery("SELECT COUNT(b) FROM ProductLabelBatch b WHERE b.label.id IN :ids", Long.class)
+                .setParameter("ids", List.of(first, second)).getSingleResult());
+        // By label id: counting through label.product cannot see feedback left behind once the product is gone.
+        assertEquals(0L, em.createQuery("SELECT COUNT(f) FROM ProductLabelFeedback f WHERE f.label.id IN :ids", Long.class)
                 .setParameter("ids", List.of(first, second)).getSingleResult());
     }
 
@@ -254,7 +262,8 @@ class ProductDeletionTest extends AbstractMySqlIntegrationTest {
     /** IDs of a label's content and of each part of its content tree. */
     private Object[] contentTree(Long labelId) {
         ProductLabelContent c = em.find(ProductLabel.class, labelId).getContent();
-        return new Object[] { c.getId(), c.getProcess().getId(), c.getResponsibility().getId(), c.getSustainability().getId(), c.getSettings().getId() };
+        return new Object[] { c.getId(), c.getProcess().getId(), c.getResponsibility().getId(), c.getSustainability().getId(),
+                c.getSettings().getId(), c.getJourney().getId(), c.getBusinessToCustomerSettings().getId() };
     }
 
     private void assertContentTreeGone(Object[] tree) {
@@ -263,6 +272,8 @@ class ProductDeletionTest extends AbstractMySqlIntegrationTest {
         assertNull(em.find(Responsibility.class, tree[2]));
         assertNull(em.find(Sustainability.class, tree[3]));
         assertNull(em.find(ProductSettings.class, tree[4]));
+        assertNull(em.find(ProductJourney.class, tree[5]));
+        assertNull(em.find(BusinessToCustomerSettings.class, tree[6]));
     }
 
     private long feedbackCount() {
