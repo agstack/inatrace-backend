@@ -15,9 +15,11 @@ import com.abelium.inatrace.db.entities.common.UserCustomerLocation;
 import com.abelium.inatrace.db.entities.common.UserCustomerProductType;
 import com.abelium.inatrace.db.entities.company.Company;
 import com.abelium.inatrace.db.entities.company.CompanyUser;
+import com.abelium.inatrace.tools.TranslateTools;
 import com.abelium.inatrace.types.CompanyStatus;
 import com.abelium.inatrace.types.CompanyUserRole;
 import com.abelium.inatrace.types.Gender;
+import com.abelium.inatrace.types.Language;
 import com.abelium.inatrace.types.UserCustomerType;
 import com.abelium.inatrace.types.UserRole;
 import com.abelium.inatrace.types.UserStatus;
@@ -28,6 +30,7 @@ import com.mapbox.geojson.FeatureCollection;
 import com.mapbox.turf.TurfMeasurement;
 import jakarta.persistence.EntityManager;
 import jakarta.servlet.http.Cookie;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -35,6 +38,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.MessageSource;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
@@ -42,11 +46,14 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -107,6 +114,7 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 	@Autowired private MockMvc mockMvc;
 	@Autowired private EntityManager em;
 	@Autowired private TokenService tokenService;
+	@Autowired private MessageSource messageSource;
 
 	@Value("${INATrace.auth.accessTokenCookieName}")
 	private String accessCookieName;
@@ -561,6 +569,28 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 		assertEquals('K', (char) zip[1], "the export should be a zip archive");
 	}
 
+
+	@Test
+	@DisplayName("Alice can export farmer data in every supported language")
+	void farmerExportIsDownloadableInEverySupportedLanguage() throws Exception {
+
+		for (Language language : Language.values()) {
+
+			MvcResult result = mockMvc.perform(get("/api/company/userCustomers/" + acmeId + "/exportFarmerData")
+							.header("language", language.name())
+							.cookie(aliceSession))
+					.andReturn();
+
+			assertEquals(200, result.getResponse().getStatus(),
+					"the farmer export failed for " + language + ": " + body(result));
+
+			assertEquals(List.of(translated("export.farmers.sheet.name", language),
+							translated("export.plots.sheet.name", language)),
+					farmerExportSheetNames(result.getResponse().getContentAsByteArray()),
+					"the farmer export did not name its sheets from the " + language + " bundle");
+		}
+	}
+
 	@Test
 	@DisplayName("Bob cannot export the farmer data of a company he does not belong to")
 	void foreignCompanyFarmerExportIsRejected() throws Exception {
@@ -769,6 +799,27 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 
 	private String body(MvcResult result) throws Exception {
 		return result.getResponse().getContentAsString();
+	}
+
+	private String translated(String key, Language language) {
+		return TranslateTools.getTranslatedValue(messageSource, key, language);
+	}
+
+	private List<String> farmerExportSheetNames(byte[] zip) throws Exception {
+		try (ZipInputStream entries = new ZipInputStream(new ByteArrayInputStream(zip))) {
+			for (ZipEntry entry = entries.getNextEntry(); entry != null; entry = entries.getNextEntry()) {
+				if ("farmers.xlsx".equals(entry.getName())) {
+					try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(entries.readAllBytes()))) {
+						List<String> names = new ArrayList<>();
+						for (int i = 0; i < workbook.getNumberOfSheets(); i++) {
+							names.add(workbook.getSheetName(i));
+						}
+						return names;
+					}
+				}
+			}
+		}
+		throw new AssertionError("farmers.xlsx is missing from the export");
 	}
 
 	/**
