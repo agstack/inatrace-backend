@@ -9,6 +9,7 @@ import com.abelium.inatrace.components.agstack.api.ApiRegisterFieldBoundaryRespo
 import com.abelium.inatrace.components.common.BaseService;
 import com.abelium.inatrace.components.common.CommonService;
 import com.abelium.inatrace.components.common.api.ApiCertification;
+import com.abelium.inatrace.components.common.api.ApiCountry;
 import com.abelium.inatrace.components.company.api.*;
 import com.abelium.inatrace.components.company.mappers.CompanyCustomerMapper;
 import com.abelium.inatrace.components.company.mappers.PlotMapper;
@@ -620,62 +621,68 @@ public class CompanyService extends BaseService {
 		farmerRow.createCell(3, CellType.STRING).setCellValue(apiUserCustomer.getName());
 		// farmersSheet.autoSizeColumn(3);
 
+		// The API accepts a farmer without an address, without a country or without a gender: one such
+		// record must not make the whole company's export fail, so missing values become empty cells.
+		ApiAddress address = apiUserCustomer.getLocation() != null && apiUserCustomer.getLocation().getAddress() != null
+				? apiUserCustomer.getLocation().getAddress()
+				: new ApiAddress();
+
 		// Create village column
-		farmerRow.createCell(4, CellType.STRING).setCellValue(apiUserCustomer.getLocation().getAddress().getVillage());
+		farmerRow.createCell(4, CellType.STRING).setCellValue(address.getVillage());
 		// farmersSheet.autoSizeColumn(4);
 
 		// Create cell column
-		farmerRow.createCell(5, CellType.STRING).setCellValue(apiUserCustomer.getLocation().getAddress().getCell());
+		farmerRow.createCell(5, CellType.STRING).setCellValue(address.getCell());
 		// farmersSheet.autoSizeColumn(5);
 
 		// Create sector column
-		farmerRow.createCell(6, CellType.STRING).setCellValue(apiUserCustomer.getLocation().getAddress().getSector());
+		farmerRow.createCell(6, CellType.STRING).setCellValue(address.getSector());
 		// farmersSheet.autoSizeColumn(6);
 
 		// Create Honduras farm column
-		farmerRow.createCell(7, CellType.STRING).setCellValue(apiUserCustomer.getLocation().getAddress().getHondurasFarm());
+		farmerRow.createCell(7, CellType.STRING).setCellValue(address.getHondurasFarm());
 		// farmersSheet.autoSizeColumn(7);
 
 		// Create Honduras village column
-		farmerRow.createCell(8, CellType.STRING).setCellValue(apiUserCustomer.getLocation().getAddress().getHondurasVillage());
+		farmerRow.createCell(8, CellType.STRING).setCellValue(address.getHondurasVillage());
 		// farmersSheet.autoSizeColumn(8);
 
 		// Create Honduras municipality column
-		farmerRow.createCell(9, CellType.STRING).setCellValue(apiUserCustomer.getLocation().getAddress().getHondurasMunicipality());
+		farmerRow.createCell(9, CellType.STRING).setCellValue(address.getHondurasMunicipality());
 		// farmersSheet.autoSizeColumn(9);
 
 		// Create Honduras department column
-		farmerRow.createCell(10, CellType.STRING).setCellValue(apiUserCustomer.getLocation().getAddress().getHondurasDepartment());
+		farmerRow.createCell(10, CellType.STRING).setCellValue(address.getHondurasDepartment());
 		// farmersSheet.autoSizeColumn(10);
 
 		// Create street address column
-		farmerRow.createCell(11, CellType.STRING).setCellValue(apiUserCustomer.getLocation().getAddress().getAddress());
+		farmerRow.createCell(11, CellType.STRING).setCellValue(address.getAddress());
 		// farmersSheet.autoSizeColumn(11);
 
 		// Create city/town/village column
-		farmerRow.createCell(12, CellType.STRING).setCellValue(apiUserCustomer.getLocation().getAddress().getCity());
+		farmerRow.createCell(12, CellType.STRING).setCellValue(address.getCity());
 		// farmersSheet.autoSizeColumn(12);
 
 		// Create state/province/region column
-		farmerRow.createCell(13, CellType.STRING).setCellValue(apiUserCustomer.getLocation().getAddress().getState());
+		farmerRow.createCell(13, CellType.STRING).setCellValue(address.getState());
 		// farmersSheet.autoSizeColumn(13);
 
 		// Create ZIP/postal code column
-		farmerRow.createCell(14, CellType.STRING).setCellValue(apiUserCustomer.getLocation().getAddress().getZip());
+		farmerRow.createCell(14, CellType.STRING).setCellValue(address.getZip());
 		// farmersSheet.autoSizeColumn(14);
 
 		// Create additional address column
-		farmerRow.createCell(15, CellType.STRING).setCellValue(apiUserCustomer.getLocation().getAddress().getOtherAddress());
+		farmerRow.createCell(15, CellType.STRING).setCellValue(address.getOtherAddress());
 		// farmersSheet.autoSizeColumn(15);
 
 		// Create country column
-		farmerRow.createCell(16, CellType.STRING).setCellValue(apiUserCustomer.getLocation().getAddress().getCountry().getName());
+		farmerRow.createCell(16, CellType.STRING).setCellValue(address.getCountry() != null ? address.getCountry().getName() : null);
 		// farmersSheet.autoSizeColumn(16);
 
 		// Create gender column
-		farmerRow.createCell(17, CellType.STRING).setCellValue(TranslateTools.getTranslatedValue(
-				messageSource, "export.farmers.column.gender.value." + apiUserCustomer.getGender().toString(), Language.EN
-		));
+		farmerRow.createCell(17, CellType.STRING).setCellValue(apiUserCustomer.getGender() != null
+				? TranslateTools.getTranslatedValue(messageSource, "export.farmers.column.gender.value." + apiUserCustomer.getGender(), Language.EN)
+				: null);
 		// farmersSheet.autoSizeColumn(17);
 
 		// Create phone number column
@@ -857,10 +864,27 @@ public class CompanyService extends BaseService {
 	}
 
 	@Transactional
+	/**
+	 * A farmer or collector may have no address at all, but an address always names its country:
+	 * the response mappers and the farmer export read it. Without this check such a request failed
+	 * later, while mapping the response, with an internal error (HTTP 500).
+	 */
+	private static void requireCountryInAddress(ApiUserCustomer apiUserCustomer) throws ApiException {
+		ApiUserCustomerLocation location = apiUserCustomer.getLocation();
+		if (location == null || location.getAddress() == null) {
+			return;
+		}
+		ApiCountry country = location.getAddress().getCountry();
+		if (country == null || country.getId() == null) {
+			throw new ApiException(ApiStatus.INVALID_REQUEST, "The address needs a country");
+		}
+	}
+
 	public ApiUserCustomer addUserCustomer(Long companyId, ApiUserCustomer apiUserCustomer, CustomUserDetails user, Language language) throws ApiException {
 
 		Company company = companyQueries.fetchCompany(companyId);
 		PermissionsUtil.checkUserIfCompanyEnrolled(company.getUsers().stream().toList(), user);
+		requireCountryInAddress(apiUserCustomer);
 
 		UserCustomer userCustomer = new UserCustomer();
 		userCustomer.setCompany(company);
@@ -1017,6 +1041,7 @@ public class CompanyService extends BaseService {
 
 		UserCustomer userCustomer = fetchUserCustomer(apiUserCustomer.getId());
 		PermissionsUtil.checkUserIfCompanyEnrolled(userCustomer.getCompany().getUsers().stream().toList(), user);
+		requireCountryInAddress(apiUserCustomer);
 
 		userCustomer.setName(apiUserCustomer.getName());
 		userCustomer.setSurname(apiUserCustomer.getSurname());
