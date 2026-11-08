@@ -45,6 +45,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -652,6 +653,20 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 		em.clear();
 		assertEquals(FARMER_SURNAME, em.find(UserCustomer.class, acmeFarmerId).getSurname(),
 				"a rejected edit must not change the farmer");
+	}
+
+	@Test
+	@DisplayName("Adding and editing a farmer each run in their own transaction")
+	void farmerWritesAreTransactional() {
+
+		// These tests run inside a test transaction, so a missing @Transactional on the service would
+		// go unnoticed here and only fail in production (TransactionRequiredException on persist).
+		for (String method : List.of("addUserCustomer", "updateUserCustomer")) {
+			boolean transactional = Arrays.stream(CompanyService.class.getMethods())
+					.filter(m -> m.getName().equals(method))
+					.anyMatch(m -> m.isAnnotationPresent(jakarta.transaction.Transactional.class));
+			assertTrue(transactional, "CompanyService." + method + " must be @Transactional");
+		}
 	}
 
 	// ------------------------------------------------------------------ writes

@@ -863,7 +863,6 @@ public class CompanyService extends BaseService {
 		return FeatureCollection.fromFeatures(features).toJson().getBytes();
 	}
 
-	@Transactional
 	/**
 	 * A farmer or collector may have no address at all, but an address always names its country:
 	 * the response mappers and the farmer export read it. Without this check such a request failed
@@ -880,6 +879,7 @@ public class CompanyService extends BaseService {
 		}
 	}
 
+	@Transactional
 	public ApiUserCustomer addUserCustomer(Long companyId, ApiUserCustomer apiUserCustomer, CustomUserDetails user, Language language) throws ApiException {
 
 		Company company = companyQueries.fetchCompany(companyId);
