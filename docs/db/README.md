@@ -5,6 +5,28 @@ bootstrap and migrations exercised by `FreshInstallMigrationTest`. It includes
 tables, columns, indexes and foreign keys, without business data. It describes
 the test installation, not an existing production database.
 
+The PostgreSQL fresh-install coverage lives in
+`PostgreSqlFreshInstallTest`: it runs the Hibernate-then-Flyway bootstrap on
+PostgreSQL 18, asserts the table/index/country counts and restarts with
+`ddl-auto=validate`. A reviewed PostgreSQL schema snapshot baseline is a
+follow-up; the MySQL snapshot remains the reviewed baseline.
+
+Migrations live in `db/migrations/common` (portable), `db/migrations/mysql`
+(MySQL dynamic SQL) and `db/migrations/postgresql` (PostgreSQL-only). A fresh
+PostgreSQL installation never had the legacy objects the MySQL cleanups remove,
+so that folder only documents why no equivalent migration is needed.
+
+## PostgreSQL fresh install
+
+`PostgreSqlFreshInstallTest` starts PostgreSQL 18 with `unaccent`, runs the
+Hibernate-then-Flyway bootstrap using `db/migrations/postgresql` and
+`db/migrations/common`, asserts the expected tables, indexes and reference data,
+and restarts with `ddl-auto=validate`. It is skipped unless
+`INATRACE_TEST_DB=postgresql`.
+
+A reviewed PostgreSQL schema snapshot is a follow-up; the reviewed schema
+baseline remains `schema-snapshot.json` for MySQL.
+
 The test writes the current snapshot to `target/db/fresh-schema.json` and fails
 if it differs from the reviewed baseline. To regenerate it deliberately after
 reviewing a schema change, run:

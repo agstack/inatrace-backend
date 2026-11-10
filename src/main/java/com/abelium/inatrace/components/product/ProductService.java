@@ -28,6 +28,7 @@ import com.abelium.inatrace.types.ProductLabelStatus;
 import com.abelium.inatrace.types.RequestLogType;
 import com.abelium.inatrace.types.UserRole;
 import com.abelium.inatrace.types.MediaObject;
+import com.abelium.inatrace.tools.SearchTools;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.transaction.Transactional;
 import org.apache.commons.lang3.BooleanUtils;
@@ -73,7 +74,7 @@ public class ProductService extends BaseService {
         
         OnGoingLogicalCondition condition = Torpedo.condition();
         if (StringUtils.isNotBlank(request.name)) {
-            condition = condition.and(pProxy.getName()).like().any(request.name);
+            condition = condition.and(SearchTools.normalized(pProxy.getName())).like().any(SearchTools.normalize(request.name));
         }
         Torpedo.where(condition);
         switch (request.sortBy) {
@@ -102,7 +103,7 @@ public class ProductService extends BaseService {
         Product pProxy = Torpedo.from(Product.class);
         OnGoingLogicalCondition condition = Torpedo.condition(pProxy.getCompany().getId()).in(companyIds).or(pProxy.getId()).in(productIds);
         if (StringUtils.isNotBlank(request.name)) {
-            condition = condition.and(pProxy.getName()).like().any(request.name);
+            condition = condition.and(SearchTools.normalized(pProxy.getName())).like().any(SearchTools.normalize(request.name));
         }
         Document dProxy = Torpedo.leftJoin(pProxy.getPhoto());        
         Torpedo.where(condition);
@@ -513,7 +514,7 @@ public class ProductService extends BaseService {
 
         condition = condition.and(plbProxy.getLabel().getId()).eq(labelId);
         if (StringUtils.isNotBlank(request.number)) {
-            condition = condition.and(plbProxy.getNumber()).like().startsWith(request.number);
+            condition = condition.and(SearchTools.normalized(plbProxy.getNumber())).like().startsWith(SearchTools.normalize(request.number));
         }
         Torpedo.where(condition);
         switch (request.sortBy) {

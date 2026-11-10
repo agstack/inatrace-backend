@@ -224,7 +224,7 @@ public class SimpleQueryBuilder<T> implements Selection<T>
                     torpedoOrder[i] = Torpedo.desc(order.selector.evaluate(alias));
                 }
             }
-            Torpedo.orderBy(torpedoOrder);
+            com.abelium.inatrace.tools.QueryTools.orderByColumns(torpedoOrder);
         }
         return alias;
     }

@@ -55,6 +55,7 @@ import com.abelium.inatrace.types.Language;
 import com.abelium.inatrace.types.ProcessingActionType;
 import com.abelium.inatrace.types.ProductCompanyType;
 import com.abelium.inatrace.types.UserRole;
+import com.abelium.inatrace.tools.SearchTools;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -281,8 +282,8 @@ public class StockOrderService extends BaseService {
 
         // If LOT name is provided filter by LOT prefix or LOT name
         if (StringUtils.isNotBlank(queryRequest.internalLotName)) {
-            OnGoingLogicalCondition likeInternalLotName = Torpedo.condition(stockOrderProxy.getInternalLotNumber()).like().any(queryRequest.internalLotName);
-            OnGoingLogicalCondition likeLotPrefix = Torpedo.condition(stockOrderProxy.getLotPrefix()).like().any(queryRequest.internalLotName);
+            OnGoingLogicalCondition likeInternalLotName = Torpedo.condition(SearchTools.normalized(stockOrderProxy.getInternalLotNumber())).like().any(SearchTools.normalize(queryRequest.internalLotName));
+            OnGoingLogicalCondition likeLotPrefix = Torpedo.condition(SearchTools.normalized(stockOrderProxy.getLotPrefix())).like().any(SearchTools.normalize(queryRequest.internalLotName));
             condition = condition.and(Torpedo.condition(likeInternalLotName.or(likeLotPrefix)));
         }
 
@@ -305,8 +306,8 @@ public class StockOrderService extends BaseService {
         // Search by farmers name (query)
         if (queryRequest.producerUserCustomerName != null) {
             condition = condition.and(stockOrderProxy.getProducerUserCustomer()).isNotNull();
-            OnGoingLogicalCondition likeName = Torpedo.condition(stockOrderProxy.getProducerUserCustomer().getName()).like().any(queryRequest.producerUserCustomerName);
-            OnGoingLogicalCondition likeSurname = Torpedo.condition(stockOrderProxy.getProducerUserCustomer().getSurname()).like().any(queryRequest.producerUserCustomerName);
+            OnGoingLogicalCondition likeName = Torpedo.condition(SearchTools.normalized(stockOrderProxy.getProducerUserCustomer().getName())).like().any(SearchTools.normalize(queryRequest.producerUserCustomerName));
+            OnGoingLogicalCondition likeSurname = Torpedo.condition(SearchTools.normalized(stockOrderProxy.getProducerUserCustomer().getSurname())).like().any(SearchTools.normalize(queryRequest.producerUserCustomerName));
             condition = condition.and(Torpedo.condition(likeName.or(likeSurname)));
         }
 

@@ -52,13 +52,16 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.BeforeAll;
+import com.abelium.inatrace.support.TestVendor;
 
 /** Restores a pinned source fixture, then exercises the real current upgrade bootstrap. */
 class DatabaseUpgradeTest {
 
     private static final String SOURCE_REVISION = "fb4fecf87c97c0ae65994850446a73bceb99d201";
     private static final String FIXTURE = "db/upgrade/fb4fecf/source-fixture.sql";
-    private static final String LOCATIONS = "classpath:com/abelium/inatrace/db/migrations,classpath:/db/migrations";
+    private static final String LOCATIONS = "classpath:com/abelium/inatrace/db/migrations,classpath:/db/migrations/mysql,classpath:/db/migrations/common";
     // Review migrations and schema deltas when the target changes; see docs/stability/database-upgrade.md.
     private static final Map<String, String> TARGET_MIGRATIONS = Map.of(
             "2026.09.23.12.00", "com.abelium.inatrace.db.migrations.V2026_09_23_12_00__Drop_Legacy_OneToOne_Unique_Indexes",
@@ -93,6 +96,11 @@ class DatabaseUpgradeTest {
 
     @TempDir
     Path temporaryDirectory;
+
+    @BeforeAll
+    static void requireMySqlForMigrationTests() {
+        Assumptions.assumeTrue(TestVendor.isMySql(), "This migration test is MySQL-only");
+    }
 
     @Test
     @Timeout(300)

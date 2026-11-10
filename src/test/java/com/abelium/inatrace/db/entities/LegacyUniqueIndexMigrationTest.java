@@ -31,6 +31,9 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.BeforeAll;
+import com.abelium.inatrace.support.TestVendor;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -47,6 +50,11 @@ class LegacyUniqueIndexMigrationTest {
     @Autowired DataSource dataSource;
     @Autowired EntityManagerFactory entityManagerFactory;
     @Autowired Environment environment;
+
+    @BeforeAll
+    static void requireMySqlForMigrationTests() {
+        Assumptions.assumeTrue(TestVendor.isMySql(), "This migration test is MySQL-only");
+    }
 
     @Test
     void removesLegacyUniqueIndexAndAllowsTwoFacilitiesToShareLocation() throws Exception {

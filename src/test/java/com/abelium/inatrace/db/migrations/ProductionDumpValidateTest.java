@@ -16,11 +16,19 @@ import java.sql.DriverManager;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.BeforeAll;
+import com.abelium.inatrace.support.TestVendor;
 
 /** Opt-in validation against a local, authorized and sanitized SQL dump. */
 @EnabledIfEnvironmentVariable(named = "INATRACE_PRODUCTION_DUMP", matches = ".+")
 class ProductionDumpValidateTest {
     @TempDir Path temporaryDirectory;
+
+    @BeforeAll
+    static void requireMySqlForMigrationTests() {
+        Assumptions.assumeTrue(TestVendor.isMySql(), "This migration test is MySQL-only");
+    }
 
     @Test
     void sanitizedDumpValidatesWithoutSchemaWrites() throws Exception {

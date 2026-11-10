@@ -11,6 +11,36 @@ mvn clean install
 The version comes from the `revision` property, `dev-SNAPSHOT` by default. CI sets it
 from the release tag; to set it yourself, add `-Drevision=<version>`.
 
+## Database
+
+MySQL 8.4 is the default. New installations can use PostgreSQL instead by
+setting:
+
+```properties
+INATrace.database.vendor = postgresql
+INATrace.database.url = jdbc:postgresql://localhost:5432/inatrace
+INATrace.database.dialect = com.abelium.inatrace.configuration.CustomPostgreSQLDialect
+INATrace.database.auto-quote-keyword = true
+```
+
+The PostgreSQL database must be created with a UTF-8 (or ICU) locale and needs
+the `unaccent` extension, used by the search normalization:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS unaccent;
+```
+
+Flyway reads `db/migrations/common` on both engines, plus
+`db/migrations/mysql` or `db/migrations/postgresql`. There is no data migration
+between engines: PostgreSQL is supported for new installations only, and
+existing MySQL installations keep using the MySQL migration history.
+
+The integration suite runs on MySQL by default. To run it on PostgreSQL:
+
+```bash
+INATRACE_TEST_DB=postgresql mvn -q -DargLine=-Dapi.version=1.43 clean verify
+```
+
 ## Docker image
 
 Official images are published to `ghcr.io/agstack/inatrace-backend` by CI. See
