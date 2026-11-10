@@ -9,6 +9,9 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.core.io.ClassPathResource;
+
+import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -35,6 +38,7 @@ class ApiErrorResponseIntegrationTest extends AbstractMySqlIntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(header().string("Content-Type", MediaType.APPLICATION_JSON_VALUE))
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(content().json(fixture("login-missing-username.json"), true))
                 .andExpect(jsonPath("$.status").value("VALIDATION_ERROR"))
                 .andExpect(jsonPath("$.errorMessage").value("Invalid field(s) in request"))
                 .andExpect(jsonPath("$.validationErrorDetails.fieldErrors.username").value("must not be null"));
@@ -47,6 +51,7 @@ class ApiErrorResponseIntegrationTest extends AbstractMySqlIntegrationTest {
                         .content("{\"username\":\"unknown-user@test.invalid\",\"password\":\"correct-horse-battery\"}"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(header().string("Content-Type", MediaType.APPLICATION_JSON_VALUE))
+                .andExpect(content().json(fixture("login-invalid-credentials.json"), true))
                 .andExpect(jsonPath("$.status").value("AUTH_ERROR"))
                 .andExpect(jsonPath("$.errorMessage").value("Invalid credentials"));
     }
@@ -59,5 +64,9 @@ class ApiErrorResponseIntegrationTest extends AbstractMySqlIntegrationTest {
 
         assertEquals("", result.getResponse().getContentAsString());
         assertNull(result.getResponse().getContentType());
+    }
+
+    private String fixture(String name) throws Exception {
+        return new ClassPathResource("contract/" + name).getContentAsString(StandardCharsets.UTF_8);
     }
 }

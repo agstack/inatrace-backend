@@ -1,0 +1,1 @@
+{"status":"VALIDATION_ERROR","errorMessage":"Invalid field(s) in request","validationErrorDetails":{"fieldErrors":{"username":"must not be null"}}}
