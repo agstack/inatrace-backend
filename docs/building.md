@@ -23,7 +23,7 @@ docker build --build-arg REVISION=<version> -t inatrace-backend .
 ```
 
 The build compiles the project in a Maven container, so it needs neither Java nor Maven
-on the host. The image is based on `eclipse-temurin:17-jre` and runs as a non-root user.
+on the host. The image is based on `eclipse-temurin:25-jre` and runs as a non-root user.
 
 ### Running
 

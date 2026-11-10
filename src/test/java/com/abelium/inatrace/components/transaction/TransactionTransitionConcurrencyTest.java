@@ -874,7 +874,7 @@ class TransactionTransitionConcurrencyTest extends AbstractMySqlIntegrationTest 
 
         void afterTransactionLoad(Transaction transaction, boolean transactionActive) {
             if (transactionId == null || !transactionId.equals(transaction.getId())) return;
-            LoadObservation observation = new LoadObservation(Thread.currentThread().getId(), transaction.getStatus(),
+            LoadObservation observation = new LoadObservation(Thread.currentThread().threadId(), transaction.getStatus(),
                     readVersion(transaction), transactionActive);
             if (observations.putIfAbsent(observation.threadId(), observation) != null) return;
             arrivals.countDown();

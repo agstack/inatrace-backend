@@ -18,7 +18,7 @@
 	<description>Coffee backend services</description>
 
 	<properties>
-		<java.version>17</java.version>
+		<java.version>25</java.version>
 		<revision>dev-SNAPSHOT</revision>
 		<!-- Above the Spring Boot default (1.19.x), which cannot talk to Docker 29+. -->
 		<testcontainers.version>1.21.4</testcontainers.version>

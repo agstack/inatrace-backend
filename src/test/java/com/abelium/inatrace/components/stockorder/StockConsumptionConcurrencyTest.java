@@ -1005,7 +1005,7 @@ class StockConsumptionConcurrencyTest extends AbstractMySqlIntegrationTest {
             if (sourceId == null || !sourceId.equals(candidate.getId())) {
                 return;
             }
-            workerThreads.add(Thread.currentThread().getId());
+            workerThreads.add(Thread.currentThread().threadId());
             sourceVersions.add(entityVersion(candidate));
             arrivals.countDown();
             try {
