@@ -103,9 +103,9 @@ class ApiRouteInventoryTest extends AbstractMySqlIntegrationTest {
         assertTrue(paths.isObject(), "OpenAPI must contain a paths object");
 
         SortedSet<String> documented = new TreeSet<>();
-        paths.fields().forEachRemaining(path -> path.getValue().fieldNames().forEachRemaining(method -> {
-            if (Set.of("get", "post", "put", "patch", "delete", "head", "options", "trace").contains(method)) {
-                documented.add(method.toUpperCase(Locale.ROOT) + "\t" + path.getKey());
+        paths.properties().forEach(path -> path.getValue().properties().forEach(method -> {
+            if (Set.of("get", "post", "put", "patch", "delete", "head", "options", "trace").contains(method.getKey())) {
+                documented.add(method.getKey().toUpperCase(Locale.ROOT) + "\t" + path.getKey());
             }
         }));
 
