@@ -10,7 +10,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
+import org.springframework.http.converter.json.JacksonJsonHttpMessageConverter;
+import tools.jackson.databind.json.JsonMapper;
 import org.springframework.http.server.ServletServerHttpResponse;
 import org.springframework.stereotype.Component;
 import org.springframework.util.MimeTypeUtils;
@@ -26,7 +27,7 @@ public class SpringExceptionResponseBuilder {
     private static final MediaType TEXT_ANY = MediaType.valueOf("text/*");
     
     @Autowired
-    private MappingJackson2HttpMessageConverter springJacksonConverter;
+    private JsonMapper jsonMapper;
     
     public ResponseEntity<?> getAcceptableResponse(HttpStatus httpStatus, ApiStatus apiStatus, String message, HttpServletRequest request) {
         return getAcceptableResponse(httpStatus, new ApiError(apiStatus, message), message, request);
@@ -64,7 +65,7 @@ public class SpringExceptionResponseBuilder {
     public void writeAcceptableResponse(Object responseObj, HttpServletRequest request, HttpServletResponse response) throws IOException {
         List<MediaType> accepted = parseMediaTypes(request.getHeader(HttpHeaders.ACCEPT));
         if (anyTypeIncludes(accepted, MediaType.APPLICATION_JSON)) {
-            springJacksonConverter.write(responseObj, MediaType.APPLICATION_JSON, new ServletServerHttpResponse(response));
+            new JacksonJsonHttpMessageConverter(jsonMapper).write(responseObj, MediaType.APPLICATION_JSON, new ServletServerHttpResponse(response));
         } else {
             // TODO: correctly negotiate response content type
             MimeTypeUtils.sortBySpecificity(accepted);

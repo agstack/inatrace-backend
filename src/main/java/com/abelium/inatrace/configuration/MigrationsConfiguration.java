@@ -4,7 +4,7 @@ import com.abelium.inatrace.components.flyway.DelayedFlywayMigrationInitializer;
 import com.abelium.inatrace.components.flyway.JpaMigrationStrategy;
 import jakarta.persistence.EntityManagerFactory;
 import org.flywaydb.core.Flyway;
-import org.springframework.boot.autoconfigure.flyway.FlywayMigrationInitializer;
+import org.springframework.boot.flyway.autoconfigure.FlywayMigrationInitializer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;

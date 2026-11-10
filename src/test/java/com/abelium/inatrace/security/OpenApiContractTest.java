@@ -1,16 +1,16 @@
 package com.abelium.inatrace.security;
 
 import com.abelium.inatrace.support.AbstractMySqlIntegrationTest;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.SerializationFeature;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -88,17 +88,11 @@ class OpenApiContractTest extends AbstractMySqlIntegrationTest {
         }
 
         byte[] reviewed = reviewedBaseline(BASELINE);
-        assertTrue(Arrays.equals(reviewed, canonical), () -> {
-            try {
-                return "OpenAPI contract differs from " + BASELINE + " at "
-                        + String.join(", ", contractDifferences(objectMapper.readTree(reviewed),
-                                objectMapper.readTree(canonical)))
-                        + ". Review " + EXPORT + " and run with -Dapi.contract.update=true"
-                        + " only for an accepted contract change.";
-            } catch (IOException exception) {
-                return "OpenAPI contract differs from " + BASELINE + ". Review " + EXPORT;
-            }
-        });
+        assertTrue(Arrays.equals(reviewed, canonical), () -> "OpenAPI contract differs from " + BASELINE + " at "
+                + String.join(", ", contractDifferences(objectMapper.readTree(reviewed),
+                        objectMapper.readTree(canonical)))
+                + ". Review " + EXPORT + " and run with -Dapi.contract.update=true"
+                + " only for an accepted contract change.");
     }
 
     @Test
@@ -108,7 +102,7 @@ class OpenApiContractTest extends AbstractMySqlIntegrationTest {
                 """);
 
         JsonNode normalized = normalize(source);
-        assertEquals("alpha", normalized.path("z").fieldNames().next());
+        assertEquals("alpha", normalized.path("z").properties().iterator().next().getKey());
         assertEquals("second", normalized.path("array").get(1).asText());
         assertEquals(new String(canonicalBytes(normalized), StandardCharsets.UTF_8),
                 new String(canonicalBytes(source), StandardCharsets.UTF_8));
@@ -247,8 +241,8 @@ class OpenApiContractTest extends AbstractMySqlIntegrationTest {
         }
         if (expected.isObject()) {
             TreeSet<String> names = new TreeSet<>();
-            expected.fieldNames().forEachRemaining(names::add);
-            actual.fieldNames().forEachRemaining(names::add);
+            expected.properties().forEach(entry -> names.add(entry.getKey()));
+            actual.properties().forEach(entry -> names.add(entry.getKey()));
             for (String name : names) {
                 collectDifferences(expected.get(name), actual.get(name), path + "/" + escapePointer(name), differences);
             }
@@ -285,12 +279,12 @@ class OpenApiContractTest extends AbstractMySqlIntegrationTest {
 
     private static int openApiOperationCount(JsonNode paths) {
         int count = 0;
-        Iterator<JsonNode> entries = paths.elements();
+        Iterator<JsonNode> entries = paths.values().iterator();
         while (entries.hasNext()) {
-            Iterator<String> methods = entries.next().fieldNames();
+            Iterator<Map.Entry<String, JsonNode>> methods = entries.next().properties().iterator();
             while (methods.hasNext()) {
                 if (Set.of("get", "post", "put", "patch", "delete", "head", "options", "trace")
-                        .contains(methods.next())) {
+                        .contains(methods.next().getKey())) {
                     count++;
                 }
             }
@@ -305,8 +299,8 @@ class OpenApiContractTest extends AbstractMySqlIntegrationTest {
     }
 
     private byte[] canonicalBytes(JsonNode document) throws IOException {
-        ObjectMapper canonicalMapper = objectMapper.copy()
-                .enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
+        ObjectMapper canonicalMapper = objectMapper.rebuild()
+                .enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS).build();
         String json = canonicalMapper.writerWithDefaultPrettyPrinter()
                 .writeValueAsString(normalizeOpenApi(document));
         return (json.replace("\r\n", "\n").replace('\r', '\n').stripTrailing() + "\n")

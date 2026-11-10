@@ -27,7 +27,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.support.EncodedResource;
 import org.springframework.jdbc.datasource.init.ScriptUtils;
-import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.mysql.MySQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 import javax.sql.DataSource;
@@ -98,7 +98,7 @@ class DatabaseUpgradeTest {
     @Timeout(300)
     void upgradesPinnedHistoricalDatabaseWithoutLosingSyntheticData() throws Exception {
         Manifest manifest = readManifest();
-        try (MySQLContainer<?> mysql = new MySQLContainer<>(DockerImageName.parse(manifest.mysqlImage() + "@" + manifest.mysqlDigest())
+        try (MySQLContainer mysql = new MySQLContainer(DockerImageName.parse(manifest.mysqlImage() + "@" + manifest.mysqlDigest())
                 .asCompatibleSubstituteFor("mysql"))
                 .withUrlParam("allowPublicKeyRetrieval", "true")
                 .withUrlParam("useSSL", "false")
@@ -154,7 +154,7 @@ class DatabaseUpgradeTest {
         }
     }
 
-    private ConfigurableApplicationContext start(MySQLContainer<?> mysql, String ddlMode) {
+    private ConfigurableApplicationContext start(MySQLContainer mysql, String ddlMode) {
         return new SpringApplicationBuilder(INATraceBackendApplication.class).run(
                 "--spring.config.location=classpath:/application-test.properties", "--spring.profiles.active=test",
                 "--server.port=0", "--spring.datasource.url=" + mysql.getJdbcUrl(),
@@ -166,7 +166,7 @@ class DatabaseUpgradeTest {
                 "--INATrace.documents.root=" + temporaryDirectory.resolve("documents"));
     }
 
-    private void restoreSourceFixture(MySQLContainer<?> mysql) throws Exception {
+    private void restoreSourceFixture(MySQLContainer mysql) throws Exception {
         try (Connection connection = connection(mysql); Statement statement = connection.createStatement()) {
             statement.execute("SET NAMES utf8mb4");
             statement.execute("SET SESSION time_zone = '+00:00'");
@@ -188,7 +188,7 @@ class DatabaseUpgradeTest {
         }
     }
 
-    private Connection connection(MySQLContainer<?> mysql) throws Exception {
+    private Connection connection(MySQLContainer mysql) throws Exception {
         return DriverManager.getConnection(mysql.getJdbcUrl(), mysql.getUsername(), mysql.getPassword());
     }
 
@@ -492,6 +492,16 @@ class DatabaseUpgradeTest {
         for (JoinColumn join : LEGACY_ONE_TO_ONE_COLUMNS) {
             expected.add(join.table() + "|IDX_SHARED_" + join.column() + "|1|BTREE|" + join.column());
         }
+        // Hibernate 7.4 names generated unique indexes IDX... instead of UK.... On an
+        // existing database it adds the new index beside the legacy constraint, so the
+        // upgrade path keeps both until a dedicated cleanup migration removes the old one.
+        expected.add("CompanyTranslation|IDXhg3olp2ynrkn4htdvmn7va2qs|0|BTREE|company_id,language");
+        expected.add("CompanyValueChain|IDXbbly17yyupinf6ryi9o4vjnta|0|BTREE|valueChain_id,company_id");
+        expected.add("User|IDXe6gkqunxajvyxl5uctpl2vl2p|0|BTREE|email");
+        expected.add("ValueChainFacilityType|IDXp4nh3wfjqp8grrrny232u2jkc|0|BTREE|valueChain_id,facilityType_id");
+        expected.add("ValueChainMeasureUnitType|IDXbkw7lhamgim4k6ef78x7nh50q|0|BTREE|valueChain_id,measureUnitType_id");
+        expected.add("ValueChainProcEvidenceType|IDX6odw4g6gvmlt1xvbjqyf0bh51|0|BTREE|valueChain_id,processingEvidenceType_id");
+        expected.add("ValueChainSemiProduct|IDXlsuycp13s1d417cikemfdp0b7|0|BTREE|valueChain_id,semiProduct_id");
         return expected;
     }
 

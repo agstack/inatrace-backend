@@ -25,7 +25,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
-import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.mysql.MySQLContainer;
 
 import javax.sql.DataSource;
 import java.io.BufferedReader;
@@ -83,7 +83,7 @@ class FreshInstallMigrationTest {
         Map<String, String> expectedCountries = countriesFromCsv(countries);
         assertFalse(expectedCountries.isEmpty());
 
-        try (MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.4.11")
+        try (MySQLContainer mysql = new MySQLContainer("mysql:8.4.11")
                 .withUrlParam("allowPublicKeyRetrieval", "true")
                 .withUrlParam("useSSL", "false")
                 .withTmpFs(Map.of("/var/lib/mysql", "rw"))) {
@@ -180,7 +180,7 @@ class FreshInstallMigrationTest {
         }
     }
 
-    private ConfigurableApplicationContext start(MySQLContainer<?> mysql, String ddlMode) {
+    private ConfigurableApplicationContext start(MySQLContainer mysql, String ddlMode) {
         return new SpringApplicationBuilder(INATraceBackendApplication.class).run(
                 "--spring.config.location=classpath:/application-test.properties",
                 "--spring.profiles.active=test",

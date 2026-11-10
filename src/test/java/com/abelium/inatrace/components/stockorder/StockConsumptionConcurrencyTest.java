@@ -41,8 +41,9 @@ import org.junit.jupiter.api.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.SpyBean;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.boot.resttestclient.TestRestTemplate;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -84,6 +85,7 @@ import static org.mockito.Mockito.doAnswer;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
 @Timeout(value = 90, unit = TimeUnit.SECONDS)
+@AutoConfigureTestRestTemplate
 class StockConsumptionConcurrencyTest extends AbstractMySqlIntegrationTest {
 
     private static final BigDecimal ONE_HUNDRED = new BigDecimal("100.00");
@@ -95,7 +97,7 @@ class StockConsumptionConcurrencyTest extends AbstractMySqlIntegrationTest {
     @Autowired private TokenService tokenService;
     @PersistenceContext private EntityManager em;
 
-    @SpyBean private StockOrderService stockOrderService;
+    @MockitoSpyBean private StockOrderService stockOrderService;
 
     @Value("${INATrace.auth.accessTokenCookieName}")
     private String accessCookieName;
