@@ -17,6 +17,7 @@ import jakarta.transaction.Transactional;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.torpedoquery.jakarta.jpa.Torpedo;
+import java.util.List;
 
 /**
  * Service for facility type entity.
@@ -26,6 +27,15 @@ import org.torpedoquery.jakarta.jpa.Torpedo;
 @Lazy
 @Service
 public class FacilityTypeService extends BaseService {
+
+	/**
+	 * Every entity attribute that references this entry (the foreign keys to its table, except its
+	 * translations). A delete is refused while any of them does; CodebookDeletionTest checks this
+	 * list against the database schema.
+	 */
+	public static final List<String> IN_USE_REFERENCES = List.of(
+			"Facility.facilityType",
+			"ValueChainFacilityType.facilityType");
 
 	public ApiPaginatedList<ApiFacilityType> getFacilityTypeList(ApiPaginatedRequest request) {
 
@@ -83,11 +93,15 @@ public class FacilityTypeService extends BaseService {
 		return new ApiBaseEntity(entity);
 	}
 
-	@Transactional
+	// The in-use answer may come after the flush (Queries.removeUnreferenced): roll back the whole delete then.
+	@Transactional(rollbackOn = ApiException.class)
 	public void deleteFacilityType(Long id) throws ApiException {
 
 		FacilityType facilityType = fetchFacilityType(id);
-		em.remove(facilityType);
+		if (Queries.isReferenced(em, id, IN_USE_REFERENCES)) {
+			throw new ApiException(ApiStatus.VALIDATION_ERROR, "Cannot delete a facility type that is in use");
+		}
+		Queries.removeUnreferenced(em, facilityType, "Cannot delete a facility type that is in use");
 	}
 
 	public FacilityType fetchFacilityType(Long id) throws ApiException {

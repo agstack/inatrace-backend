@@ -6,6 +6,7 @@ import com.abelium.inatrace.components.common.BaseService;
 import com.abelium.inatrace.components.product.api.ApiProductType;
 import com.abelium.inatrace.db.entities.codebook.ProductType;
 import com.abelium.inatrace.db.entities.codebook.ProductTypeTranslation;
+import com.abelium.inatrace.tools.Queries;
 import com.abelium.inatrace.types.Language;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
@@ -17,6 +18,17 @@ import java.util.stream.Collectors;
 @Lazy
 @Service
 public class ProductTypeService extends BaseService {
+
+    /**
+     * Every entity attribute that references this entry (the foreign keys to its table, except its
+     * translations). A delete is refused while any of them does; CodebookDeletionTest checks this
+     * list against the database schema.
+     */
+    public static final List<String> IN_USE_REFERENCES = List.of(
+            "ValueChain.productType",
+            "FarmPlantInformation.productType",
+            "UserCustomerProductType.productType",
+            "Plot.crop");
 
     private static final String PRODUCT_TYPE_DOES_NOT_EXIST = "Product type does not exist!";
 
@@ -134,7 +146,8 @@ public class ProductTypeService extends BaseService {
         return new ApiResponse<>(new ApiBaseEntity(productType));
     }
 
-    @Transactional
+    // The in-use answer may come after the flush (Queries.removeUnreferenced): roll back the whole delete then.
+    @Transactional(rollbackOn = ApiException.class)
     public ApiDefaultResponse deleteProductType(Long id) throws ApiException {
 
         if (id == null) {
@@ -147,7 +160,11 @@ public class ProductTypeService extends BaseService {
             throw new ApiException(ApiStatus.NOT_FOUND, PRODUCT_TYPE_DOES_NOT_EXIST);
         }
 
-        em.remove(productType);
+        if (Queries.isReferenced(em, id, IN_USE_REFERENCES)) {
+            throw new ApiException(ApiStatus.VALIDATION_ERROR, "Cannot delete a product type that is in use");
+        }
+
+        Queries.removeUnreferenced(em, productType, "Cannot delete a product type that is in use");
 
         return new ApiDefaultResponse();
     }

@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.torpedoquery.jakarta.jpa.Torpedo;
 
 import java.util.Objects;
+import java.util.List;
 
 /**
  * Service for measure unit type entity.
@@ -28,6 +29,19 @@ import java.util.Objects;
 @Lazy
 @Service
 public class MeasureUnitTypeService extends BaseService {
+
+	/**
+	 * Every entity attribute that references this entry (the foreign keys to its table, except its
+	 * translations). A delete is refused while any of them does; CodebookDeletionTest checks this
+	 * list against the database schema.
+	 */
+	public static final List<String> IN_USE_REFERENCES = List.of(
+			"MeasureUnitType.underlyingMeasurementUnitType",
+			"SemiProduct.measurementUnitType",
+			"FinalProduct.measurementUnitType",
+			"ValueChainMeasureUnitType.measureUnitType",
+			"StockOrder.measurementUnitType",
+			"Transaction.inputMeasureUnitType");
 
 	public ApiPaginatedList<ApiMeasureUnitType> getMeasureUnitTypeList(ApiPaginatedRequest request) {
 
@@ -100,11 +114,15 @@ public class MeasureUnitTypeService extends BaseService {
 		return new ApiBaseEntity(entity);
 	}
 
-	@Transactional
+	// The in-use answer may come after the flush (Queries.removeUnreferenced): roll back the whole delete then.
+	@Transactional(rollbackOn = ApiException.class)
 	public void deleteMeasureUnitType(Long id) throws ApiException {
 
 		MeasureUnitType measureUnitType = fetchMeasureUnitType(id);
-		em.remove(measureUnitType);
+		if (Queries.isReferenced(em, id, IN_USE_REFERENCES)) {
+			throw new ApiException(ApiStatus.VALIDATION_ERROR, "Cannot delete a measure unit type that is in use");
+		}
+		Queries.removeUnreferenced(em, measureUnitType, "Cannot delete a measure unit type that is in use");
 	}
 
 	public MeasureUnitType fetchMeasureUnitType(Long id) throws ApiException {

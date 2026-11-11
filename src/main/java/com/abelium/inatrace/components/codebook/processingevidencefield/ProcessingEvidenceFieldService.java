@@ -32,6 +32,16 @@ import java.util.stream.Collectors;
 @Service
 public class ProcessingEvidenceFieldService extends BaseService {
 
+	/**
+	 * Every entity attribute that references this entry (the foreign keys to its table, except its
+	 * translations). A delete is refused while any of them does; CodebookDeletionTest checks this
+	 * list against the database schema.
+	 */
+	public static final List<String> IN_USE_REFERENCES = List.of(
+			"ValueChainProcessingEvidenceField.processingEvidenceField",
+			"ProcessingActionPEF.processingEvidenceField",
+			"StockOrderPEFieldValue.processingEvidenceField");
+
 	public ApiPaginatedList<ApiProcessingEvidenceField> getProcessingEvidenceFieldList(ApiPaginatedRequest request, Language language) {
 
 		return PaginationTools.createPaginatedResponse(em, request, () -> processingEvidenceFieldQueryObject(request), processingEvidenceField -> ProcessingEvidenceFieldMapper.toApiProcessingEvidenceFieldDetails(processingEvidenceField, language));
@@ -105,11 +115,15 @@ public class ProcessingEvidenceFieldService extends BaseService {
 		return new ApiBaseEntity(entity);
 	}
 
-	@Transactional
+	// The in-use answer may come after the flush (Queries.removeUnreferenced): roll back the whole delete then.
+	@Transactional(rollbackOn = ApiException.class)
 	public void deleteProcessingEvidenceField(Long id) throws ApiException {
 
 		ProcessingEvidenceField processingEvidenceField = fetchProcessingEvidenceField(id);
-		em.remove(processingEvidenceField);
+		if (Queries.isReferenced(em, id, IN_USE_REFERENCES)) {
+			throw new ApiException(ApiStatus.VALIDATION_ERROR, "Cannot delete a processing evidence field that is in use");
+		}
+		Queries.removeUnreferenced(em, processingEvidenceField, "Cannot delete a processing evidence field that is in use");
 	}
 
 	public ProcessingEvidenceField fetchProcessingEvidenceField(Long id) throws ApiException {
