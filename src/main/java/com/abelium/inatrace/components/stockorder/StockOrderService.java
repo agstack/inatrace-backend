@@ -66,6 +66,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.util.WorkbookUtil;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -1894,9 +1895,9 @@ public class StockOrderService extends BaseService {
             dateCellStyle.setDataFormat((short) 14);
 
             // Create Excel sheet
-            XSSFSheet sheet = workbook.createSheet(TranslateTools.getTranslatedValue(
+            XSSFSheet sheet = workbook.createSheet(WorkbookUtil.createSafeSheetName(TranslateTools.getTranslatedValue(
                     messageSource, "export.deliveries.sheet.name", language
-            ));
+            )));
 
             // Prepare the header
             Row headerRow = sheet.createRow(0);

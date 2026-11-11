@@ -39,6 +39,7 @@ import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVPrinter;
 import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.util.WorkbookUtil;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -685,8 +686,8 @@ public class DashboardService extends BaseService {
 
         ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
         try (XSSFWorkbook workbook = new XSSFWorkbook()) {
-            XSSFSheet sheet = workbook.createSheet(
-                    TranslateTools.getTranslatedValue(messageSource, "export.dashboard.sheet.name.deliveries", language));
+            XSSFSheet sheet = workbook.createSheet(WorkbookUtil.createSafeSheetName(
+                    TranslateTools.getTranslatedValue(messageSource, "export.dashboard.sheet.name.deliveries", language)));
 
             // generate header
             Row headerRow = sheet.createRow(0);
@@ -847,9 +848,9 @@ public class DashboardService extends BaseService {
 
         ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
         try (XSSFWorkbook workbook = new XSSFWorkbook()) {
-            XSSFSheet sheet = workbook.createSheet(
+            XSSFSheet sheet = workbook.createSheet(WorkbookUtil.createSafeSheetName(
                     TranslateTools.getTranslatedValue(messageSource, "export.dashboard.sheet.name.processingPerformance",
-                            language));
+                            language)));
 
             // generate header
             Row headerRow = sheet.createRow(0);

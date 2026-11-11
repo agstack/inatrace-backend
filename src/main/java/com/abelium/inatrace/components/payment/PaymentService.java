@@ -30,6 +30,7 @@ import jakarta.transaction.Transactional;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.util.WorkbookUtil;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -127,9 +128,9 @@ public class PaymentService extends BaseService {
 			dateCellStyle.setDataFormat((short) 14);
 
 			// Create Excel sheet
-			XSSFSheet sheet = workbook.createSheet(TranslateTools.getTranslatedValue(
+			XSSFSheet sheet = workbook.createSheet(WorkbookUtil.createSafeSheetName(TranslateTools.getTranslatedValue(
 					messageSource, "export.payments.sheet.name", language
-			));
+			)));
 
 			// Prepare the header
 			Row headerRow = sheet.createRow(0);
@@ -302,9 +303,9 @@ public class PaymentService extends BaseService {
 		try (XSSFWorkbook workbook = new XSSFWorkbook()) {
 
 			// Create Excel sheet
-			XSSFSheet sheet = workbook.createSheet(TranslateTools.getTranslatedValue(
+			XSSFSheet sheet = workbook.createSheet(WorkbookUtil.createSafeSheetName(TranslateTools.getTranslatedValue(
 					messageSource, "export.bulkPayments.sheet.name", language
-			));
+			)));
 
 			// Prepare the header
 			Row headerRow = sheet.createRow(0);

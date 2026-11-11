@@ -44,6 +44,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.util.WorkbookUtil;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -440,8 +441,10 @@ public class CompanyService extends BaseService {
 			dateCellStyle.setDataFormat((short) 14);
 
 			// Create the Farmers Excel sheet and the Plots Excel sheet
-			XSSFSheet farmersSheet = workbook.createSheet(TranslateTools.getTranslatedValue(messageSource, "export.farmers.sheet.name", language));
-			XSSFSheet plotsSheet = workbook.createSheet(TranslateTools.getTranslatedValue(messageSource, "export.plots.sheet.name", language));
+			XSSFSheet farmersSheet = workbook.createSheet(WorkbookUtil.createSafeSheetName(
+					TranslateTools.getTranslatedValue(messageSource, "export.farmers.sheet.name", language)));
+			XSSFSheet plotsSheet = workbook.createSheet(WorkbookUtil.createSafeSheetName(
+					TranslateTools.getTranslatedValue(messageSource, "export.plots.sheet.name", language)));
 
 			// Prepare the headers
 			prepareFarmersSheetHeader(farmersSheet, language);
