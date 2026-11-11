@@ -35,6 +35,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.PersistenceContext;
 import jakarta.servlet.http.HttpServletRequest;
+import net.jqwik.api.Arbitraries;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.hibernate.event.service.spi.EventListenerRegistry;
 import org.hibernate.event.spi.EventType;
@@ -72,6 +73,7 @@ import java.lang.reflect.Field;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.ConcurrentHashMap;
@@ -318,6 +320,50 @@ class TransactionTransitionConcurrencyTest extends AbstractMySqlIntegrationTest 
         assertFalse(deletedPendingState.targetPresent());
 
         assertBadRequest(approve(approved), "Only PENDING transactions can be approved.");
+    }
+
+    @Test
+    @DisplayName("generated approval and rejection sequences preserve quantities and transitions")
+    void generatedTransitionsPreserveReservationsAndRestoreThemOnce() {
+        Random random = new Random(982027L);
+        var quantities = Arbitraries.integers().between(1, 900).generator(100);
+        var approvalChoice = Arbitraries.of(true, false).generator(100);
+        int approvedCount = 0;
+        int rejectedCount = 0;
+        for (int sample = 0; sample < 10; sample++) {
+            BigDecimal quantity = BigDecimal.valueOf(quantities.next(random).value(), 2);
+            Fixture fixture = seedFixture(quantity, quantity);
+            assertDecimal(TEN.subtract(quantity), state(fixture).sourceAvailable());
+            if (approvalChoice.next(random).value()) {
+                approvedCount++;
+                assertSuccess(approve(fixture));
+                State approved = state(fixture);
+                assertEquals(TransactionStatus.EXECUTED, approved.status());
+                assertDecimal(TEN.subtract(quantity), approved.sourceAvailable());
+                assertDecimal(quantity, approved.targetAvailable());
+                assertBadRequest(approve(fixture), "Only PENDING transactions can be approved.");
+                State afterRefusal = state(fixture);
+                assertDecimal(approved.sourceAvailable(), afterRefusal.sourceAvailable());
+                assertDecimal(approved.targetAvailable(), afterRefusal.targetAvailable());
+                continue;
+            }
+            rejectedCount++;
+            assertSuccess(reject(fixture, "generated rejection"));
+            State rejected = state(fixture);
+            assertEquals(TransactionStatus.CANCELED, rejected.status());
+            assertDecimal(TEN, rejected.sourceAvailable());
+            assertDecimal(BigDecimal.ZERO, rejected.targetAvailable());
+            assertBadRequest(reject(fixture, "repeat"), "Only PENDING transactions can be rejected.");
+            assertDecimal(TEN, state(fixture).sourceAvailable());
+            assertSuccess(delete(fixture));
+            State deleted = state(fixture);
+            assertDecimal(TEN, deleted.sourceAvailable());
+            assertFalse(deleted.processingOrderPresent());
+            assertFalse(deleted.transactionPresent());
+            assertFalse(deleted.targetPresent());
+        }
+        assertTrue(approvedCount > 0, "the replayable sample must cover approvals");
+        assertTrue(rejectedCount > 0, "the replayable sample must cover rejections");
     }
 
     @Test
