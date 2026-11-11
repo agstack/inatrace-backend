@@ -2,9 +2,13 @@ package com.abelium.inatrace.tools;
 
 import com.abelium.inatrace.tools.queries.AliasCondition;
 import com.abelium.inatrace.tools.queries.SimpleQueryBuilder;
+import com.abelium.inatrace.api.ApiStatus;
+import com.abelium.inatrace.api.errors.ApiException;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceException;
 import org.torpedoquery.jakarta.jpa.OnGoingLogicalCondition;
 import org.torpedoquery.jakarta.jpa.Torpedo;
+import java.sql.SQLIntegrityConstraintViolationException;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -19,7 +23,7 @@ public class Queries
      * foreign key at commit, as a generic error, so delete operations check this first and answer
      * a client error. The attributes are constants in the calling code, never user input.
      */
-    public static boolean isReferenced(EntityManager em, Long id, String... entityAttributes) {
+    public static boolean isReferenced(EntityManager em, Long id, List<String> entityAttributes) {
         for (String entityAttribute : entityAttributes) {
             int dot = entityAttribute.indexOf('.');
             Long references = em.createQuery("SELECT COUNT(e) FROM " + entityAttribute.substring(0, dot)
@@ -27,6 +31,34 @@ public class Queries
                     .setParameter("id", id)
                     .getSingleResult();
             if (references > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Removes an entry that {@link #isReferenced} found unused and flushes at once, so that a
+     * reference created meanwhile by a concurrent request fails here, on the foreign key, and is
+     * answered with the same client error instead of failing at commit as a generic one. The caller's
+     * transaction must roll back on {@link ApiException}.
+     */
+    public static void removeUnreferenced(EntityManager em, Object entity, String inUseMessage) throws ApiException {
+        em.remove(entity);
+        try {
+            em.flush();
+        } catch (PersistenceException e) {
+            if (isIntegrityViolation(e)) {
+                throw new ApiException(ApiStatus.VALIDATION_ERROR, inUseMessage);
+            }
+            throw e;
+        }
+    }
+
+    private static boolean isIntegrityViolation(Throwable error) {
+        for (Throwable cause = error; cause != null; cause = cause.getCause()) {
+            if (cause instanceof org.hibernate.exception.ConstraintViolationException
+                    || cause instanceof SQLIntegrityConstraintViolationException) {
                 return true;
             }
         }

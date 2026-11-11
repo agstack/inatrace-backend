@@ -36,6 +36,19 @@ import java.util.stream.Collectors;
 @Service
 public class SemiProductService extends BaseService {
 
+	/**
+	 * Every entity attribute that references this entry (the foreign keys to its table, except its
+	 * translations). A delete is refused while any of them does; CodebookDeletionTest checks this
+	 * list against the database schema.
+	 */
+	public static final List<String> IN_USE_REFERENCES = List.of(
+			"ValueChainSemiProduct.semiProduct",
+			"FacilitySemiProduct.semiProduct",
+			"ProcessingAction.inputSemiProduct",
+			"ProcessingActionOutputSemiProduct.outputSemiProduct",
+			"StockOrder.semiProduct",
+			"Transaction.semiProduct");
+
 	private final MeasureUnitTypeService measureUnitTypeService;
 
 	@Autowired
@@ -140,20 +153,15 @@ public class SemiProductService extends BaseService {
 		return new ApiBaseEntity(semiProduct);
 	}
 
-	@Transactional
+	// The in-use answer may come after the flush (Queries.removeUnreferenced): roll back the whole delete then.
+	@Transactional(rollbackOn = ApiException.class)
 	public void deleteSemiProduct(Long id) throws ApiException {
 
 		SemiProduct semiProduct = fetchSemiProduct(id);
-		if (Queries.isReferenced(em, id,
-				"ValueChainSemiProduct.semiProduct",
-				"FacilitySemiProduct.semiProduct",
-				"ProcessingAction.inputSemiProduct",
-				"ProcessingActionOutputSemiProduct.outputSemiProduct",
-				"StockOrder.semiProduct",
-				"Transaction.semiProduct")) {
+		if (Queries.isReferenced(em, id, IN_USE_REFERENCES)) {
 			throw new ApiException(ApiStatus.VALIDATION_ERROR, "Cannot delete a semi-product that is in use");
 		}
-		em.remove(semiProduct);
+		Queries.removeUnreferenced(em, semiProduct, "Cannot delete a semi-product that is in use");
 	}
 
 	public SemiProduct fetchSemiProduct(Long id) throws ApiException {

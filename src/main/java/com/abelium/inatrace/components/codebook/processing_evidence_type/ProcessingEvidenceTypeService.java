@@ -32,6 +32,16 @@ import java.util.stream.Collectors;
 @Service
 public class ProcessingEvidenceTypeService extends BaseService {
 
+	/**
+	 * Every entity attribute that references this entry (the foreign keys to its table, except its
+	 * translations). A delete is refused while any of them does; CodebookDeletionTest checks this
+	 * list against the database schema.
+	 */
+	public static final List<String> IN_USE_REFERENCES = List.of(
+			"ValueChainProcEvidenceType.processingEvidenceType",
+			"ProcessingActionPET.processingEvidenceType",
+			"StockOrderPETypeValue.processingEvidenceType");
+
 	public ApiPaginatedList<ApiProcessingEvidenceType> getProcEvidenceTypeList(ApiPaginatedRequest request, Language language) {
 
 		return PaginationTools.createPaginatedResponse(em, request, () -> procEvidenceTypeQueryObject(request),
@@ -115,17 +125,15 @@ public class ProcessingEvidenceTypeService extends BaseService {
 		return new ApiBaseEntity(entity);
 	}
 
-	@Transactional
+	// The in-use answer may come after the flush (Queries.removeUnreferenced): roll back the whole delete then.
+	@Transactional(rollbackOn = ApiException.class)
 	public void deleteProcessingEvidenceType(Long id) throws ApiException {
 
 		ProcessingEvidenceType processingEvidenceType = fetchProcessingEvidenceType(id);
-		if (Queries.isReferenced(em, id,
-				"ValueChainProcEvidenceType.processingEvidenceType",
-				"ProcessingActionPET.processingEvidenceType",
-				"StockOrderPETypeValue.processingEvidenceType")) {
+		if (Queries.isReferenced(em, id, IN_USE_REFERENCES)) {
 			throw new ApiException(ApiStatus.VALIDATION_ERROR, "Cannot delete a processing evidence type that is in use");
 		}
-		em.remove(processingEvidenceType);
+		Queries.removeUnreferenced(em, processingEvidenceType, "Cannot delete a processing evidence type that is in use");
 	}
 
 	public ProcessingEvidenceType fetchProcessingEvidenceType(Long id) throws ApiException {
