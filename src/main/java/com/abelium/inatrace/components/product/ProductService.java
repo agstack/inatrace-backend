@@ -389,7 +389,7 @@ public class ProductService extends BaseService {
 	/**
 	 * Removes a label with everything that belongs to it: its batches, consumer feedback, links to
 	 * final products, chosen company documents and its content tree (process, responsibility,
-	 * sustainability, journey, settings and origin locations).
+	 * sustainability, journey, settings, business-to-customer settings and origin locations).
 	 */
 	private void removeProductLabel(ProductLabel pl) {
 		Long labelId = pl.getId();
@@ -412,6 +412,9 @@ public class ProductService extends BaseService {
 				em.remove(content.getJourney());
 			}
 			em.remove(content.getSettings());
+			if (content.getBusinessToCustomerSettings() != null) {
+				em.remove(content.getBusinessToCustomerSettings());
+			}
 		}
 	}
     
