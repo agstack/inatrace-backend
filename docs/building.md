@@ -23,8 +23,11 @@ INATrace.database.dialect = com.abelium.inatrace.configuration.CustomPostgreSQLD
 INATrace.database.auto-quote-keyword = true
 ```
 
-The PostgreSQL database must be created with a UTF-8 (or ICU) locale and needs
-the `unaccent` extension, used by the search normalization:
+The PostgreSQL database must be created with a UTF-8 (or ICU) locale. The
+backend creates the `unaccent` extension on the first start when the database
+user is allowed to create extensions; `unaccent` is used by the search
+normalization. If the user cannot create extensions, run this once with a
+superuser before starting INATrace:
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS unaccent;

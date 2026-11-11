@@ -21,8 +21,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * PostgreSQL-only fresh install: Hibernate creates the schema, Flyway applies the
- * common and PostgreSQL migrations, and a second boot validates the result.
+ * PostgreSQL-only fresh install: the startup check creates the unaccent
+ * extension, Hibernate creates the schema, Flyway applies the common and
+ * PostgreSQL migrations, and a second boot validates the result.
  */
 class PostgreSqlFreshInstallTest {
 
@@ -41,8 +42,7 @@ class PostgreSqlFreshInstallTest {
         assertTrue(Files.isRegularFile(importDirectory.resolve("countries.csv")),
                 "The real countries.csv is required for bootstrap");
 
-        try (PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:18")
-                .withInitScript("db/postgresql/init.sql")) {
+        try (PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:18")) {
             postgres.start();
 
             try (ConfigurableApplicationContext context = start(postgres, importDirectory, "update")) {

@@ -18,11 +18,11 @@ so that folder only documents why no equivalent migration is needed.
 
 ## PostgreSQL fresh install
 
-`PostgreSqlFreshInstallTest` starts PostgreSQL 18 with `unaccent`, runs the
-Hibernate-then-Flyway bootstrap using `db/migrations/postgresql` and
-`db/migrations/common`, asserts the expected tables, indexes and reference data,
-and restarts with `ddl-auto=validate`. It is skipped unless
-`INATRACE_TEST_DB=postgresql`.
+`PostgreSqlFreshInstallTest` starts PostgreSQL 18 without the `unaccent`
+extension, lets the startup check create it, runs the Hibernate-then-Flyway
+bootstrap using `db/migrations/postgresql` and `db/migrations/common`, asserts
+the expected tables, indexes and reference data, and restarts with
+`ddl-auto=validate`. It is skipped unless `INATRACE_TEST_DB=postgresql`.
 
 A reviewed PostgreSQL schema snapshot is a follow-up; the reviewed schema
 baseline remains `schema-snapshot.json` for MySQL.
