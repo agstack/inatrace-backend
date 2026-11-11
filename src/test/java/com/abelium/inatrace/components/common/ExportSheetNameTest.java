@@ -81,7 +81,7 @@ class ExportSheetNameTest {
 		for (String invalid : List.of("a*b", "a:b", "a/b", "a\\b", "a?b", "a[b", "a]b", "", "a".repeat(32))) {
 			assertTrue(throwsFor(invalid), "POI should reject \"" + invalid + "\" as a sheet name");
 		}
-		for (String valid : List.of("Farmers", "Landwirtinnen", "Grundstücke", "Ibyazanywe|Ibyatanzwe")) {
+		for (String valid : List.of("Farmers", "Landwirt_innen", "Grundstücke", "Ibyazanywe|Ibyatanzwe")) {
 			assertFalse(throwsFor(valid), "POI should accept \"" + valid + "\" as a sheet name");
 		}
 	}
