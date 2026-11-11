@@ -21,6 +21,8 @@ import com.abelium.inatrace.types.Gender;
 import com.abelium.inatrace.types.UserCustomerType;
 import com.abelium.inatrace.types.UserRole;
 import com.abelium.inatrace.types.UserStatus;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.mapbox.geojson.Feature;
 import com.mapbox.geojson.FeatureCollection;
 import com.mapbox.turf.TurfMeasurement;
@@ -43,6 +45,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -116,6 +119,7 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 	private Long acmePlotId;
 	private Long acmeSecondFarmerPlotId;
 	private Long coffeeProductTypeId;
+	private Long rwandaId;
 
 	private Cookie aliceSession;
 	private Cookie bobSession;
@@ -168,6 +172,7 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 		acmePlotId = acmePlot.getId();
 		acmeSecondFarmerPlotId = acmeSecondPlot.getId();
 		coffeeProductTypeId = coffee.getId();
+		rwandaId = rwanda.getId();
 
 		aliceSession = sessionCookie(alice);
 		bobSession = sessionCookie(bob);
@@ -560,6 +565,110 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 				"a zip of another tenant's farmer register was downloaded");
 	}
 
+	// ------------------------------------------------------------------ incomplete records
+
+	@Test
+	@DisplayName("A farmer without an address or a gender, which the API accepts, does not break the farmer export")
+	void farmerWithoutAddressOrGenderDoesNotBreakTheExport() throws Exception {
+
+		MvcResult added = mockMvc.perform(post("/api/company/userCustomers/add/" + acmeId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"type\":\"FARMER\",\"name\":\"Bare\",\"surname\":\"Minimum\"}")
+						.cookie(aliceSession))
+				.andReturn();
+		assertEquals(200, added.getResponse().getStatus(), body(added));
+
+		assertFarmerExportIsAZip("one farmer without an address or a gender");
+	}
+
+	@Test
+	@DisplayName("A farmer stored without a country is still listed, readable and exportable, and can be fixed")
+	void farmerStoredWithoutCountryIsReadableExportableAndFixable() throws Exception {
+
+		UserCustomer stored = farmer(em.find(Company.class, acmeId), "Old", "Countryless", null,
+				em.find(ProductType.class, coffeeProductTypeId));
+		em.flush();
+		em.clear();
+		Long storedId = stored.getId();
+
+		MvcResult list = mockMvc.perform(get("/api/company/userCustomers/" + acmeId + "/FARMER")
+						.cookie(aliceSession))
+				.andReturn();
+		assertEquals(200, list.getResponse().getStatus(), body(list));
+		assertTrue(body(list).contains("Countryless"), "the farmer without a country should be listed");
+
+		MvcResult one = mockMvc.perform(get("/api/company/userCustomers/" + storedId)
+						.cookie(aliceSession))
+				.andReturn();
+		assertEquals(200, one.getResponse().getStatus(), body(one));
+
+		assertFarmerExportIsAZip("one farmer stored without a country");
+
+		// Fixed the way the UIs edit a farmer: the record as the API returns it, now with a country.
+		ObjectNode asReturned = (ObjectNode) new ObjectMapper().readTree(body(one)).get("data");
+		((ObjectNode) asReturned.get("location").get("address")).putObject("country").put("id", rwandaId);
+
+		MvcResult fixed = mockMvc.perform(put("/api/company/userCustomers/edit")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(asReturned.toString())
+						.cookie(aliceSession))
+				.andReturn();
+		assertEquals(200, fixed.getResponse().getStatus(), body(fixed));
+
+		em.flush();
+		em.clear();
+		assertEquals(rwandaId, em.find(UserCustomer.class, storedId).getUserCustomerLocation().getAddress().getCountry().getId(),
+				"adding the country should fix the stored record");
+	}
+
+	@Test
+	@DisplayName("An address without a country is rejected as an invalid request, not as an internal error")
+	void addressWithoutCountryIsRejectedAsInvalid() throws Exception {
+
+		long before = farmersWithSurname("Nocountry");
+
+		MvcResult added = mockMvc.perform(post("/api/company/userCustomers/add/" + acmeId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"type\":\"FARMER\",\"name\":\"Address\",\"surname\":\"Nocountry\",\"gender\":\"MALE\","
+								+ "\"location\":{\"address\":{\"city\":\"Nyabihu\"}}}")
+						.cookie(aliceSession))
+				.andReturn();
+
+		assertEquals(400, added.getResponse().getStatus(),
+				"a new farmer whose address has no country must be rejected as an invalid request: " + body(added));
+		assertTrue(body(added).contains("INVALID_REQUEST"), body(added));
+		assertEquals(before, farmersWithSurname("Nocountry"), "a rejected farmer must not be stored");
+
+		MvcResult edited = mockMvc.perform(put("/api/company/userCustomers/edit")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"id\":" + acmeFarmerId + ",\"type\":\"FARMER\",\"name\":\"" + FARMER_NAME + "\","
+								+ "\"surname\":\"Renamed\",\"location\":{\"address\":{\"city\":\"Nyabihu\"}}}")
+						.cookie(aliceSession))
+				.andReturn();
+
+		assertEquals(400, edited.getResponse().getStatus(),
+				"an edit that leaves the address without a country must be rejected as an invalid request: " + body(edited));
+
+		em.flush();
+		em.clear();
+		assertEquals(FARMER_SURNAME, em.find(UserCustomer.class, acmeFarmerId).getSurname(),
+				"a rejected edit must not change the farmer");
+	}
+
+	@Test
+	@DisplayName("Adding and editing a farmer each run in their own transaction")
+	void farmerWritesAreTransactional() {
+
+		// These tests run inside a test transaction, so a missing @Transactional on the service would
+		// go unnoticed here and only fail in production (TransactionRequiredException on persist).
+		for (String method : List.of("addUserCustomer", "updateUserCustomer")) {
+			boolean transactional = Arrays.stream(CompanyService.class.getMethods())
+					.filter(m -> m.getName().equals(method))
+					.anyMatch(m -> m.isAnnotationPresent(jakarta.transaction.Transactional.class));
+			assertTrue(transactional, "CompanyService." + method + " must be @Transactional");
+		}
+	}
+
 	// ------------------------------------------------------------------ writes
 
 	@Test
@@ -706,6 +815,23 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 	 * A farmer complete enough for the Excel export, which reads the address, the country and the
 	 * gender without checking any of them for null.
 	 */
+	private void assertFarmerExportIsAZip(String withWhat) throws Exception {
+
+		MvcResult result = mockMvc.perform(get("/api/company/userCustomers/" + acmeId + "/exportFarmerData")
+						.cookie(aliceSession))
+				.andReturn();
+
+		assertEquals(200, result.getResponse().getStatus(), "the farmer export failed with " + withWhat + ": " + body(result));
+		byte[] zip = result.getResponse().getContentAsByteArray();
+		assertTrue(zip.length > 1 && zip[0] == 'P' && zip[1] == 'K', "the export should be a zip archive");
+	}
+
+	private long farmersWithSurname(String surname) {
+		return em.createQuery("SELECT COUNT(uc) FROM UserCustomer uc WHERE uc.surname = :surname", Long.class)
+				.setParameter("surname", surname)
+				.getSingleResult();
+	}
+
 	private UserCustomer farmer(Company company, String name, String surname, Country country, ProductType crop) {
 
 		Address address = new Address();
