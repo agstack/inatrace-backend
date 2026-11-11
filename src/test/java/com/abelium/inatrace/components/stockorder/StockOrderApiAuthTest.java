@@ -948,6 +948,34 @@ class StockOrderApiAuthTest extends AbstractMySqlIntegrationTest {
     }
 
     @Test
+    void stockOrderHttpContractPreservesDatesAndEnum() throws Exception {
+        StockOrder order = em.find(StockOrder.class, orderId);
+        order.setProductionDate(LocalDate.of(2025, 8, 18));
+        em.flush();
+        MvcResult result = mockMvc.perform(get("/api/chain/stock-order/" + orderId)
+                .cookie(ownerSession)).andReturn();
+        assertEquals(200, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+        JsonNode data = objectMapper.readTree(result.getResponse().getContentAsString()).path("data");
+        assertEquals("2025-08-18", data.path("productionDate").asText());
+        assertEquals("PURCHASE_ORDER", data.path("orderType").asText());
+        assertNotNull(java.time.Instant.parse(data.path("creationTimestamp").asText()));
+    }
+
+    @Test
+    void stockOrderHttpContractOmitsNullFields() throws Exception {
+        StockOrder order = em.find(StockOrder.class, orderId);
+        order.setComments(null);
+        order.setPreferredWayOfPayment(null);
+        em.flush();
+        MvcResult result = mockMvc.perform(get("/api/chain/stock-order/" + orderId)
+                .cookie(ownerSession)).andReturn();
+        assertEquals(200, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+        JsonNode data = objectMapper.readTree(result.getResponse().getContentAsString()).path("data");
+        assertFalse(data.has("comments"), "null comments must be omitted");
+        assertFalse(data.has("preferredWayOfPayment"), "null preferredWayOfPayment must be omitted");
+    }
+
+    @Test
     void allStockListsCheckTheRequestedCompanyOrFacility() throws Exception {
         for (String path : List.of(
                 "/api/chain/stock-order/list/company/" + companyId,

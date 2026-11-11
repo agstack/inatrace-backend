@@ -105,6 +105,28 @@ class FreshInstallMigrationTest {
                 assertNoPendingMigrations(context);
                 assertReferenceData(dataSource, expectedCountries);
                 assertSelectedStructure(dataSource);
+                byte[] metadata = SchemaSnapshot.capture(dataSource);
+                assertArrayEquals(metadata, SchemaSnapshot.capture(dataSource), "Schema metadata must be deterministic");
+                SchemaSnapshot.write(Path.of("target", "db", "fresh-schema.json"), metadata);
+                Path baseline = Path.of("docs", "db", "schema-snapshot.json");
+                if (Boolean.getBoolean("schema.snapshot.update")) {
+                    SchemaSnapshot.write(baseline, metadata);
+                } else {
+                    assertTrue(Files.isRegularFile(baseline), "Missing reviewed schema snapshot: " + baseline);
+                    List<String> differences = SchemaSnapshot.differences(Files.readAllBytes(baseline), metadata);
+                    assertTrue(differences.isEmpty(), () -> "Schema changed (first 20 differences):\n"
+                            + String.join("\n", differences) + "\nReview target/db/fresh-schema.json before updating the baseline");
+                }
+                try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+                    statement.execute("CREATE TABLE schema_snapshot_negative_control (id BIGINT PRIMARY KEY)");
+                    try {
+                        assertFalse(SchemaSnapshot.differences(metadata, SchemaSnapshot.capture(dataSource)).isEmpty(),
+                                "A schema change must be detectable");
+                    } finally {
+                        statement.execute("DROP TABLE schema_snapshot_negative_control");
+                    }
+                }
+                assertArrayEquals(metadata, SchemaSnapshot.capture(dataSource), "Negative control must leave schema unchanged");
                 fixture = createFixture(context.getBean(EntityManagerFactory.class));
                 history = history(dataSource);
                 schema = schemaSnapshot(dataSource);
@@ -119,6 +141,29 @@ class FreshInstallMigrationTest {
                 assertReferenceData(dataSource, expectedCountries);
                 verifyAndUpdateFixture(context.getBean(EntityManagerFactory.class), fixture);
             }
+
+            StrictSchemaValidation.createReadOnlyUser(mysql);
+            try (ConfigurableApplicationContext context = StrictSchemaValidation.start(mysql, temporaryDirectory)) {
+                assertDdlMode(context, "validate");
+                assertFalse(context.containsBean("delayedFlywayInitializer"), "Custom migration runner must be absent");
+                assertFalse(context.containsBean("org.springframework.context.annotation.internalScheduledAnnotationProcessor"),
+                        "Scheduled background writers must be disabled");
+                assertEquals(schema, schemaSnapshot(context.getBean(DataSource.class)), "Strict validation must not change schema");
+                assertEquals(history, history(context.getBean(DataSource.class)), "Strict validation must not write migration history");
+                try (Connection readOnly = context.getBean(DataSource.class).getConnection(); Statement statement = readOnly.createStatement()) {
+                    assertThrows(java.sql.SQLException.class, () -> statement.execute("CREATE TABLE validation_must_not_write (id INT)"));
+                }
+            }
+
+            // Exercise the exact dump-import/validation path with a synthetic, disposable database.
+            var dumpResult = mysql.execInContainer("sh", "-c", "mysqldump -uroot -p\"$MYSQL_ROOT_PASSWORD\" "
+                    + "--single-transaction --skip-comments --no-tablespaces \"$MYSQL_DATABASE\" > /tmp/controlled-validation.sql");
+            assertEquals(0, dumpResult.getExitCode(), dumpResult.getStderr());
+            Path dump = temporaryDirectory.resolve("controlled-validation.sql");
+            mysql.copyFileFromContainer("/tmp/controlled-validation.sql", dump.toString());
+            ProductionDumpValidateTest validation = new ProductionDumpValidateTest();
+            validation.temporaryDirectory = temporaryDirectory;
+            validation.validateDump(dump, "mysql:8.4.11", true);
 
             try (ConfigurableApplicationContext context = start(mysql, importDirectory, "update")) {
                 assertDdlMode(context, "update");

@@ -124,6 +124,16 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 	private Cookie aliceSession;
 	private Cookie bobSession;
 
+	@Test
+	void emptyFarmerPageRetainsPaginationEnvelope() throws Exception {
+		MvcResult result = mockMvc.perform(get("/api/company/userCustomers/" + acmeId + "/FARMER")
+				.queryParam("limit", "1").queryParam("offset", "100").cookie(aliceSession)).andReturn();
+		assertEquals(200, result.getResponse().getStatus(), body(result));
+		String expected = new String(getClass().getResourceAsStream("/contract/farmers-empty-page.json").readAllBytes(),
+				StandardCharsets.UTF_8);
+		org.skyscreamer.jsonassert.JSONAssert.assertEquals(expected, body(result), true);
+	}
+
 	@BeforeEach
 	void seedTwoTenants() {
 
@@ -545,6 +555,7 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 		assertEquals(200, result.getResponse().getStatus(), body(result));
 
 		byte[] zip = result.getResponse().getContentAsByteArray();
+		assertEquals(MediaType.APPLICATION_OCTET_STREAM_VALUE, result.getResponse().getContentType());
 		assertTrue(zip.length > 0, "the export should not be empty");
 		assertEquals('P', (char) zip[0], "the export should be a zip archive");
 		assertEquals('K', (char) zip[1], "the export should be a zip archive");
