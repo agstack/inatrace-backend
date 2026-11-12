@@ -32,10 +32,14 @@ separate API-contract change.
 | Facility, measure-unit, semi-product, processing-evidence, value-chain upserts | create/edit | create; existing-record edit rejected by service | 403 | 401 | `regionalAdminsCanCreateButCannotEditExistingRestrictedCodebooks` |
 | Currency enable | allowed | allowed | 403 | 401 | `systemAdminsCanEditCodebooksAndPerformSystemOnlyStatusChanges` |
 | Currency disable | allowed | 403 | 403 | 401 | `regionalAdminsCanCreateButCannotEditExistingRestrictedCodebooks`, `ordinaryCompanyUsersCannotModifyAnyCodebookAndResponsesDoNotLeakMarkers` |
-| Value-chain enable/disable/delete | allowed | 403 | 403 | 401 | `systemAdminsCanEditCodebooksAndPerformSystemOnlyStatusChanges`, `regionalAdminsCanCreateButCannotEditExistingRestrictedCodebooks`, `ordinaryCompanyUsersCannotModifyAnyCodebookAndResponsesDoNotLeakMarkers` |
+| Value-chain enable/disable/delete | allowed | 403 | 403 | 401 | `systemAdminsCanEditCodebooksAndPerformSystemOnlyStatusChanges` (enable), `ValueChainDeletionTest` (disable/delete), `regionalAdminsCanCreateButCannotEditExistingRestrictedCodebooks`, `ordinaryCompanyUsersCannotModifyAnyCodebookAndResponsesDoNotLeakMarkers` |
 | Product-type create | allowed | allowed | 403 | 401 | `ordinaryCompanyUsersCannotModifyAnyCodebookAndResponsesDoNotLeakMarkers` |
 | Product-type update/delete | allowed | 403 | 403 | 401 | `regionalAdminsCanCreateButCannotEditExistingRestrictedCodebooks`, `ordinaryCompanyUsersCannotModifyAnyCodebookAndResponsesDoNotLeakMarkers` |
 | Other codebook deletes | allowed | 403 | 403 | 401 | `regionalAdminsCanCreateButCannotEditExistingRestrictedCodebooks`, `ordinaryCompanyUsersCannotModifyAnyCodebookAndResponsesDoNotLeakMarkers` |
+
+`ValueChainDeletionTest` also exercises the system-admin `disable` path and
+verifies that a value chain used by a company remains in place with status
+`DISABLED`, while a delete of that same in-use value chain is refused.
 
 The service-layer edit guard applies to facility types, measurement units,
 semi-products, processing-evidence types, processing-evidence fields, and
