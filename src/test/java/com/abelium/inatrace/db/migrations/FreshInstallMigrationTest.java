@@ -78,9 +78,8 @@ class FreshInstallMigrationTest {
         List<Migration> inventory = migrationInventory();
         assertInventoryMatchesResources(inventory);
 
-        Path importDirectory = Path.of("import").toAbsolutePath().normalize();
-        Path countries = importDirectory.resolve("countries.csv");
-        assertTrue(Files.isRegularFile(countries), "The real countries.csv is required for bootstrap");
+        Resource countries = new ClassPathResource("db/seed/countries.csv");
+        assertTrue(countries.exists(), "The packaged countries.csv is required for bootstrap");
         Map<String, String> expectedCountries = countriesFromCsv(countries);
         assertFalse(expectedCountries.isEmpty());
 
@@ -98,7 +97,7 @@ class FreshInstallMigrationTest {
             List<History> history;
             List<String> schema;
             Fixture fixture;
-            try (ConfigurableApplicationContext context = start(mysql, importDirectory, "update")) {
+            try (ConfigurableApplicationContext context = start(mysql, "update")) {
                 assertDdlMode(context, "update");
                 DataSource dataSource = context.getBean(DataSource.class);
                 assertHistory(dataSource, inventory);
@@ -132,7 +131,7 @@ class FreshInstallMigrationTest {
                 schema = schemaSnapshot(dataSource);
             }
 
-            try (ConfigurableApplicationContext context = start(mysql, importDirectory, "validate")) {
+            try (ConfigurableApplicationContext context = start(mysql, "validate")) {
                 assertDdlMode(context, "validate");
                 DataSource dataSource = context.getBean(DataSource.class);
                 assertEquals(history, history(dataSource), "Validation must not run additional migrations");
@@ -165,7 +164,7 @@ class FreshInstallMigrationTest {
             validation.temporaryDirectory = temporaryDirectory;
             validation.validateDump(dump, "mysql:8.4.11", true);
 
-            try (ConfigurableApplicationContext context = start(mysql, importDirectory, "update")) {
+            try (ConfigurableApplicationContext context = start(mysql, "update")) {
                 assertDdlMode(context, "update");
                 DataSource dataSource = context.getBean(DataSource.class);
                 assertEquals(history, history(dataSource), "Restart must not repeat migrations");
@@ -181,7 +180,7 @@ class FreshInstallMigrationTest {
         }
     }
 
-    private ConfigurableApplicationContext start(MySQLContainer<?> mysql, Path importDirectory, String ddlMode) {
+    private ConfigurableApplicationContext start(MySQLContainer<?> mysql, String ddlMode) {
         return new SpringApplicationBuilder(INATraceBackendApplication.class).run(
                 "--spring.config.location=classpath:/application-test.properties",
                 "--spring.profiles.active=test",
@@ -195,7 +194,6 @@ class FreshInstallMigrationTest {
                 "--spring.flyway.locations=" + LOCATIONS,
                 "--spring.flyway.fail-on-missing-locations=true",
                 "--spring.flyway.out-of-order=true",
-                "--INATrace.import.path=" + importDirectory + java.io.File.separator,
                 "--INATrace.fileStorage.root=" + temporaryDirectory.resolve("storage"),
                 "--INATrace.documents.root=" + temporaryDirectory.resolve("documents"));
     }
@@ -280,10 +278,10 @@ class FreshInstallMigrationTest {
         return rows;
     }
 
-    private Map<String, String> countriesFromCsv(Path csv) throws Exception {
+    private Map<String, String> countriesFromCsv(Resource csv) throws Exception {
         Map<String, String> countries = new LinkedHashMap<>();
         try (CSVParser parser = CSVFormat.DEFAULT.withDelimiter(',').withIgnoreSurroundingSpaces(true)
-                .withFirstRecordAsHeader().parse(Files.newBufferedReader(csv, StandardCharsets.UTF_8))) {
+                .withFirstRecordAsHeader().parse(new InputStreamReader(csv.getInputStream(), StandardCharsets.UTF_8))) {
             for (CSVRecord row : parser) {
                 assertNull(countries.put(row.get("Code"), row.get("Name")), "Duplicate country code in CSV");
             }

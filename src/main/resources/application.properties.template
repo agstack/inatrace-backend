@@ -114,9 +114,6 @@ INATrace.auth.jwtSigningKey =
 # BCrypt work factor. Keep this at 10 or higher outside of test profiles.
 INATrace.auth.bcryptStrength = 10
 
-# path to import resources (e.g. in migrations to fill tables)
-INATrace.import.path = import/
-
 # path to other documents
 INATrace.documents.root = documents/
 

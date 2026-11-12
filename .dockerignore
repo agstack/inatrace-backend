@@ -3,6 +3,5 @@
 !pom.xml
 !src
 !fonts
-!import
 # Local configuration may contain secrets; images never ship configuration.
 src/main/resources/application.properties

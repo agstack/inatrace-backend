@@ -22,10 +22,8 @@ RUN groupadd --system inatrace && useradd --system --gid inatrace --home-dir /ap
  && mkdir -p /data/storage && chown -R inatrace:inatrace /data
 WORKDIR /app
 
-# Read from the working directory at runtime: PDF fonts and the country list used to
-# seed an empty database (INATrace.import.path = import/).
+# Read the PDF fonts from the working directory at runtime.
 COPY fonts ./fonts
-COPY import ./import
 
 # One layer per Spring Boot layer, least to most frequently changed.
 COPY --from=build /extracted/dependencies/ ./
