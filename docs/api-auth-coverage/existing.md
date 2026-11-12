@@ -10,6 +10,8 @@ HTTP case was identified in the merged suites inspected here. The five
 calling an API route, so they complement this table but cannot fill an HTTP
 operation row. This first pass found **29 partial routes and 16 gaps** among
 the 45 operations; it does not change the parent issue's acceptance criteria.
+Rows are updated as later PRs close gaps, so the table shows the current
+evidence while the counts above describe that first pass only.
 
 The main issue describes these areas as covered because suites exist. This
 audit does not silently mark an entire controller covered on that basis.
@@ -41,7 +43,7 @@ sub-issue PRs remain focused.
 | `GET` | `/api/company/{id}/value-chains` | `CompanyController#getCompanyValueChains` | Companies | No HTTP case identified in the merged suites | Gap |
 | `GET` | `/api/user/admin/list` | `UserController#adminListUsers` | Auth/Users | UserAuthApiTest#plainUserCannotListAllUsers; #systemAdminCanListAllUsers | Partial |
 | `GET` | `/api/user/admin/profile/{id}` | `UserController#getProfileForAdmin` | Auth/Users | No HTTP case identified in the merged suites | Gap |
-| `GET` | `/api/user/list` | `UserController#listUsers` | Auth/Users | No HTTP case identified in the merged suites | Gap |
+| `GET` | `/api/user/list` | `UserController#listUsers` | Auth/Users | UserListApiTest#userListRejectsAnonymousRequests; #ownCompanyUserListIsScopedToSharedActiveCompanies; #userListFiltersCannotWidenTheScope | Partial |
 | `GET` | `/api/user/profile` | `UserController#getProfileForUser` | Auth/Users | UserAuthApiTest#profileRequiresAuthentication; #accessCookieOpensProfile | Partial |
 | `GET` | `/api/user/regional-admin/list` | `UserController#regionalAdminListUsers` | Auth/Users | UserAuthApiTest#plainUserCannotListRegionalUsers | Partial |
 | `POST` | `/api/company/companyCustomers` | `CompanyController#createCompanyCustomer` | Companies | No HTTP case identified in the merged suites | Gap |
