@@ -162,7 +162,6 @@ class DatabaseUpgradeTest {
                 "--spring.datasource.hikari.minimum-idle=0", "--spring.datasource.hikari.maximum-pool-size=4",
                 "--spring.jpa.hibernate.ddl-auto=" + ddlMode, "--spring.flyway.locations=" + LOCATIONS,
                 "--spring.flyway.fail-on-missing-locations=true", "--spring.flyway.out-of-order=true",
-                "--INATrace.import.path=" + Path.of("import").toAbsolutePath().normalize() + java.io.File.separator,
                 "--INATrace.fileStorage.root=" + temporaryDirectory.resolve("storage"),
                 "--INATrace.documents.root=" + temporaryDirectory.resolve("documents"));
     }
