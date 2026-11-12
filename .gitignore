@@ -157,5 +157,10 @@ $RECYCLE.BIN/
 # application.properties file
 src/main/resources/application.properties
 
+# Local environment files
+.env
+.env.*
+!.env.example
+
 # Python bytecode (release scripts)
 __pycache__/

@@ -9,6 +9,20 @@ Spring uses `application.properties` file stored in `src/main/resources` for con
 
 *NOTE*: The values defined below are applicable for a local development environment. For other environments, change the values accordingly.
 
+## Environment file
+
+Deployments that prefer environment variables can copy `.env.example` to
+`.env` and export it before starting the backend:
+
+```bash
+cp .env.example .env
+set -a; . ./.env; set +a
+```
+
+Spring Boot does not load `.env` automatically. For Docker, pass the file with
+`--env-file .env`. The `.gitignore` excludes `.env` and other `.env.*` files,
+while keeping `.env.example` tracked.
+
 The Docker image contains no configuration: mount the file at
 `/app/config/application.properties` instead. See [Building](building.md#running).
 
