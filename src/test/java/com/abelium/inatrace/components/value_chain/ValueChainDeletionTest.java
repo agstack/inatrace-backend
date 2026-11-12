@@ -32,6 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 /**
  * Deleting a value chain answers a clear error when companies, facilities, processing actions or
@@ -117,6 +118,45 @@ class ValueChainDeletionTest extends AbstractMySqlIntegrationTest {
         em.clear();
         assertNull(em.find(ValueChain.class, valueChainId));
         assertEquals(0L, em.createQuery("SELECT COUNT(v) FROM ValueChainFacilityType v WHERE v.valueChain.id = :id", Long.class)
+                .setParameter("id", valueChainId).getSingleResult());
+    }
+
+    @Test
+    void disableValueChainAsSystemAdminSetsDisabledStatus() throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/chain/value-chain/" + valueChainId + "/disable").cookie(session))
+                .andReturn();
+        assertEquals(200, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+        em.flush();
+        em.clear();
+
+        ValueChain valueChain = em.find(ValueChain.class, valueChainId);
+        assertNotNull(valueChain);
+        assertEquals(ValueChainStatus.DISABLED, valueChain.getValueChainStatus());
+    }
+
+    @Test
+    void disableKeepsValueChainUsedByACompany() throws Exception {
+        Company company = new Company();
+        company.setName("Value chain disable company");
+        company.setStatus(CompanyStatus.ACTIVE);
+        em.persist(company);
+        CompanyValueChain enrollment = new CompanyValueChain();
+        enrollment.setCompany(company);
+        enrollment.setValueChain(em.find(ValueChain.class, valueChainId));
+        em.persist(enrollment);
+        em.flush();
+        em.clear();
+
+        MvcResult result = mockMvc.perform(post("/api/chain/value-chain/" + valueChainId + "/disable").cookie(session))
+                .andReturn();
+        assertEquals(200, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+        em.flush();
+        em.clear();
+
+        ValueChain valueChain = em.find(ValueChain.class, valueChainId);
+        assertNotNull(valueChain);
+        assertEquals(ValueChainStatus.DISABLED, valueChain.getValueChainStatus());
+        assertEquals(1L, em.createQuery("SELECT COUNT(c) FROM CompanyValueChain c WHERE c.valueChain.id = :id", Long.class)
                 .setParameter("id", valueChainId).getSingleResult());
     }
 }
