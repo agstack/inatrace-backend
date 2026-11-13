@@ -999,19 +999,26 @@ public class CompanyService extends BaseService {
 		for (ApiUserCustomer apiUserCustomer : apiUserCustomers) {
 			for (ApiPlot apiPlot : apiUserCustomer.getPlots()) {
 
+				// Plots created without drawing the boundary have no coordinates and cannot be
+				// represented as GeoJSON; skip them instead of failing the whole export.
+				List<ApiPlotCoordinate> coordinates = apiPlot.getCoordinates();
+				if (coordinates == null || coordinates.isEmpty()) {
+					continue;
+				}
+
 				Feature feature;
 
 				// If less than 3 coordinates we have single Point geometry
-				if (apiPlot.getCoordinates().size() < 3) {
+				if (coordinates.size() < 3) {
 
 					Point point = Point.fromLngLat(
-							apiPlot.getCoordinates().get(0).getLongitude(),
-							apiPlot.getCoordinates().get(0).getLatitude()
+							coordinates.get(0).getLongitude(),
+							coordinates.get(0).getLatitude()
 					);
 					feature = Feature.fromGeometry(point);
 				} else {
 
-					List<Point> polygonCoordinates = apiPlot.getCoordinates()
+					List<Point> polygonCoordinates = coordinates
 							.stream()
 							.map(apiPlotCoordinate -> Point.fromLngLat(
 									apiPlotCoordinate.getLongitude(), apiPlotCoordinate.getLatitude()
@@ -1019,7 +1026,7 @@ public class CompanyService extends BaseService {
 							.collect(Collectors.toList());
 
 					// Polygon feature requires that first and last coordinate pair is the same
-					ApiPlotCoordinate firstCoordinatePair = apiPlot.getCoordinates().get(0);
+					ApiPlotCoordinate firstCoordinatePair = coordinates.get(0);
 					polygonCoordinates.add(
 							Point.fromLngLat(firstCoordinatePair.getLongitude(), firstCoordinatePair.getLatitude()));
 
