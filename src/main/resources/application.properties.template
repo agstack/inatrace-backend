@@ -168,6 +168,8 @@ INATrace.agstack.email =
 INATrace.agstack.password =
 INATrace.agstack.baseURL =
 INATrace.agstack.loginBaseURL =
+# Maximum time for each login or boundary request, in milliseconds.
+INATrace.agstack.requestTimeoutMs = 30000
 
 # FAO GeoID registry integration (read-only: resolves a GeoID to its GeoJSON boundary during
 # farmer import). Optional - leave empty to skip the lookup entirely. The public resolver,

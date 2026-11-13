@@ -13,7 +13,9 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
+import java.time.Clock;
 import java.time.Instant;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Service
 public class AgStackClientTokenManager {
@@ -28,31 +30,53 @@ public class AgStackClientTokenManager {
     @Value("${INATrace.agstack.loginBaseURL}")
     private String baseURL;
 
-    private String token;
-    private Instant lastUpdated;
+    @Value("${INATrace.agstack.requestTimeoutMs:30000}")
+    private long requestTimeoutMs = 30000;
+
+    private final AtomicReference<CachedToken> cachedToken = new AtomicReference<>();
+    private final Clock clock;
+
+    public AgStackClientTokenManager() {
+        this(Clock.systemUTC());
+    }
+
+    AgStackClientTokenManager(Clock clock) {
+        this.clock = clock;
+    }
 
     public String retrieveToken() {
-        Instant now = Instant.now();
-
-        if (shouldRefreshToken(now)) {
-            refreshToken(now);
+        Instant now = clock.instant();
+        CachedToken cached = cachedToken.get();
+        if (shouldRefreshToken(cached, now)) {
+            return refreshToken(cached, now);
         }
-        return token;
+        return cached.token();
     }
 
-    private void refreshToken(Instant instant) {
-        this.token = this.login(email, password).getAccessToken();
-        if (token != null) {
-            this.lastUpdated = instant;
-        }
+    void invalidateToken(String rejectedToken) {
+        cachedToken.updateAndGet(current -> current != null && current.token().equals(rejectedToken)
+                ? null : current);
     }
 
-    private boolean shouldRefreshToken(Instant instant) {
-        if (this.token == null || this.lastUpdated == null) {
+    private String refreshToken(CachedToken previous, Instant instant) {
+        String token = this.login(email, password).getAccessToken();
+        if (token != null && !token.isBlank()) {
+            if (!cachedToken.compareAndSet(previous, new CachedToken(token, instant))) {
+                CachedToken current = cachedToken.get();
+                return current != null ? current.token() : token;
+            }
+        }
+        return token == null || token.isBlank() ? null : token;
+    }
+
+    private boolean shouldRefreshToken(CachedToken cached, Instant instant) {
+        if (cached == null) {
             return true;
         }
-        return Duration.between(this.lastUpdated, instant).toSeconds() > TOKEN_REFRESH_SECONDS;
+        return Duration.between(cached.lastUpdated(), instant).toSeconds() > TOKEN_REFRESH_SECONDS;
     }
+
+    private record CachedToken(String token, Instant lastUpdated) {}
 
     private ApiLoginResponse login(String username, String password) {
         ApiLoginRequest apiLoginRequest = new ApiLoginRequest();
@@ -79,6 +103,7 @@ public class AgStackClientTokenManager {
                                 .bodyToMono(ApiLoginErrorResponse.class)
                                 .flatMap(error -> Mono.error(new ApiException(ApiStatus.INVALID_REQUEST, error.getMessage()))))
                 .bodyToMono(ApiLoginResponse.class)
+                .timeout(Duration.ofMillis(requestTimeoutMs))
                 .block();
     }
 }
