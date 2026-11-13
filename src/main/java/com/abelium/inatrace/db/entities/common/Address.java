@@ -4,10 +4,8 @@ import com.abelium.inatrace.api.types.Lengths;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
 import jakarta.persistence.ManyToOne;
-import jakarta.persistence.MappedSuperclass;
 
 @Embeddable
-@MappedSuperclass
 public class Address {
 	
 	/**

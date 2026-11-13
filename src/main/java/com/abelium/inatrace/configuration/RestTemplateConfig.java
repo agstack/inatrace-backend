@@ -4,6 +4,8 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.http.HttpMessageConverters;
 import org.springframework.boot.autoconfigure.web.client.RestTemplateAutoConfiguration;
+import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
+import org.springframework.boot.http.client.ClientHttpRequestFactorySettings;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.boot.web.client.RestTemplateCustomizer;
 import org.springframework.boot.web.client.RestTemplateRequestCustomizer;
@@ -19,7 +21,13 @@ public class RestTemplateConfig {
 
     @Autowired
     private RestTemplateAutoConfiguration restTemplateConfiguration;
-    
+
+    @Autowired
+    private ObjectProvider<ClientHttpRequestFactoryBuilder<?>> clientHttpRequestFactoryBuilders;
+
+    @Autowired
+    private ObjectProvider<ClientHttpRequestFactorySettings> clientHttpRequestFactorySettings;
+
     @Autowired
     private ObjectProvider<HttpMessageConverters> messageConverters;
     
@@ -33,7 +41,8 @@ public class RestTemplateConfig {
     @Bean
     public RestTemplateBuilder restTemplateBuilder() {
 
-        return restTemplateConfiguration.restTemplateBuilderConfigurer(messageConverters, restTemplateCustomizers,
+        return restTemplateConfiguration.restTemplateBuilderConfigurer(clientHttpRequestFactoryBuilders,
+                clientHttpRequestFactorySettings, messageConverters, restTemplateCustomizers,
                 restTemplateRequestCustomizers).configure(new RestTemplateBuilder()).requestFactory(
                         () -> new BufferingClientHttpRequestFactory(new SimpleClientHttpRequestFactory()));
     }

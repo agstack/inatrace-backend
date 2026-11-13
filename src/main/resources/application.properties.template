@@ -21,6 +21,7 @@ spring.mvc.async.request-timeout = 120000
 
 # Springdoc
 springdoc.default-produces-media-type = application/json
+springdoc.api-docs.version = OPENAPI_3_0
 
 # DataSource settings
 INATrace.database.name =

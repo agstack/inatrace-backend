@@ -711,6 +711,7 @@
           },
           "email" : {
             "description" : "email",
+            "format" : "email",
             "maxLength" : 255,
             "minLength" : 0,
             "type" : "string"
@@ -825,6 +826,7 @@
           },
           "email" : {
             "description" : "email",
+            "format" : "email",
             "maxLength" : 255,
             "minLength" : 0,
             "type" : "string"
@@ -1038,6 +1040,7 @@
           },
           "email" : {
             "description" : "email",
+            "format" : "email",
             "maxLength" : 255,
             "minLength" : 0,
             "type" : "string"
@@ -1159,6 +1162,7 @@
           },
           "email" : {
             "description" : "email",
+            "format" : "email",
             "maxLength" : 255,
             "minLength" : 0,
             "type" : "string"
@@ -1272,6 +1276,7 @@
           },
           "email" : {
             "description" : "email",
+            "format" : "email",
             "maxLength" : 255,
             "minLength" : 0,
             "type" : "string"
@@ -1432,6 +1437,7 @@
         "properties" : {
           "email" : {
             "description" : "Email (username).",
+            "format" : "email",
             "maxLength" : 255,
             "minLength" : 0,
             "type" : "string"
