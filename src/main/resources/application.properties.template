@@ -168,3 +168,9 @@ INATrace.agstack.email =
 INATrace.agstack.password =
 INATrace.agstack.baseURL =
 INATrace.agstack.loginBaseURL =
+
+# FAO GeoID registry integration (read-only: resolves a GeoID to its GeoJSON boundary during
+# farmer import). Optional - leave empty to skip the lookup entirely. The public resolver,
+# https://data.apps.fao.org/geoid, needs no credentials.
+INATrace.geoid.baseURL =
+INATrace.geoid.timeoutSeconds = 15
