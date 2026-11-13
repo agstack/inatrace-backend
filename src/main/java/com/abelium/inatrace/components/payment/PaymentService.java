@@ -473,6 +473,7 @@ public class PaymentService extends BaseService {
 						.reduce(BigDecimal.ZERO, BigDecimal::add);
 
 				stockOrder.setBalance(stockOrder.getCost().subtract(sumTotalPaid).subtract(entity.getTotalPaid() != null ? entity.getTotalPaid() : BigDecimal.ZERO));
+				syncPaidAmount(stockOrder);
 				stockOrder.setUpdatedBy(currentUser);
 			}
 
@@ -606,12 +607,24 @@ public class PaymentService extends BaseService {
 					.reduce(BigDecimal.ZERO, BigDecimal::add);
 
 			stockOrder.setBalance(stockOrder.getCost().subtract(sumTotalPaid).add(payment.getTotalPaid() != null ? payment.getTotalPaid() : BigDecimal.ZERO));
+			syncPaidAmount(stockOrder);
 			stockOrder.setUpdatedBy(currentUser);
 		}
 
 		// Remove mapping on both sides, otherwise it does not delete
 		stockOrder.getPayments().removeIf(p -> p.getId().equals(payment.getId()));
 		em.remove(payment);
+	}
+
+	/**
+	 * Keeps the denormalised paid amount aligned with the balance whenever a payment is
+	 * recorded or removed.
+	 */
+	private void syncPaidAmount(StockOrder stockOrder) {
+		if (stockOrder.getCost() == null || stockOrder.getBalance() == null) {
+			return;
+		}
+		stockOrder.setPaid(stockOrder.getCost().subtract(stockOrder.getBalance()));
 	}
 
 	private <E> E fetchEntity(Long id, Class<E> entityClass) throws ApiException {
