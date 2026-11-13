@@ -5,7 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.context.ConfigurableApplicationContext;
-import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.mysql.MySQLContainer;
 import org.testcontainers.utility.MountableFile;
 
 import javax.sql.DataSource;
@@ -35,7 +35,7 @@ class ProductionDumpValidateTest {
     }
 
     void validateDump(Path dump, String image, boolean checkMissingColumn) throws Exception {
-        try (MySQLContainer<?> mysql = new MySQLContainer<>(image)
+        try (MySQLContainer mysql = new MySQLContainer(image)
                 .withUrlParam("allowPublicKeyRetrieval", "true").withUrlParam("useSSL", "false")
                 .withTmpFs(Map.of("/var/lib/mysql", "rw"))) {
             mysql.start();

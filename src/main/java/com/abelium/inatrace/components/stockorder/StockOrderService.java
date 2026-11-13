@@ -55,10 +55,10 @@ import com.abelium.inatrace.types.Language;
 import com.abelium.inatrace.types.ProcessingActionType;
 import com.abelium.inatrace.types.ProductCompanyType;
 import com.abelium.inatrace.types.UserRole;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 import jakarta.persistence.TypedQuery;
 import jakarta.transaction.Transactional;
 import org.apache.commons.lang3.BooleanUtils;
@@ -1833,7 +1833,7 @@ public class StockOrderService extends BaseService {
 
         try {
            return mapper.writer().writeValueAsBytes(rootFeatureCollection);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             SafeExceptionLog.error(logger, "Error while generating geoJson file", e);
             throw new ApiException(ApiStatus.ERROR, "Error while generating geojson file");
         }
