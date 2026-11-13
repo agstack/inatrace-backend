@@ -19,7 +19,8 @@ require investigation even if the underlying relationship is unchanged. This
 is accepted for the first version; normalization remains a follow-up.
 
 The clean-upstream and safety-net-branch measurements are recorded in
-`safety-net-baseline.md`.
+`safety-net-baseline.md`. Framework/toolchain evidence for each upgrade stage
+is kept in `spring-boot-3.5.md`, `java-25.md` and `spring-boot-4.1.md`.
 
 ## Validate a production-derived schema
 

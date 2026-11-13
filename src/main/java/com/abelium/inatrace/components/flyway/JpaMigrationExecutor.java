@@ -5,7 +5,11 @@ import jakarta.persistence.EntityManagerFactory;
 import org.flywaydb.core.api.FlywayException;
 import org.flywaydb.core.api.executor.Context;
 import org.flywaydb.core.api.executor.MigrationExecutor;
+import org.flywaydb.core.internal.jdbc.Results;
 import org.springframework.core.env.Environment;
+
+import java.sql.SQLException;
+import java.util.List;
 
 /**
  * Adapter for executing migrations implementing JpaMigration.
@@ -34,7 +38,7 @@ public class JpaMigrationExecutor implements MigrationExecutor {
     }
 
     @Override
-    public void execute(Context context) {
+    public List<Results> execute(Context context) throws SQLException {
         EntityManager em = entityManagerFactory.createEntityManager();
         
         try {
@@ -48,6 +52,7 @@ public class JpaMigrationExecutor implements MigrationExecutor {
         } finally {
             em.close();
         }
+        return List.of();
     }
 
     @Override

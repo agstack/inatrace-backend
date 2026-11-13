@@ -28,9 +28,6 @@ import com.abelium.inatrace.types.ProductLabelStatus;
 import com.abelium.inatrace.types.RequestLogType;
 import com.abelium.inatrace.types.UserRole;
 import com.abelium.inatrace.types.MediaObject;
-import jakarta.persistence.criteria.CriteriaBuilder;
-import jakarta.persistence.criteria.CriteriaDelete;
-import jakarta.persistence.criteria.Root;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.transaction.Transactional;
 import org.apache.commons.lang3.BooleanUtils;
@@ -394,10 +391,14 @@ public class ProductService extends BaseService {
 	private void removeProductLabel(ProductLabel pl) {
 		Long labelId = pl.getId();
 		removeProductLabelBatches(List.of(labelId));
-		em.createQuery("DELETE FROM ProductLabelFeedback f WHERE f.label.id = :labelId")
-				.setParameter("labelId", labelId).executeUpdate();
-		em.createQuery("DELETE FROM FinalProductLabel fpl WHERE fpl.productLabel.id = :labelId")
-				.setParameter("labelId", labelId).executeUpdate();
+		List<ProductLabelFeedback> feedback = em.createQuery(
+				"SELECT f FROM ProductLabelFeedback f WHERE f.label.id = :labelId", ProductLabelFeedback.class)
+				.setParameter("labelId", labelId).getResultList();
+		feedback.forEach(em::remove);
+		List<FinalProductLabel> finalProductLabels = em.createQuery(
+				"SELECT fpl FROM FinalProductLabel fpl WHERE fpl.productLabel.id = :labelId", FinalProductLabel.class)
+				.setParameter("labelId", labelId).getResultList();
+		finalProductLabels.forEach(em::remove);
 		em.createQuery("DELETE FROM ProductLabelCompanyDocument d WHERE d.productLabelId = :labelId")
 				.setParameter("labelId", labelId).executeUpdate();
 
@@ -461,11 +462,10 @@ public class ProductService extends BaseService {
 	}
 
     private void removeProductLabelBatches(List<Long> labelIds) {
-		CriteriaBuilder cb = em.getCriteriaBuilder();
-		CriteriaDelete<ProductLabelBatch> cd = cb.createCriteriaDelete(ProductLabelBatch.class);
-		Root<ProductLabelBatch> root = cd.from(ProductLabelBatch.class);
-		cd.where(root.get("label").get("id").in(labelIds));
-		em.createQuery(cd).executeUpdate();
+		List<ProductLabelBatch> batches = em.createQuery(
+				"SELECT b FROM ProductLabelBatch b WHERE b.label.id IN :labelIds", ProductLabelBatch.class)
+				.setParameter("labelIds", labelIds).getResultList();
+		batches.forEach(em::remove);
     }
 
     @Transactional
@@ -831,7 +831,7 @@ public class ProductService extends BaseService {
 
 		FinalProduct fp = fetchFinalProduct(productId, finalProductId);
 
-    	em.remove(fp);
+		em.remove(fp);
 	}
 
     private void checkProductPermission(CustomUserDetails authUser, Long productId) throws ApiException {
