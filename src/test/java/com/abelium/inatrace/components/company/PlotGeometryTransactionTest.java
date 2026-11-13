@@ -15,9 +15,9 @@ import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -39,7 +39,7 @@ class PlotGeometryTransactionTest extends AbstractMySqlIntegrationTest {
     @Autowired PlatformTransactionManager transactionManager;
     @Autowired TokenService tokenService;
     @Autowired MockMvc mockMvc;
-    @MockBean AgStackClientService agStack;
+    @MockitoBean AgStackClientService agStack;
     @Value("${INATrace.auth.accessTokenCookieName}") String cookieName;
 
     @Test

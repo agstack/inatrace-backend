@@ -21,13 +21,19 @@ spring.mvc.async.request-timeout = 120000
 
 # Springdoc
 springdoc.default-produces-media-type = application/json
+springdoc.api-docs.version = OPENAPI_3_0
 
 # DataSource settings
+# New installations choose the engine: mysql (default) or postgresql.
+INATrace.database.vendor = mysql
 INATrace.database.name =
 INATrace.database.hostname = localhost
 INATrace.database.port = 3306
+INATrace.database.url = jdbc:mysql://${INATrace.database.hostname}:${INATrace.database.port}/${INATrace.database.name}?autoReconnect=true&allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC
+INATrace.database.dialect = com.abelium.inatrace.configuration.CustomMySQLDialect
+INATrace.database.auto-quote-keyword = false
 
-spring.datasource.url = jdbc:mysql://${INATrace.database.hostname}:${INATrace.database.port}/${INATrace.database.name}?autoReconnect=true&allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC
+spring.datasource.url = ${INATrace.database.url}
 spring.datasource.username =
 spring.datasource.password =
 # spring.jpa.show-sql = true
@@ -47,7 +53,11 @@ spring.datasource.hikari.maxLifetime = 30000
 # Hibernate naming strategies (fixes case with one class being embedded multiple times into same entity
 spring.jpa.hibernate.naming.implicit-strategy = org.hibernate.boot.model.naming.ImplicitNamingStrategyComponentPathImpl
 spring.jpa.hibernate.naming.physical-strategy = org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
-spring.jpa.properties.hibernate.dialect = com.abelium.inatrace.configuration.CustomMySQLDialect
+spring.jpa.properties.hibernate.dialect = ${INATrace.database.dialect}
+spring.jpa.properties.hibernate.auto_quote_keyword = ${INATrace.database.auto-quote-keyword}
+# Hibernate 7.4 removed MySQLDialect's implicit default of 2. Without it, loading an
+# entity by id join-fetches the whole eager graph and can exceed MySQL's 61-table limit.
+spring.jpa.properties.hibernate.max_fetch_depth = 2
 
 # Create/update envers auditing tables
 spring.jpa.properties.hibernate.hbm2ddl.auto = update
@@ -56,14 +66,14 @@ spring.jpa.properties.hibernate.hbm2ddl.auto = update
 spring.flyway.baseline-on-migrate = true
 spring.flyway.out-of-order = true
 spring.flyway.validate-on-migrate = false
-spring.flyway.check-location = false
+spring.flyway.fail-on-missing-locations = false
 spring.flyway.table = schema_version
-spring.flyway.ignore-missing-migrations = true
-spring.flyway.locations = classpath:com/abelium/inatrace/db/migrations,classpath:/db/migrations
+spring.flyway.ignore-migration-patterns = *:missing,*:future
+spring.flyway.locations = classpath:com/abelium/inatrace/db/migrations,classpath:/db/migrations/{vendor},classpath:/db/migrations/common
 
-spring.jackson.serialization.write-dates-as-timestamps = false
-spring.jackson.serialization.write-date-timestamps-as-nanoseconds = false
-spring.jackson.deserialization.read-date-timestamps-as-nanoseconds = false
+spring.jackson.datatype.datetime.write-dates-as-timestamps = false
+spring.jackson.datatype.datetime.write-date-timestamps-as-nanoseconds = false
+spring.jackson.datatype.datetime.read-date-timestamps-as-nanoseconds = false
 spring.jackson.default-property-inclusion=non_null
 
 # to avoid warning in thymeleaf 3
@@ -158,3 +168,11 @@ INATrace.agstack.email =
 INATrace.agstack.password =
 INATrace.agstack.baseURL =
 INATrace.agstack.loginBaseURL =
+# Maximum time for each login or boundary request, in milliseconds.
+INATrace.agstack.requestTimeoutMs = 30000
+
+# FAO GeoID registry integration (read-only: resolves a GeoID to its GeoJSON boundary during
+# farmer import). Optional - leave empty to skip the lookup entirely. The public resolver,
+# https://data.apps.fao.org/geoid, needs no credentials.
+INATrace.geoid.baseURL =
+INATrace.geoid.timeoutSeconds = 15

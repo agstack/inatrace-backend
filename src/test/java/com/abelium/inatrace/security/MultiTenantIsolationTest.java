@@ -21,7 +21,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -30,6 +30,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.io.StringReader;
+import java.nio.charset.StandardCharsets;
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVRecord;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -79,7 +83,7 @@ class MultiTenantIsolationTest extends AbstractMySqlIntegrationTest {
 
     @BeforeEach
     void seedTwoTenants() {
-        Company acme = company("Acme Coffee Cooperative");
+        Company acme = company("Acme, \"Café\"\nCooperative");
         Company rival = company("Rival Trading Ltd");
 
         User alice = user("alice@acme.test", "Alice", "Acme");
@@ -159,6 +163,14 @@ class MultiTenantIsolationTest extends AbstractMySqlIntegrationTest {
     @Test
     @DisplayName("Control: Alice can export her own deliveries CSV")
     void ownCompanyDeliveriesCsvIsExportable() throws Exception {
+        em.flush();
+        em.clear();
+        assertEquals(DELIVERY_DATE.toString(), em.createNativeQuery(
+                        "select cast(productionDate as char) from StockOrder where company_id = :company")
+                .setParameter("company", acmeId).getSingleResult(), "Raw database date");
+        assertEquals(DELIVERY_DATE, em.createQuery(
+                        "select s.productionDate from StockOrder s where s.company.id = :company", LocalDate.class)
+                .setParameter("company", acmeId).getSingleResult(), "JPA date projection");
         MvcResult result = mockMvc.perform(get("/api/dashboard/deliveries-aggregated-data/export")
                         .queryParam("companyId", String.valueOf(acmeId))
                         .queryParam("aggregationType", "DAY")
@@ -166,10 +178,25 @@ class MultiTenantIsolationTest extends AbstractMySqlIntegrationTest {
                         .cookie(aliceSession))
                 .andReturn();
 
-        String file = new String(result.getResponse().getContentAsByteArray());
+        String file = new String(result.getResponse().getContentAsByteArray(), StandardCharsets.UTF_8);
         assertEquals(200, result.getResponse().getStatus(), file);
-        assertTrue(file.contains(DELIVERY_QUANTITY.toPlainString()),
-                "The owner's CSV should contain the seeded delivery: " + file);
+        assertTrue(result.getResponse().getContentType().startsWith("application/octet-stream"));
+        try (var parser = CSVFormat.RFC4180.parse(new StringReader(file))) {
+            var records = parser.getRecords();
+            assertEquals(2, records.size(), file);
+            CSVRecord header = records.get(0);
+            CSVRecord delivery = records.get(1);
+            assertEquals(4, header.size(), file);
+            assertEquals(4, delivery.size(), file);
+            assertEquals("Date", header.get(0));
+            assertEquals("Total quantity", header.get(1));
+            assertEquals("Measuring unit", header.get(2));
+            assertEquals("Company", header.get(3));
+            assertEquals(DELIVERY_DATE.toString(), delivery.get(0));
+            assertEquals(0, DELIVERY_QUANTITY.compareTo(new BigDecimal(delivery.get(1))));
+            assertEquals("kg", delivery.get(2));
+            assertEquals("Acme, \"Café\"\nCooperative", delivery.get(3));
+        }
     }
 
     @Test

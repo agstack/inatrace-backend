@@ -711,6 +711,7 @@
           },
           "email" : {
             "description" : "email",
+            "format" : "email",
             "maxLength" : 255,
             "minLength" : 0,
             "type" : "string"
@@ -825,6 +826,7 @@
           },
           "email" : {
             "description" : "email",
+            "format" : "email",
             "maxLength" : 255,
             "minLength" : 0,
             "type" : "string"
@@ -1038,6 +1040,7 @@
           },
           "email" : {
             "description" : "email",
+            "format" : "email",
             "maxLength" : 255,
             "minLength" : 0,
             "type" : "string"
@@ -1159,6 +1162,7 @@
           },
           "email" : {
             "description" : "email",
+            "format" : "email",
             "maxLength" : 255,
             "minLength" : 0,
             "type" : "string"
@@ -1272,6 +1276,7 @@
           },
           "email" : {
             "description" : "email",
+            "format" : "email",
             "maxLength" : 255,
             "minLength" : 0,
             "type" : "string"
@@ -1432,6 +1437,7 @@
         "properties" : {
           "email" : {
             "description" : "Email (username).",
+            "format" : "email",
             "maxLength" : 255,
             "minLength" : 0,
             "type" : "string"
@@ -7498,7 +7504,7 @@
             "type" : "string"
           },
           "errorType" : {
-            "enum" : [ "INCORRECT_TYPE", "REQUIRED", "INVALID_VALUE" ],
+            "enum" : [ "INCORRECT_TYPE", "REQUIRED", "INVALID_VALUE", "INVALID_GEODATA" ],
             "type" : "string"
           }
         },
@@ -7515,6 +7521,15 @@
           "successful" : {
             "format" : "int32",
             "type" : "integer"
+          },
+          "unresolvedKoboSheets" : {
+            "additionalProperties" : {
+              "items" : {
+                "type" : "string"
+              },
+              "type" : "array"
+            },
+            "type" : "object"
           },
           "validationErrors" : {
             "items" : {
@@ -13448,6 +13463,16 @@
             "enum" : [ "EN", "DE", "RW", "ES" ],
             "type" : "string"
           }
+        }, {
+          "in" : "query",
+          "name" : "koboSelections",
+          "required" : false,
+          "schema" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          }
         } ],
         "responses" : {
           "200" : {
@@ -13462,6 +13487,136 @@
           }
         },
         "summary" : "Import farmers from an XLSX spreadsheet document",
+        "tags" : [ "company-controller" ]
+      }
+    },
+    "/api/company/userCustomers/import/farmers/{companyId}/{documentId}/confirm-plots" : {
+      "post" : {
+        "operationId" : "confirmImportedFarmerPlots",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "companyId",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        }, {
+          "in" : "path",
+          "name" : "documentId",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        }, {
+          "in" : "header",
+          "name" : "language",
+          "required" : false,
+          "schema" : {
+            "default" : "EN",
+            "enum" : [ "EN", "DE", "RW", "ES" ],
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "koboSelections",
+          "required" : false,
+          "schema" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ApiUserCustomer"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiDefaultResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Confirm imported plots for an existing farmer",
+        "tags" : [ "company-controller" ]
+      }
+    },
+    "/api/company/userCustomers/import/farmers/{companyId}/{documentId}/create-separate" : {
+      "post" : {
+        "operationId" : "createSeparateImportedFarmer",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "companyId",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        }, {
+          "in" : "path",
+          "name" : "documentId",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        }, {
+          "in" : "header",
+          "name" : "language",
+          "required" : false,
+          "schema" : {
+            "default" : "EN",
+            "enum" : [ "EN", "DE", "RW", "ES" ],
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "koboSelections",
+          "required" : false,
+          "schema" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ApiUserCustomer"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiDefaultResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Create a separate farmer from an imported duplicate",
         "tags" : [ "company-controller" ]
       }
     },

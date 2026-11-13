@@ -55,10 +55,11 @@ import com.abelium.inatrace.types.Language;
 import com.abelium.inatrace.types.ProcessingActionType;
 import com.abelium.inatrace.types.ProductCompanyType;
 import com.abelium.inatrace.types.UserRole;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.abelium.inatrace.tools.SearchTools;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 import jakarta.persistence.TypedQuery;
 import jakarta.transaction.Transactional;
 import org.apache.commons.lang3.BooleanUtils;
@@ -281,8 +282,8 @@ public class StockOrderService extends BaseService {
 
         // If LOT name is provided filter by LOT prefix or LOT name
         if (StringUtils.isNotBlank(queryRequest.internalLotName)) {
-            OnGoingLogicalCondition likeInternalLotName = Torpedo.condition(stockOrderProxy.getInternalLotNumber()).like().any(queryRequest.internalLotName);
-            OnGoingLogicalCondition likeLotPrefix = Torpedo.condition(stockOrderProxy.getLotPrefix()).like().any(queryRequest.internalLotName);
+            OnGoingLogicalCondition likeInternalLotName = Torpedo.condition(SearchTools.normalized(stockOrderProxy.getInternalLotNumber())).like().any(SearchTools.normalize(queryRequest.internalLotName));
+            OnGoingLogicalCondition likeLotPrefix = Torpedo.condition(SearchTools.normalized(stockOrderProxy.getLotPrefix())).like().any(SearchTools.normalize(queryRequest.internalLotName));
             condition = condition.and(Torpedo.condition(likeInternalLotName.or(likeLotPrefix)));
         }
 
@@ -305,8 +306,8 @@ public class StockOrderService extends BaseService {
         // Search by farmers name (query)
         if (queryRequest.producerUserCustomerName != null) {
             condition = condition.and(stockOrderProxy.getProducerUserCustomer()).isNotNull();
-            OnGoingLogicalCondition likeName = Torpedo.condition(stockOrderProxy.getProducerUserCustomer().getName()).like().any(queryRequest.producerUserCustomerName);
-            OnGoingLogicalCondition likeSurname = Torpedo.condition(stockOrderProxy.getProducerUserCustomer().getSurname()).like().any(queryRequest.producerUserCustomerName);
+            OnGoingLogicalCondition likeName = Torpedo.condition(SearchTools.normalized(stockOrderProxy.getProducerUserCustomer().getName())).like().any(SearchTools.normalize(queryRequest.producerUserCustomerName));
+            OnGoingLogicalCondition likeSurname = Torpedo.condition(SearchTools.normalized(stockOrderProxy.getProducerUserCustomer().getSurname())).like().any(SearchTools.normalize(queryRequest.producerUserCustomerName));
             condition = condition.and(Torpedo.condition(likeName.or(likeSurname)));
         }
 
@@ -473,13 +474,20 @@ public class StockOrderService extends BaseService {
                         stockOrderWeights.put(apiPayment.getStockOrder().getId(), apiPayment.getStockOrder().getFulfilledQuantity().multiply(apiPayment.getStockOrder().getMeasureUnitType().getWeight()));
                     }
 
-                    // Calculate price in USD at date
-                    BigDecimal producerPriceUsd = currencyService.convertAtDate(
+                    // Calculate price in USD at date. When no exchange rate is available
+                    // (external provider unavailable) the public payload keeps the price empty
+                    // instead of failing the whole journey.
+                    BigDecimal producerPriceUsd = currencyService.convertAtDateOrNull(
                             apiPayment.getCurrency(),
                             "USD",
                             apiPayment.getAmount(),
                             Date.from(apiPayment.getFormalCreationTime().atStartOfDay().toInstant(ZoneOffset.UTC))
                     );
+
+                    if (producerPriceUsd == null) {
+                        producersPaidUsd = null;
+                        break;
+                    }
 
                     // Accumulate payments
                     producersPaidUsd = producersPaidUsd.add(producerPriceUsd);
@@ -488,7 +496,9 @@ public class StockOrderService extends BaseService {
                 // Sum up order weights
                 BigDecimal producersCoffeeKg = stockOrderWeights.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
 
-                apiQRTagPublic.setPriceToProducer(calculateProducerPayments(producersPaidUsd, producersCoffeeKg));
+                apiQRTagPublic.setPriceToProducer(producersPaidUsd != null
+                        ? calculateProducerPayments(producersPaidUsd, producersCoffeeKg)
+                        : null);
                 apiQRTagPublic.setPriceToFarmer(calculateFarmerPayments(stockOrderHistory));
 
                 // Get all the certificates from the participating companies
@@ -619,14 +629,19 @@ public class StockOrderService extends BaseService {
 
             for (ApiStockOrder apiStockOrder : farmerStockOrders) {
                 for (ApiPayment apiPayment : apiStockOrder.getPayments()) {
-                    paidUsd = paidUsd.add(
-                            currencyService.convertAtDate(
-                                    apiPayment.getCurrency(),
-                                    "USD",
-                                    apiPayment.getAmount(),
-                                    Date.from(apiPayment.getFormalCreationTime().atStartOfDay().toInstant(ZoneOffset.UTC))
-                            )
+                    BigDecimal paidUsdForPayment = currencyService.convertAtDateOrNull(
+                            apiPayment.getCurrency(),
+                            "USD",
+                            apiPayment.getAmount(),
+                            Date.from(apiPayment.getFormalCreationTime().atStartOfDay().toInstant(ZoneOffset.UTC))
                     );
+
+                    // Without an exchange rate the farmer price cannot be computed
+                    if (paidUsdForPayment == null) {
+                        return null;
+                    }
+
+                    paidUsd = paidUsd.add(paidUsdForPayment);
                 }
                 coffeeKg = coffeeKg.add(apiStockOrder.getFulfilledQuantity().multiply(apiStockOrder.getMeasureUnitType().getWeight()));
             }
@@ -1833,7 +1848,7 @@ public class StockOrderService extends BaseService {
 
         try {
            return mapper.writer().writeValueAsBytes(rootFeatureCollection);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             SafeExceptionLog.error(logger, "Error while generating geoJson file", e);
             throw new ApiException(ApiStatus.ERROR, "Error while generating geojson file");
         }

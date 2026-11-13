@@ -13,6 +13,9 @@ import com.abelium.inatrace.db.entities.stockorder.StockOrder;
 import com.abelium.inatrace.db.entities.value_chain.CompanyValueChain;
 import com.abelium.inatrace.types.CompanyStatus;
 import jakarta.persistence.*;
+import org.hibernate.Length;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.util.*;
 
@@ -54,16 +57,16 @@ public class Company extends BaseEntity implements CompanyTranslatables {
 	 * about the company - briefly describe your company and its history. 
 	 * Include the company mission and vision as well as core values. (max 2000 characters)
 	 */
-	@Lob
-	@Column(columnDefinition = "LONGTEXT")
+	@JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+	@Column(length = Length.LONG32)
 	private String about;
 	
 	/**
 	 * interview - 
 	 * (max 2000 characters)
 	 */
-	@Lob
-	@Column(columnDefinition = "LONGTEXT")
+	@JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+	@Column(length = Length.LONG32)
 	private String interview;
 	
 	/**

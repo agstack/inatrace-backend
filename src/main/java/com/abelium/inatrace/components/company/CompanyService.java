@@ -33,11 +33,15 @@ import com.abelium.inatrace.security.service.CustomUserDetails;
 import com.abelium.inatrace.security.utils.PermissionsUtil;
 import com.abelium.inatrace.tools.*;
 import com.abelium.inatrace.types.*;
+import com.abelium.inatrace.tools.SearchTools;
 import com.mapbox.geojson.Feature;
 import com.mapbox.geojson.FeatureCollection;
 import com.mapbox.geojson.Point;
 import com.mapbox.geojson.Polygon;
 import com.mapbox.turf.TurfMeasurement;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.transaction.Transactional;
 import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -60,6 +64,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
@@ -90,9 +98,9 @@ public class CompanyService extends BaseService {
 	private MessageSource messageSource;
 
 	/**
-	 * Number of decimal places stored coordinates are rounded to. Six decimals is ~0.1 m at the
-	 * equator, well past GPS accuracy, and keeps the values stable across the export/import round
-	 * trip instead of drifting in the last digits.
+	 * Decimal precision for coordinates entered through existing non-import flows. Imported plot
+	 * coordinates retain their original precision so distinct boundaries are not merged and a
+	 * resolved GeoID continues to describe the geometry supplied by its registry.
 	 */
 	private static final int COORDINATE_DECIMAL_PLACES = 6;
 
@@ -101,7 +109,7 @@ public class CompanyService extends BaseService {
 
 		OnGoingLogicalCondition condition = Torpedo.condition();
 		if (StringUtils.isNotBlank(request.name)) {
-			condition = condition.and(cProxy.getName()).like().startsWith(request.name);
+			condition = condition.and(SearchTools.normalized(cProxy.getName())).like().startsWith(SearchTools.normalize(request.name));
 		}
 		if (request.status != null) {
 			condition = condition.and(cProxy.getStatus()).eq(request.status);
@@ -135,7 +143,7 @@ public class CompanyService extends BaseService {
 		OnGoingLogicalCondition condition = Torpedo.condition();
 		condition = condition.and(cuProxy.getUser().getId()).eq(userId);
 		if (StringUtils.isNotBlank(request.name)) {
-			condition = condition.and(cProxy.getName()).like().startsWith(request.name);
+			condition = condition.and(SearchTools.normalized(cProxy.getName())).like().startsWith(SearchTools.normalize(request.name));
 		}
 		if (request.status != null) {
 			condition = condition.and(cProxy.getStatus()).eq(request.status);
@@ -338,23 +346,187 @@ public class CompanyService extends BaseService {
 	 * name is not treated as a duplicate.
 	 */
 	public boolean existsUserCustomer(ApiUserCustomer apiUserCustomer) {
+		return !findMatchingUserCustomers(apiUserCustomer).isEmpty();
+	}
 
-		if (StringUtils.isNotBlank(apiUserCustomer.getFarmerCompanyInternalId())
-				&& !em.createNamedQuery("UserCustomer.getUserCustomerByCompanyAndInternalId", UserCustomer.class)
-						.setParameter("companyId", apiUserCustomer.getCompanyId())
-						.setParameter("internalId", apiUserCustomer.getFarmerCompanyInternalId())
-						.getResultList()
-						.isEmpty()) {
-			return true;
+	/** Apply a verified import in a fresh transaction, acquiring the lock only after parsing. */
+	@Transactional(Transactional.TxType.REQUIRES_NEW)
+	public void applyConfirmedFarmerImport(Long companyId, Long documentId, ApiUserCustomer source,
+	                                       CustomUserDetails user, Language language, boolean createSeparate) throws ApiException {
+		Company company = em.find(Company.class, companyId, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+		if (company == null || !Objects.equals(companyId, source.getCompanyId())) {
+			throw new ApiException(ApiStatus.INVALID_REQUEST, "Invalid company.");
+		}
+		if (user.getUserRole() == UserRole.REGIONAL_ADMIN) {
+			PermissionsUtil.checkUserIfCompanyEnrolled(company.getUsers().stream().toList(), user);
+		}
+		Document document = em.find(Document.class, documentId);
+		if (document == null || document.getUploadedBy() == null || !Objects.equals(document.getUploadedBy().getId(), user.getUserId())) {
+			throw new ApiException(ApiStatus.UNAUTHORIZED, "You are not authorized to import this document.");
+		}
+		if (createSeparate) {
+			String selectionKey = importSelectionKey(source);
+			Long decisions = em.createQuery("SELECT COUNT(d) FROM FarmerImportDecision d WHERE d.company.id = :companyId AND d.document.id = :documentId AND d.selectionKey = :selectionKey", Long.class)
+					.setParameter("companyId", companyId).setParameter("documentId", documentId)
+					.setParameter("selectionKey", selectionKey).getSingleResult();
+			if (decisions > 0) return;
+			if (findMatchingUserCustomers(source).isEmpty()) {
+				throw new ApiException(ApiStatus.INVALID_REQUEST, "The existing farmer could not be found.");
+			}
+			addImportedUserCustomer(companyId, source, user, language);
+			em.persist(new FarmerImportDecision(company, document, selectionKey));
+		} else {
+			addPlotsToExistingFarmer(source);
+		}
+	}
+
+	private String importSelectionKey(ApiUserCustomer farmer) {
+		try {
+			MessageDigest digest = MessageDigest.getInstance("SHA-256");
+			String[] fields = {farmer.getFarmerCompanyInternalId(), farmer.getName(), farmer.getSurname(),
+					farmer.getLocation().getAddress().getCity()};
+			for (String field : fields) {
+				byte[] bytes = field == null ? null : field.trim().toLowerCase(Locale.ROOT).getBytes(StandardCharsets.UTF_8);
+				digest.update(ByteBuffer.allocate(Integer.BYTES).putInt(bytes == null ? -1 : bytes.length).array());
+				if (bytes != null) digest.update(bytes);
+			}
+			return HexFormat.of().formatHex(digest.digest());
+		} catch (NoSuchAlgorithmException e) {
+			throw new IllegalStateException("SHA-256 is unavailable", e);
+		}
+	}
+
+	/**
+	 * Farmers an imported row is considered a duplicate of: by company-internal ID when the row has
+	 * one and it matches, otherwise by name, surname and city. existsUserCustomer and
+	 * addPlotsToExistingFarmer must agree on this, or a row reported as a duplicate gets its plots
+	 * silently dropped.
+	 */
+	private List<UserCustomer> findMatchingUserCustomers(ApiUserCustomer apiUserCustomer) {
+		if (StringUtils.isNotBlank(apiUserCustomer.getFarmerCompanyInternalId())) {
+			List<UserCustomer> byInternalId = em.createNamedQuery(
+							"UserCustomer.getUserCustomerByCompanyAndInternalId",
+							UserCustomer.class)
+					.setParameter("companyId", apiUserCustomer.getCompanyId())
+					.setParameter("internalId", apiUserCustomer.getFarmerCompanyInternalId())
+					.getResultList();
+
+			if (!byInternalId.isEmpty()) return byInternalId;
 		}
 
-		return !em.createNamedQuery("UserCustomer.getUserCustomerByNameSurnameAndCity", UserCustomer.class)
+		return em.createNamedQuery("UserCustomer.getUserCustomerByNameSurnameAndCity",
+						UserCustomer.class)
 				.setParameter("companyId", apiUserCustomer.getCompanyId())
 				.setParameter("name", apiUserCustomer.getName())
 				.setParameter("surname", apiUserCustomer.getSurname())
 				.setParameter("city", apiUserCustomer.getLocation().getAddress().getCity())
-				.getResultList()
-				.isEmpty();
+				.getResultList();
+	}
+
+	public void addPlotsToExistingFarmer(ApiUserCustomer newFarmerData) throws ApiException {
+		List<UserCustomer> matches = findMatchingUserCustomers(newFarmerData);
+		if (matches.size() != 1) {
+			throw new ApiException(ApiStatus.INVALID_REQUEST,
+					"Cannot attach plots: the existing farmer could not be identified unambiguously.");
+		}
+		UserCustomer existingFarmer = matches.get(0);
+
+		for (ApiPlot apiPlot : newFarmerData.getPlots()) {
+			if (existingFarmer.getPlots().stream().anyMatch(plot -> sameImportedPlot(plot, apiPlot))) {
+				continue;
+			}
+			Plot plot = new Plot();
+			plot.setPlotName(apiPlot.getPlotName());
+			if (apiPlot.getCrop() != null && apiPlot.getCrop().getId() != null) {
+				plot.setCrop(fetchProductType(apiPlot.getCrop().getId()));
+			}
+			plot.setNumberOfPlants(apiPlot.getNumberOfPlants());
+			plot.setUnit(apiPlot.getUnit());
+			plot.setSize(apiPlot.getSize());
+			plot.setFarmer(existingFarmer);
+			plot.setLastUpdated(new Date());
+
+			for (ApiPlotCoordinate apiPlotCoordinate : apiPlot.getCoordinates()) {
+				PlotCoordinate plotCoordinate = new PlotCoordinate();
+				plotCoordinate.setLatitude(apiPlotCoordinate.getLatitude());
+				plotCoordinate.setLongitude(apiPlotCoordinate.getLongitude());
+				plotCoordinate.setPlot(plot);
+				plot.getCoordinates().add(plotCoordinate);
+			}
+
+			plot.setGeoId(StringUtils.isNotBlank(apiPlot.getGeoId()) ? apiPlot.getGeoId()
+					: generatePlotGeoID(plot.getCoordinates()));
+
+			existingFarmer.getPlots().add(plot);
+		}
+	}
+
+	private boolean sameImportedPlot(Plot existing, ApiPlot imported) {
+		if (existing.getCrop() == null || imported.getCrop() == null
+				|| !Objects.equals(existing.getCrop().getId(), imported.getCrop().getId())
+				|| !Objects.equals(existing.getPlotName(), imported.getPlotName())
+				|| !Objects.equals(existing.getSize(), imported.getSize())
+				|| !Objects.equals(existing.getUnit(), imported.getUnit())
+				|| !Objects.equals(existing.getNumberOfPlants(), imported.getNumberOfPlants())
+				|| (StringUtils.isNotBlank(imported.getGeoId()) && !Objects.equals(existing.getGeoId(), imported.getGeoId()))
+				|| existing.getCoordinates() == null || imported.getCoordinates() == null) {
+			return false;
+		}
+		List<PlotCoordinate> points = existing.getCoordinates().stream()
+				.sorted(Comparator.comparing(PlotCoordinate::getId, Comparator.nullsLast(Comparator.naturalOrder())))
+				.toList();
+		return sameRing(points, imported.getCoordinates());
+	}
+
+	/**
+	 * Compares two plot rings independently of where the ring starts and of the direction it is
+	 * written in. Two exports of the same field may list the same vertices from a different starting
+	 * point (or in the opposite orientation); comparing the lists position by position treated those
+	 * as different plots and added the field again on every re-import.
+	 */
+	private static boolean sameRing(List<PlotCoordinate> persisted, List<ApiPlotCoordinate> imported) {
+
+		List<Double[]> left = openRing(persisted.stream()
+				.map(point -> new Double[]{point.getLatitude(), point.getLongitude()})
+				.toList());
+		List<Double[]> right = openRing(imported.stream()
+				.map(point -> new Double[]{point.getLatitude(), point.getLongitude()})
+				.toList());
+
+		if (left.size() != right.size() || left.isEmpty()) {
+			return false;
+		}
+		if (left.size() < 3) {
+			return matchesRingAt(left, right, 0, false) || matchesRingAt(left, right, 0, true);
+		}
+		for (int offset = 0; offset < left.size(); offset++) {
+			if (matchesRingAt(left, right, offset, false) || matchesRingAt(left, right, offset, true)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** Drops a repeated closing vertex so a closed and an open ring compare by the same vertices. */
+	private static List<Double[]> openRing(List<Double[]> ring) {
+		if (ring.size() > 1 && Objects.equals(ring.get(0)[0], ring.get(ring.size() - 1)[0])
+				&& Objects.equals(ring.get(0)[1], ring.get(ring.size() - 1)[1])) {
+			return ring.subList(0, ring.size() - 1);
+		}
+		return ring;
+	}
+
+	private static boolean matchesRingAt(List<Double[]> left, List<Double[]> right, int offset, boolean reversed) {
+
+		int size = left.size();
+		for (int i = 0; i < size; i++) {
+			int j = Math.floorMod(offset + (reversed ? -i : i), size);
+			if (!Objects.equals(left.get(i)[0], right.get(j)[0])
+					|| !Objects.equals(left.get(i)[1], right.get(j)[1])) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	public ApiPaginatedList<ApiUserCustomer> getUserCustomersForCompanyAndType(Long companyId,
@@ -827,19 +999,26 @@ public class CompanyService extends BaseService {
 		for (ApiUserCustomer apiUserCustomer : apiUserCustomers) {
 			for (ApiPlot apiPlot : apiUserCustomer.getPlots()) {
 
+				// Plots created without drawing the boundary have no coordinates and cannot be
+				// represented as GeoJSON; skip them instead of failing the whole export.
+				List<ApiPlotCoordinate> coordinates = apiPlot.getCoordinates();
+				if (coordinates == null || coordinates.isEmpty()) {
+					continue;
+				}
+
 				Feature feature;
 
 				// If less than 3 coordinates we have single Point geometry
-				if (apiPlot.getCoordinates().size() < 3) {
+				if (coordinates.size() < 3) {
 
 					Point point = Point.fromLngLat(
-							apiPlot.getCoordinates().get(0).getLongitude(),
-							apiPlot.getCoordinates().get(0).getLatitude()
+							coordinates.get(0).getLongitude(),
+							coordinates.get(0).getLatitude()
 					);
 					feature = Feature.fromGeometry(point);
 				} else {
 
-					List<Point> polygonCoordinates = apiPlot.getCoordinates()
+					List<Point> polygonCoordinates = coordinates
 							.stream()
 							.map(apiPlotCoordinate -> Point.fromLngLat(
 									apiPlotCoordinate.getLongitude(), apiPlotCoordinate.getLatitude()
@@ -847,7 +1026,7 @@ public class CompanyService extends BaseService {
 							.collect(Collectors.toList());
 
 					// Polygon feature requires that first and last coordinate pair is the same
-					ApiPlotCoordinate firstCoordinatePair = apiPlot.getCoordinates().get(0);
+					ApiPlotCoordinate firstCoordinatePair = coordinates.get(0);
 					polygonCoordinates.add(
 							Point.fromLngLat(firstCoordinatePair.getLongitude(), firstCoordinatePair.getLatitude()));
 
@@ -884,6 +1063,15 @@ public class CompanyService extends BaseService {
 
 	@Transactional
 	public ApiUserCustomer addUserCustomer(Long companyId, ApiUserCustomer apiUserCustomer, CustomUserDetails user, Language language) throws ApiException {
+		return addUserCustomer(companyId, apiUserCustomer, user, language, false);
+	}
+
+	@Transactional
+	public ApiUserCustomer addImportedUserCustomer(Long companyId, ApiUserCustomer apiUserCustomer, CustomUserDetails user, Language language) throws ApiException {
+		return addUserCustomer(companyId, apiUserCustomer, user, language, true);
+	}
+
+	private ApiUserCustomer addUserCustomer(Long companyId, ApiUserCustomer apiUserCustomer, CustomUserDetails user, Language language, boolean imported) throws ApiException {
 
 		Company company = companyQueries.fetchCompany(companyId);
 		PermissionsUtil.checkUserIfCompanyEnrolled(company.getUsers().stream().toList(), user);
@@ -1018,15 +1206,17 @@ public class CompanyService extends BaseService {
 
 				for (ApiPlotCoordinate apiPlotCoordinate : apiPlot.getCoordinates()) {
 					PlotCoordinate plotCoordinate = new PlotCoordinate();
-					plotCoordinate.setLatitude(roundCoordinate(apiPlotCoordinate.getLatitude()));
-					plotCoordinate.setLongitude(roundCoordinate(apiPlotCoordinate.getLongitude()));
+					plotCoordinate.setLatitude(imported
+							? apiPlotCoordinate.getLatitude() : roundCoordinate(apiPlotCoordinate.getLatitude()));
+					plotCoordinate.setLongitude(imported
+							? apiPlotCoordinate.getLongitude() : roundCoordinate(apiPlotCoordinate.getLongitude()));
 					plotCoordinate.setPlot(plot);
 					plot.getCoordinates().add(plotCoordinate);
 
 				}
 
-				// Generate Plot GeoID
-				plot.setGeoId(generatePlotGeoID(plot.getCoordinates()));
+				plot.setGeoId(imported && StringUtils.isNotBlank(apiPlot.getGeoId()) ? apiPlot.getGeoId()
+						: generatePlotGeoID(plot.getCoordinates()));
 
 				userCustomer.getPlots().add(plot);
 			}
@@ -1270,39 +1460,42 @@ public class CompanyService extends BaseService {
 		UserCustomer userCustomer = fetchUserCustomer(id);
 		PermissionsUtil.checkUserIfCompanyEnrolled(userCustomer.getCompany().getUsers().stream().toList(), authUser);
 
-		// Prepare the GeoJSON object
-		List<Feature> features = new ArrayList<>();
+		// Mapbox's JSON adapter rounds coordinates; preserve the stored doubles in the export.
+		ObjectNode collection = JsonNodeFactory.instance.objectNode();
+		collection.put("type", "FeatureCollection");
+		ArrayNode features = collection.putArray("features");
 
 		for (Plot plot : userCustomer.getPlots()) {
 
-			Feature feature;
+			ObjectNode feature = features.addObject();
+			feature.put("type", "Feature");
+			ObjectNode geometry = feature.putObject("geometry");
 			if (plot.getCoordinates().size() < 3) {
-
-				feature = Feature.fromGeometry(Point.fromLngLat(
-						plot.getCoordinates().stream().toList().get(0).getLongitude(),
-						plot.getCoordinates().stream().toList().get(0).getLatitude()
-				));
+				geometry.put("type", "Point");
+				ArrayNode point = geometry.putArray("coordinates");
+				point.add(plot.getCoordinates().get(0).getLongitude());
+				point.add(plot.getCoordinates().get(0).getLatitude());
 			} else {
-
-				List<Point> polygonCoordinates = plot.getCoordinates()
-						.stream()
-						.map(plotCoordinate -> Point.fromLngLat(
-								plotCoordinate.getLongitude(),
-								plotCoordinate.getLatitude()
-						))
-						.collect(
-						Collectors.toList());
-				polygonCoordinates.add(Point.fromLngLat(
-						plot.getCoordinates().stream().toList().get(0).getLongitude(),
-						plot.getCoordinates().stream().toList().get(0).getLatitude()));
-
-				feature = Feature.fromGeometry(Polygon.fromLngLats(List.of(polygonCoordinates)));
+				geometry.put("type", "Polygon");
+				ArrayNode ring = geometry.putArray("coordinates").addArray();
+				for (PlotCoordinate coordinate : plot.getCoordinates()) {
+					ArrayNode point = ring.addArray();
+					point.add(coordinate.getLongitude());
+					point.add(coordinate.getLatitude());
+				}
+				PlotCoordinate first = plot.getCoordinates().get(0);
+				PlotCoordinate last = plot.getCoordinates().get(plot.getCoordinates().size() - 1);
+				if (!Objects.equals(first.getLatitude(), last.getLatitude())
+						|| !Objects.equals(first.getLongitude(), last.getLongitude())) {
+					ArrayNode point = ring.addArray();
+					point.add(first.getLongitude());
+					point.add(first.getLatitude());
+				}
 			}
-			feature.addStringProperty("geoID", Optional.ofNullable(plot.getGeoId()).orElse(""));
-			features.add(feature);
+			feature.putObject("properties").put("geoID", Optional.ofNullable(plot.getGeoId()).orElse(""));
 		}
 
-		return FeatureCollection.fromFeatures(features).toJson().getBytes();
+		return collection.toString().getBytes(StandardCharsets.UTF_8);
 	}
 
 	@Transactional
@@ -1457,9 +1650,9 @@ public class CompanyService extends BaseService {
 	}
 
 	/**
-	 * Rounds a stored coordinate to {@link #COORDINATE_DECIMAL_PLACES} decimal places. Applied to
-	 * every coordinate before it is persisted, so that the plot GeoID - which is generated from the
-	 * persisted coordinates - matches the ring that is actually stored.
+	 * Rounds a coordinate entered through the plot API to {@link #COORDINATE_DECIMAL_PLACES} decimal
+	 * places. Imported coordinates deliberately do not pass through this method: they are persisted
+	 * exactly as read, so that a GeoID shipped with the file keeps matching its boundary.
 	 *
 	 * @param value coordinate to round, may be null
 	 * @return the rounded value, or null if the input was null
@@ -1486,13 +1679,13 @@ public class CompanyService extends BaseService {
 			if (!CollectionUtils.isEmpty(response.getMatchedGeoIDs())) {
                 // On errors API returns additional message
                 if (response.getMessage() != null) {
-                    logger.warn("Boundary registration returned a message");
+                    logger.warn("AgStack reported a matched plot boundary");
                 }
 				return response.getMatchedGeoIDs().stream().findFirst().orElse(null);
 			} else {
                 // On errors API returns additional message
                 if (response.getGeoID() == null && response.getMessage() != null) {
-                    logger.warn("Boundary registration returned a message");
+                    logger.warn("AgStack did not return a plot GeoID");
                 }
 				return response.getGeoID();
 			}
@@ -1594,7 +1787,7 @@ public class CompanyService extends BaseService {
 		condition = condition.and(companyCustomer.getCompany().getId()).eq(companyId);
 
 		if (request.getQuery() != null) {
-			condition = condition.and(companyCustomer.getName()).like().any(request.getQuery());
+			condition = condition.and(SearchTools.normalized(companyCustomer.getName())).like().any(SearchTools.normalize(request.getQuery()));
 		}
 
 		Torpedo.where(condition);
@@ -1781,14 +1974,14 @@ public class CompanyService extends BaseService {
 			OnGoingLogicalCondition queryCondition = Torpedo.condition();
 			switch (request.getSearchBy()) {
 				case "BY_NAME":
-					queryCondition = Torpedo.condition(userCustomer.getName()).like().any(request.getQuery());
+					queryCondition = Torpedo.condition(SearchTools.normalized(userCustomer.getName())).like().any(SearchTools.normalize(request.getQuery()));
 					break;
 				case "BY_SURNAME":
-					queryCondition = Torpedo.condition(userCustomer.getSurname()).like().any(request.getQuery());
+					queryCondition = Torpedo.condition(SearchTools.normalized(userCustomer.getSurname())).like().any(SearchTools.normalize(request.getQuery()));
 					break;
 				case "BY_NAME_AND_SURNAME":
-					queryCondition = Torpedo.condition(userCustomer.getName()).like().any(request.getQuery())
-							.or(Torpedo.condition(userCustomer.getSurname()).like().any(request.getQuery()));
+					queryCondition = Torpedo.condition(SearchTools.normalized(userCustomer.getName())).like().any(SearchTools.normalize(request.getQuery()))
+							.or(Torpedo.condition(SearchTools.normalized(userCustomer.getSurname())).like().any(SearchTools.normalize(request.getQuery())));
 					break;
 			}
 			condition = condition.and(queryCondition);

@@ -5,6 +5,10 @@ import com.abelium.inatrace.components.common.TokenService;
 import com.abelium.inatrace.db.entities.auth.AuthenticationToken;
 import com.abelium.inatrace.db.entities.auth.ConfirmationToken;
 import com.abelium.inatrace.db.entities.common.User;
+import com.abelium.inatrace.db.entities.company.Company;
+import com.abelium.inatrace.db.entities.company.CompanyUser;
+import com.abelium.inatrace.types.CompanyStatus;
+import com.abelium.inatrace.types.CompanyUserRole;
 import com.abelium.inatrace.types.ConfirmationTokenType;
 import com.abelium.inatrace.types.Language;
 import com.abelium.inatrace.types.UserRole;
@@ -21,7 +25,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -77,6 +82,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
+@AutoConfigureTestRestTemplate
 class UserAuthApiTest extends AbstractMySqlIntegrationTest {
 
 	/** Long enough to satisfy PasswordTools.isPasswordComplex, which checks length 8..50. */
@@ -757,6 +763,53 @@ class UserAuthApiTest extends AbstractMySqlIntegrationTest {
 		assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
 	}
 
+	// ------------------------------------------------------------------ user list
+
+	@Test
+	@DisplayName("list returns the users of the caller's active companies")
+	void listUsersReturnsColleagues() {
+		User caller = seedUser(UserStatus.ACTIVE, UserRole.USER);
+		User colleague = seedUser(UserStatus.ACTIVE, UserRole.USER);
+		Company company = seedCompany("List Co " + UUID.randomUUID());
+		enroll(company, caller, CompanyUserRole.COMPANY_USER);
+		enroll(company, colleague, CompanyUserRole.COMPANY_USER);
+
+		ResponseEntity<String> response = get("/api/user/list", accessCookieFor(caller));
+
+		assertEquals(HttpStatus.OK, response.getStatusCode(), response.getBody());
+		assertTrue(response.getBody().contains(caller.getEmail()), response.getBody());
+		assertTrue(response.getBody().contains(colleague.getEmail()), response.getBody());
+	}
+
+	// --------------------------------------------------------------- admin profile
+
+	@Test
+	@DisplayName("admin/profile/{id} returns another user's profile to a system admin")
+	void adminProfileReturnsTheUser() {
+		User admin = seedUser(UserStatus.ACTIVE, UserRole.SYSTEM_ADMIN);
+		User target = seedUser(UserStatus.ACTIVE, UserRole.USER);
+
+		ResponseEntity<String> response = get("/api/user/admin/profile/" + target.getId(), accessCookieFor(admin));
+
+		assertEquals(HttpStatus.OK, response.getStatusCode(), response.getBody());
+		assertTrue(response.getBody().contains(target.getEmail()), response.getBody());
+	}
+
+	@Test
+	@DisplayName("PUT admin/profile updates the target user's name and surname")
+	void adminProfileUpdateChangesTheUser() {
+		User admin = seedUser(UserStatus.ACTIVE, UserRole.SYSTEM_ADMIN);
+		User target = seedUser(UserStatus.ACTIVE, UserRole.USER);
+
+		ResponseEntity<String> response = exchange(HttpMethod.PUT, "/api/user/admin/profile",
+				Map.of("id", target.getId(), "name", "Renamed", "surname", "Person", "language", "EN"),
+				accessCookieFor(admin));
+
+		assertEquals(HttpStatus.OK, response.getStatusCode(), response.getBody());
+		assertEquals("Renamed", nameOf(target.getId()));
+		assertEquals("Person", surnameOf(target.getId()));
+	}
+
 	// ---------------------------------------------------------------------- helpers
 
 	private TransactionTemplate tx() {
@@ -849,6 +902,29 @@ class UserAuthApiTest extends AbstractMySqlIntegrationTest {
 		});
 	}
 
+	/** Creates a committed, ACTIVE company, so the request thread can see it. Names are unique per call. */
+	private Company seedCompany(String name) {
+		return tx().execute(s -> {
+			Company company = new Company();
+			company.setName(name);
+			company.setStatus(CompanyStatus.ACTIVE);
+			em.persist(company);
+			em.flush();
+			return company;
+		});
+	}
+
+	private void enroll(Company company, User user, CompanyUserRole role) {
+		tx().executeWithoutResult(s -> {
+			CompanyUser companyUser = new CompanyUser();
+			companyUser.setCompany(em.find(Company.class, company.getId()));
+			companyUser.setUser(em.find(User.class, user.getId()));
+			companyUser.setRole(role);
+			em.persist(companyUser);
+			em.flush();
+		});
+	}
+
 	/**
 	 * Issues a confirmation token the same way the service does and returns the plaintext half,
 	 * which is what would otherwise have been mailed out.
@@ -897,6 +973,10 @@ class UserAuthApiTest extends AbstractMySqlIntegrationTest {
 
 	private String nameOf(Long userId) {
 		return tx().execute(s -> em.find(User.class, userId).getName());
+	}
+
+	private String surnameOf(Long userId) {
+		return tx().execute(s -> em.find(User.class, userId).getSurname());
 	}
 
 	private ResponseEntity<String> login(String email, String password) {

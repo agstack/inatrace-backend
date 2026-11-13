@@ -26,6 +26,7 @@ public class ApiDocument extends ApiBaseEntity {
 
     public ApiDocument(Long id, String storageKey) {
         this.id = id;
+        this.storageKey = storageKey;
     }
 
 	public String getStorageKey() {
