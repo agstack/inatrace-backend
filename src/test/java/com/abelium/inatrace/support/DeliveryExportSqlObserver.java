@@ -19,7 +19,10 @@ public final class DeliveryExportSqlObserver implements StatementInspector {
                     sample.stockCountSelects++;
                 } else {
                     sample.stockSelects++;
-                    if (normalized.matches(".*\\blimit\\s+.*")) sample.limitedStockSelects++;
+                    if (normalized.matches(".*\\blimit\\s+.*")
+                            || normalized.matches(".*\\bfetch\\s+(first|next)\\s+.*")) {
+                        sample.limitedStockSelects++;
+                    }
                 }
             }
         }

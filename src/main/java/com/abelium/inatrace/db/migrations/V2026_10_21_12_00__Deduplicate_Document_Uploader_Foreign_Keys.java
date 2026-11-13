@@ -22,6 +22,9 @@ public class V2026_10_21_12_00__Deduplicate_Document_Uploader_Foreign_Keys imple
 
     @Override
     public void migrate(EntityManager em, Environment environment) {
+        if (JpaMigrationSupport.isPostgreSql(em)) {
+            return;
+        }
         List<String> foreignKeys = uploaderForeignKeys(em);
         if (foreignKeys.size() < 2) {
             return;

@@ -37,10 +37,10 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.MessageSource;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
@@ -117,7 +117,7 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 	@Autowired private EntityManager em;
 	@Autowired private TokenService tokenService;
 	@Autowired private MessageSource messageSource;
-	@MockBean private AgStackClientService agStackClientService;
+	@MockitoBean private AgStackClientService agStackClientService;
 
 	@Value("${INATrace.auth.accessTokenCookieName}")
 	private String accessCookieName;

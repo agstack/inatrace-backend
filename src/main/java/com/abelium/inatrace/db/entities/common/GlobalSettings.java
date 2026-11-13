@@ -1,5 +1,9 @@
 package com.abelium.inatrace.db.entities.common;
 
+import org.hibernate.Length;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import com.abelium.inatrace.api.types.Lengths;
 import com.abelium.inatrace.db.base.BaseEntity;
 
@@ -19,8 +23,8 @@ public class GlobalSettings extends BaseEntity {
     /**
      * Settings value
      */
-    @Lob
-	@Column(columnDefinition = "LONGTEXT")
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+    @Column(length = Length.LONG32)
     private String value;
     
     /**

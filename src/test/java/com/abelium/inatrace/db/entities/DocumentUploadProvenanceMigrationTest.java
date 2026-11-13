@@ -18,6 +18,9 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.BeforeAll;
+import com.abelium.inatrace.support.TestVendor;
 
 /** Verifies that the provenance migration upgrades an existing Document table safely. */
 @SpringBootTest
@@ -26,6 +29,11 @@ class DocumentUploadProvenanceMigrationTest extends AbstractMySqlIntegrationTest
 
     @Autowired DataSource dataSource;
     @Autowired EntityManagerFactory entityManagerFactory;
+
+    @BeforeAll
+    static void requireMySqlForMigrationTests() {
+        Assumptions.assumeTrue(TestVendor.isMySql(), "This migration test is MySQL-only");
+    }
 
     @Test
     void addsNullableUploaderReferenceIndexAndForeignKeyToLegacyDocumentTable() throws Exception {

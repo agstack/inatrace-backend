@@ -33,6 +33,7 @@ import com.abelium.inatrace.types.ProductCompanyType;
 import jakarta.persistence.TypedQuery;
 import jakarta.transaction.Transactional;
 import org.apache.commons.lang3.BooleanUtils;
+import org.hibernate.jpa.HibernateHints;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
@@ -401,6 +402,10 @@ public class FacilityService extends BaseService {
 						Facility.class)
 				.setParameter("companyId", companyId)
 				.setParameter("language", language)
+				// Hibernate 7.4 rewrites limit + collection fetch joins into a subquery that
+				// loses the fetch-join alias used by t.language. Keep the pre-7.4 in-memory
+				// pagination for this query until the rewrite can be used here.
+				.setHint(HibernateHints.HINT_LIMIT_IN_MEMORY, true)
 				.setFirstResult(request.getOffset())
 				.setMaxResults(request.getLimit());
 
