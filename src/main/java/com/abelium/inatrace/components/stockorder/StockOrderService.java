@@ -473,13 +473,20 @@ public class StockOrderService extends BaseService {
                         stockOrderWeights.put(apiPayment.getStockOrder().getId(), apiPayment.getStockOrder().getFulfilledQuantity().multiply(apiPayment.getStockOrder().getMeasureUnitType().getWeight()));
                     }
 
-                    // Calculate price in USD at date
-                    BigDecimal producerPriceUsd = currencyService.convertAtDate(
+                    // Calculate price in USD at date. When no exchange rate is available
+                    // (external provider unavailable) the public payload keeps the price empty
+                    // instead of failing the whole journey.
+                    BigDecimal producerPriceUsd = currencyService.convertAtDateOrNull(
                             apiPayment.getCurrency(),
                             "USD",
                             apiPayment.getAmount(),
                             Date.from(apiPayment.getFormalCreationTime().atStartOfDay().toInstant(ZoneOffset.UTC))
                     );
+
+                    if (producerPriceUsd == null) {
+                        producersPaidUsd = null;
+                        break;
+                    }
 
                     // Accumulate payments
                     producersPaidUsd = producersPaidUsd.add(producerPriceUsd);
@@ -488,7 +495,9 @@ public class StockOrderService extends BaseService {
                 // Sum up order weights
                 BigDecimal producersCoffeeKg = stockOrderWeights.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
 
-                apiQRTagPublic.setPriceToProducer(calculateProducerPayments(producersPaidUsd, producersCoffeeKg));
+                apiQRTagPublic.setPriceToProducer(producersPaidUsd != null
+                        ? calculateProducerPayments(producersPaidUsd, producersCoffeeKg)
+                        : null);
                 apiQRTagPublic.setPriceToFarmer(calculateFarmerPayments(stockOrderHistory));
 
                 // Get all the certificates from the participating companies
@@ -619,14 +628,19 @@ public class StockOrderService extends BaseService {
 
             for (ApiStockOrder apiStockOrder : farmerStockOrders) {
                 for (ApiPayment apiPayment : apiStockOrder.getPayments()) {
-                    paidUsd = paidUsd.add(
-                            currencyService.convertAtDate(
-                                    apiPayment.getCurrency(),
-                                    "USD",
-                                    apiPayment.getAmount(),
-                                    Date.from(apiPayment.getFormalCreationTime().atStartOfDay().toInstant(ZoneOffset.UTC))
-                            )
+                    BigDecimal paidUsdForPayment = currencyService.convertAtDateOrNull(
+                            apiPayment.getCurrency(),
+                            "USD",
+                            apiPayment.getAmount(),
+                            Date.from(apiPayment.getFormalCreationTime().atStartOfDay().toInstant(ZoneOffset.UTC))
                     );
+
+                    // Without an exchange rate the farmer price cannot be computed
+                    if (paidUsdForPayment == null) {
+                        return null;
+                    }
+
+                    paidUsd = paidUsd.add(paidUsdForPayment);
                 }
                 coffeeKg = coffeeKg.add(apiStockOrder.getFulfilledQuantity().multiply(apiStockOrder.getMeasureUnitType().getWeight()));
             }
