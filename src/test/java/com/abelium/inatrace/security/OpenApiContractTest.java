@@ -211,8 +211,7 @@ class OpenApiContractTest extends AbstractMySqlIntegrationTest {
         if (source.isObject()) {
             ObjectNode normalized = JsonNodeFactory.instance.objectNode();
             Map<String, JsonNode> fields = new TreeMap<>();
-            Iterator<Map.Entry<String, JsonNode>> iterator = source.fields();
-            iterator.forEachRemaining(entry -> fields.put(entry.getKey(), entry.getValue()));
+            source.properties().forEach(entry -> fields.put(entry.getKey(), entry.getValue()));
             fields.forEach((name, value) -> normalized.set(name, normalize(value)));
             return normalized;
         }
