@@ -26,6 +26,7 @@ import com.abelium.inatrace.tools.Queries;
 import com.abelium.inatrace.tools.QueryTools;
 import com.abelium.inatrace.tools.TranslateTools;
 import com.abelium.inatrace.types.Language;
+import com.abelium.inatrace.tools.SearchTools;
 import jakarta.transaction.Transactional;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.CellType;
@@ -252,8 +253,8 @@ public class PaymentService extends BaseService {
 		}
 		if(queryRequest.farmerName != null) { // Search by farmers name (query)
 			condition = condition.and(paymentProxy.getRecipientUserCustomer()).isNotNull();
-			OnGoingLogicalCondition likeName = Torpedo.condition(paymentProxy.getRecipientUserCustomer().getName()).like().any(queryRequest.farmerName);
-			OnGoingLogicalCondition likeSurname = Torpedo.condition(paymentProxy.getRecipientUserCustomer().getSurname()).like().any(queryRequest.farmerName);
+			OnGoingLogicalCondition likeName = Torpedo.condition(SearchTools.normalized(paymentProxy.getRecipientUserCustomer().getName())).like().any(SearchTools.normalize(queryRequest.farmerName));
+			OnGoingLogicalCondition likeSurname = Torpedo.condition(SearchTools.normalized(paymentProxy.getRecipientUserCustomer().getSurname())).like().any(SearchTools.normalize(queryRequest.farmerName));
 			condition = condition.and(Torpedo.condition(likeName.or(likeSurname)));
 		}
 		if (queryRequest.farmerId != null) {

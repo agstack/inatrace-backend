@@ -106,8 +106,32 @@ public class CommonApiTools {
         aa.hondurasMunicipality = address.getHondurasMunicipality();
         aa.hondurasVillage = address.getHondurasVillage();
     }
+
+    public static void updateApiAddress(ApiAddress aa, GeoAddress address) {
+        aa.address = address.getAddress();
+        aa.city = address.getCity();
+        aa.state = address.getState();
+        aa.zip = address.getZip();
+        aa.country = toApiCountry(address.getCountry());
+        aa.cell = address.getCell();
+        aa.sector = address.getSector();
+        aa.village = address.getVillage();
+        aa.otherAddress = address.getOtherAddress();
+        aa.hondurasDepartment = address.getHondurasDepartment();
+        aa.hondurasFarm = address.getHondurasFarm();
+        aa.hondurasMunicipality = address.getHondurasMunicipality();
+        aa.hondurasVillage = address.getHondurasVillage();
+    }
     
     public void updateAddress(Address a, ApiAddress aa) throws ApiException {
+        a.setAddress(aa.address);
+        a.setCity(aa.city);
+        a.setState(aa.state);
+        a.setZip(aa.zip);
+        a.setCountry(commonEngine.fetchCountry(aa.getCountry()));
+    }
+
+    public void updateAddress(GeoAddress a, ApiAddress aa) throws ApiException {
         a.setAddress(aa.address);
         a.setCity(aa.city);
         a.setState(aa.state);

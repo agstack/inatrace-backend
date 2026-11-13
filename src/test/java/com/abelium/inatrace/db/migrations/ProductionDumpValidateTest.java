@@ -5,7 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.context.ConfigurableApplicationContext;
-import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.mysql.MySQLContainer;
 import org.testcontainers.utility.MountableFile;
 
 import javax.sql.DataSource;
@@ -16,11 +16,19 @@ import java.sql.DriverManager;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.BeforeAll;
+import com.abelium.inatrace.support.TestVendor;
 
 /** Opt-in validation against a local, authorized and sanitized SQL dump. */
 @EnabledIfEnvironmentVariable(named = "INATRACE_PRODUCTION_DUMP", matches = ".+")
 class ProductionDumpValidateTest {
     @TempDir Path temporaryDirectory;
+
+    @BeforeAll
+    static void requireMySqlForMigrationTests() {
+        Assumptions.assumeTrue(TestVendor.isMySql(), "This migration test is MySQL-only");
+    }
 
     @Test
     void sanitizedDumpValidatesWithoutSchemaWrites() throws Exception {
@@ -35,7 +43,7 @@ class ProductionDumpValidateTest {
     }
 
     void validateDump(Path dump, String image, boolean checkMissingColumn) throws Exception {
-        try (MySQLContainer<?> mysql = new MySQLContainer<>(image)
+        try (MySQLContainer mysql = new MySQLContainer(image)
                 .withUrlParam("allowPublicKeyRetrieval", "true").withUrlParam("useSSL", "false")
                 .withTmpFs(Map.of("/var/lib/mysql", "rw"))) {
             mysql.start();

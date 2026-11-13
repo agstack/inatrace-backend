@@ -25,7 +25,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
-import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.mysql.MySQLContainer;
 
 import javax.sql.DataSource;
 import java.io.BufferedReader;
@@ -49,16 +49,24 @@ import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.BeforeAll;
+import com.abelium.inatrace.support.TestVendor;
 
 /** Exercises the supported Hibernate-then-Flyway bootstrap on a dedicated empty MySQL. */
 class FreshInstallMigrationTest {
 
     private static final Logger log = LoggerFactory.getLogger(FreshInstallMigrationTest.class);
     private static final String JAVA_PACKAGE = "com.abelium.inatrace.db.migrations.";
-    private static final String LOCATIONS = "classpath:com/abelium/inatrace/db/migrations,classpath:/db/migrations";
+    private static final String LOCATIONS = "classpath:com/abelium/inatrace/db/migrations,classpath:/db/migrations/mysql,classpath:/db/migrations/common";
 
     @TempDir
     Path temporaryDirectory;
+
+    @BeforeAll
+    static void requireMySqlForMigrationTests() {
+        Assumptions.assumeTrue(TestVendor.isMySql(), "This migration test is MySQL-only");
+    }
 
     @Test
     void inventoryDetectsUnreviewedAndMissingMigrationResources() throws Exception {
@@ -83,7 +91,7 @@ class FreshInstallMigrationTest {
         Map<String, String> expectedCountries = countriesFromCsv(countries);
         assertFalse(expectedCountries.isEmpty());
 
-        try (MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.4.11")
+        try (MySQLContainer mysql = new MySQLContainer("mysql:8.4.11")
                 .withUrlParam("allowPublicKeyRetrieval", "true")
                 .withUrlParam("useSSL", "false")
                 .withTmpFs(Map.of("/var/lib/mysql", "rw"))) {
@@ -180,7 +188,7 @@ class FreshInstallMigrationTest {
         }
     }
 
-    private ConfigurableApplicationContext start(MySQLContainer<?> mysql, String ddlMode) {
+    private ConfigurableApplicationContext start(MySQLContainer mysql, String ddlMode) {
         return new SpringApplicationBuilder(INATraceBackendApplication.class).run(
                 "--spring.config.location=classpath:/application-test.properties",
                 "--spring.profiles.active=test",
@@ -235,7 +243,7 @@ class FreshInstallMigrationTest {
                 }
             }
         }
-        for (Resource resource : resolver.getResources("classpath*:db/migrations/*.sql")) {
+        for (Resource resource : resolver.getResources("classpath*:db/migrations/*/*.sql")) {
             resources.add(new Migration("SQL", resource.getFilename()));
         }
         assertEquals(Set.copyOf(expected), resources, "Update the reviewed inventory when migrations change");
