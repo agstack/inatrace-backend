@@ -9,7 +9,7 @@ import com.abelium.inatrace.api.errors.validation.ApiValidationError;
 import com.abelium.inatrace.api.exceptions.ApiUpstreamServiceException;
 import com.abelium.inatrace.components.exceptionhandling.SpringExceptionConverter;
 import com.abelium.inatrace.components.exceptionhandling.SpringExceptionResponseBuilder;
-import com.fasterxml.jackson.databind.JsonMappingException;
+import tools.jackson.core.JacksonException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import org.apache.catalina.connector.ClientAbortException;
@@ -97,15 +97,15 @@ public class DefaultControllerExceptionHandler {
     // Spring request parsing exceptions
     @ExceptionHandler
     public ResponseEntity<?> handleMessageNotReadableException(HttpMessageNotReadableException exc, HttpServletRequest request) {
-        // when field values are of wrong type (e.g. string for int field), we get HttpMessageNotReadableException with cause JsonMappingException
-        if ( exc.getCause() instanceof JsonMappingException ) {
-            return handleJsonMappingException((JsonMappingException) exc.getCause(), request);
+        // when field values are of wrong type (e.g. string for int field), we get HttpMessageNotReadableException with cause JacksonException
+        if ( exc.getCause() instanceof JacksonException ) {
+            return handleJacksonException((JacksonException) exc.getCause(), request);
         }
         // probably unparsable body
         return exceptionResponseBuilder.getAcceptableResponse(HttpStatus.BAD_REQUEST, ApiStatus.REQUEST_BODY_ERROR, exc.getMessage(), request);
     }
 
-    private ResponseEntity<?> handleJsonMappingException(JsonMappingException exc, HttpServletRequest request) {
+    private ResponseEntity<?> handleJacksonException(JacksonException exc, HttpServletRequest request) {
         ApiValidationError response = SpringExceptionConverter.buildValidationError(exc);
         return exceptionResponseBuilder.getAcceptableResponse(HttpStatus.BAD_REQUEST, response, request);
     }

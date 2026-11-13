@@ -18,6 +18,11 @@ public class V2026_10_13_12_00__Add_Document_Uploaded_By implements JpaMigration
 
     @Override
     public void migrate(EntityManager em, Environment environment) {
+        if (JpaMigrationSupport.isPostgreSql(em)) {
+            em.createNativeQuery("CREATE INDEX IF NOT EXISTS IDX_DOCUMENT_UPLOADED_BY "
+                    + "ON Document (uploadedBy_id)").executeUpdate();
+            return;
+        }
         if (!columnExists(em)) {
             em.createNativeQuery("ALTER TABLE `Document` ADD COLUMN `uploadedBy_id` BIGINT NULL").executeUpdate();
         }

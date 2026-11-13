@@ -7,6 +7,9 @@ import com.abelium.inatrace.db.entities.product.ProductLabelCompanyDocument;
 import com.abelium.inatrace.types.CompanyDocumentCategory;
 import com.abelium.inatrace.types.CompanyDocumentType;
 import jakarta.persistence.*;
+import org.hibernate.Length;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.hibernate.annotations.OnDelete;
 import org.hibernate.annotations.OnDeleteAction;
 
@@ -57,8 +60,8 @@ public class CompanyDocument extends BaseEntity {
 	/**
 	 * Quote (long text)
 	 */
-	@Lob
-	@Column(columnDefinition = "LONGTEXT")
+	@JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+	@Column(length = Length.LONG32)
 	private String quote;
 
 	/**

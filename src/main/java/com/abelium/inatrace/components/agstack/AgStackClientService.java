@@ -14,12 +14,16 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
+import java.time.Duration;
 
 @Service
 public class AgStackClientService {
 
 	@Value("${INATrace.agstack.baseURL}")
 	private String baseURL;
+
+	@Value("${INATrace.agstack.requestTimeoutMs:30000}")
+	private long requestTimeoutMs = 30000;
 
     private final AgStackClientTokenManager tokenService;
 
@@ -59,11 +63,16 @@ public class AgStackClientService {
 				.header("X-FROM-ASSET-REGISTRY", "True")
 				.accept(MediaType.APPLICATION_JSON)
                 .exchangeToMono(response -> {
+                    if (response.statusCode().equals(HttpStatus.UNAUTHORIZED)) {
+                        tokenService.invalidateToken(token);
+                    }
                     // 1. Handle 400 BAD REQUEST, because of api implementation,
                     // In this request "matched geo ids" can be returned, with error message
                     // so it is mapped in response class
                     if (response.statusCode().equals(HttpStatus.BAD_REQUEST)) {
-                        return response.bodyToMono(ApiRegisterFieldBoundaryResponse.class);
+                        return response.bodyToMono(ApiRegisterFieldBoundaryResponse.class)
+                                .switchIfEmpty(Mono.error(new ApiException(ApiStatus.ERROR,
+                                        "AgStack boundary request failed with HTTP 400")));
                     }
                     // 2. Handle 200 OK (and other success codes)
                     else if (response.statusCode().is2xxSuccessful()) {
@@ -72,9 +81,13 @@ public class AgStackClientService {
                     // 3. Handle errors, throw exception
                     else {
                         return response.bodyToMono(ApiRegisterFieldBoundaryErrorResponse.class)
-                                .flatMap(error -> Mono.error(new ApiException(ApiStatus.ERROR, error.getError())));
+                                .flatMap(error -> Mono.<ApiRegisterFieldBoundaryResponse>error(
+                                        new ApiException(ApiStatus.ERROR, error.getError())))
+                                .switchIfEmpty(Mono.error(new ApiException(ApiStatus.ERROR,
+                                        "AgStack boundary request failed with HTTP " + response.statusCode().value())));
                     }
                 })
+				.timeout(Duration.ofMillis(requestTimeoutMs))
 				.block();
 	}
 

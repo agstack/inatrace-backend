@@ -28,9 +28,7 @@ import com.abelium.inatrace.types.ProductLabelStatus;
 import com.abelium.inatrace.types.RequestLogType;
 import com.abelium.inatrace.types.UserRole;
 import com.abelium.inatrace.types.MediaObject;
-import jakarta.persistence.criteria.CriteriaBuilder;
-import jakarta.persistence.criteria.CriteriaDelete;
-import jakarta.persistence.criteria.Root;
+import com.abelium.inatrace.tools.SearchTools;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.transaction.Transactional;
 import org.apache.commons.lang3.BooleanUtils;
@@ -76,7 +74,7 @@ public class ProductService extends BaseService {
         
         OnGoingLogicalCondition condition = Torpedo.condition();
         if (StringUtils.isNotBlank(request.name)) {
-            condition = condition.and(pProxy.getName()).like().any(request.name);
+            condition = condition.and(SearchTools.normalized(pProxy.getName())).like().any(SearchTools.normalize(request.name));
         }
         Torpedo.where(condition);
         switch (request.sortBy) {
@@ -105,7 +103,7 @@ public class ProductService extends BaseService {
         Product pProxy = Torpedo.from(Product.class);
         OnGoingLogicalCondition condition = Torpedo.condition(pProxy.getCompany().getId()).in(companyIds).or(pProxy.getId()).in(productIds);
         if (StringUtils.isNotBlank(request.name)) {
-            condition = condition.and(pProxy.getName()).like().any(request.name);
+            condition = condition.and(SearchTools.normalized(pProxy.getName())).like().any(SearchTools.normalize(request.name));
         }
         Document dProxy = Torpedo.leftJoin(pProxy.getPhoto());        
         Torpedo.where(condition);
@@ -394,10 +392,14 @@ public class ProductService extends BaseService {
 	private void removeProductLabel(ProductLabel pl) {
 		Long labelId = pl.getId();
 		removeProductLabelBatches(List.of(labelId));
-		em.createQuery("DELETE FROM ProductLabelFeedback f WHERE f.label.id = :labelId")
-				.setParameter("labelId", labelId).executeUpdate();
-		em.createQuery("DELETE FROM FinalProductLabel fpl WHERE fpl.productLabel.id = :labelId")
-				.setParameter("labelId", labelId).executeUpdate();
+		List<ProductLabelFeedback> feedback = em.createQuery(
+				"SELECT f FROM ProductLabelFeedback f WHERE f.label.id = :labelId", ProductLabelFeedback.class)
+				.setParameter("labelId", labelId).getResultList();
+		feedback.forEach(em::remove);
+		List<FinalProductLabel> finalProductLabels = em.createQuery(
+				"SELECT fpl FROM FinalProductLabel fpl WHERE fpl.productLabel.id = :labelId", FinalProductLabel.class)
+				.setParameter("labelId", labelId).getResultList();
+		finalProductLabels.forEach(em::remove);
 		em.createQuery("DELETE FROM ProductLabelCompanyDocument d WHERE d.productLabelId = :labelId")
 				.setParameter("labelId", labelId).executeUpdate();
 
@@ -461,11 +463,10 @@ public class ProductService extends BaseService {
 	}
 
     private void removeProductLabelBatches(List<Long> labelIds) {
-		CriteriaBuilder cb = em.getCriteriaBuilder();
-		CriteriaDelete<ProductLabelBatch> cd = cb.createCriteriaDelete(ProductLabelBatch.class);
-		Root<ProductLabelBatch> root = cd.from(ProductLabelBatch.class);
-		cd.where(root.get("label").get("id").in(labelIds));
-		em.createQuery(cd).executeUpdate();
+		List<ProductLabelBatch> batches = em.createQuery(
+				"SELECT b FROM ProductLabelBatch b WHERE b.label.id IN :labelIds", ProductLabelBatch.class)
+				.setParameter("labelIds", labelIds).getResultList();
+		batches.forEach(em::remove);
     }
 
     @Transactional
@@ -513,7 +514,7 @@ public class ProductService extends BaseService {
 
         condition = condition.and(plbProxy.getLabel().getId()).eq(labelId);
         if (StringUtils.isNotBlank(request.number)) {
-            condition = condition.and(plbProxy.getNumber()).like().startsWith(request.number);
+            condition = condition.and(SearchTools.normalized(plbProxy.getNumber())).like().startsWith(SearchTools.normalize(request.number));
         }
         Torpedo.where(condition);
         switch (request.sortBy) {
@@ -831,7 +832,7 @@ public class ProductService extends BaseService {
 
 		FinalProduct fp = fetchFinalProduct(productId, finalProductId);
 
-    	em.remove(fp);
+		em.remove(fp);
 	}
 
     private void checkProductPermission(CustomUserDetails authUser, Long productId) throws ApiException {
