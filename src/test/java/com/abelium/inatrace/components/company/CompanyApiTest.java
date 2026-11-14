@@ -511,6 +511,81 @@ class CompanyApiTest extends AbstractMySqlIntegrationTest {
 		assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
 	}
 
+	/*
+	 * MERGE_TO_COMPANY adds every member of the merged company to the other one. Administering the
+	 * merged company used to be enough, so a company admin could merge into any active company and,
+	 * through it, become a member of a company they had no relation to. Unless they are a system
+	 * admin, the caller must now administer both companies.
+	 */
+
+	@Test
+	@DisplayName("a company admin cannot merge their company into a company they have no relation to")
+	void companyAdminCannotMergeIntoAnUnrelatedCompany() {
+		User companyAdmin = seedUser(UserRole.USER);
+		Company own = seedCompany(CompanyStatus.ACTIVE, "Merge Source " + UUID.randomUUID());
+		Company target = seedCompany(CompanyStatus.ACTIVE, "Someone Else's Company " + UUID.randomUUID());
+		enroll(own, companyAdmin, CompanyUserRole.COMPANY_ADMIN);
+
+		ResponseEntity<String> response = exchange(HttpMethod.POST, "/api/company/execute/MERGE_TO_COMPANY",
+				Map.of("companyId", own.getId(), "otherCompanyId", target.getId()), accessCookieFor(companyAdmin));
+
+		assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
+		assertFalse(isMember(target.getId(), companyAdmin.getId()), "the caller must not end up in the other company");
+		assertEquals(CompanyStatus.ACTIVE, statusOf(own.getId()));
+	}
+
+	@Test
+	@DisplayName("being a plain member of the other company is not enough to merge into it")
+	void companyAdminCannotMergeIntoACompanyTheyOnlyBelongTo() {
+		User companyAdmin = seedUser(UserRole.USER);
+		User colleague = seedUser(UserRole.USER);
+		Company own = seedCompany(CompanyStatus.ACTIVE, "Merge Source " + UUID.randomUUID());
+		Company target = seedCompany(CompanyStatus.ACTIVE, "Merge Target " + UUID.randomUUID());
+		enroll(own, companyAdmin, CompanyUserRole.COMPANY_ADMIN);
+		enroll(own, colleague, CompanyUserRole.COMPANY_USER);
+		enroll(target, companyAdmin, CompanyUserRole.COMPANY_USER);
+
+		ResponseEntity<String> response = exchange(HttpMethod.POST, "/api/company/execute/MERGE_TO_COMPANY",
+				Map.of("companyId", own.getId(), "otherCompanyId", target.getId()), accessCookieFor(companyAdmin));
+
+		assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
+		assertFalse(isMember(target.getId(), colleague.getId()), "the other members must not be moved");
+		assertEquals(CompanyStatus.ACTIVE, statusOf(own.getId()));
+	}
+
+	@Test
+	@DisplayName("an admin of both companies can still merge one into the other")
+	void adminOfBothCompaniesCanMergeThem() {
+		User companyAdmin = seedUser(UserRole.USER);
+		User colleague = seedUser(UserRole.USER);
+		Company own = seedCompany(CompanyStatus.ACTIVE, "Duplicate " + UUID.randomUUID());
+		Company target = seedCompany(CompanyStatus.ACTIVE, "Kept " + UUID.randomUUID());
+		enroll(own, companyAdmin, CompanyUserRole.COMPANY_ADMIN);
+		enroll(own, colleague, CompanyUserRole.COMPANY_USER);
+		enroll(target, companyAdmin, CompanyUserRole.COMPANY_ADMIN);
+
+		ResponseEntity<String> response = exchange(HttpMethod.POST, "/api/company/execute/MERGE_TO_COMPANY",
+				Map.of("companyId", own.getId(), "otherCompanyId", target.getId()), accessCookieFor(companyAdmin));
+
+		assertEquals(HttpStatus.OK, response.getStatusCode(), response.getBody());
+		assertEquals(CompanyStatus.DEACTIVATED, statusOf(own.getId()));
+		assertTrue(isMember(target.getId(), colleague.getId()), "the members of the merged company are moved");
+	}
+
+	@Test
+	@DisplayName("a system admin can merge companies they are not a member of")
+	void systemAdminCanMergeCompanies() {
+		User systemAdmin = seedUser(UserRole.SYSTEM_ADMIN);
+		Company own = seedCompany(CompanyStatus.ACTIVE, "Admin Merge Source " + UUID.randomUUID());
+		Company target = seedCompany(CompanyStatus.ACTIVE, "Admin Merge Target " + UUID.randomUUID());
+
+		ResponseEntity<String> response = exchange(HttpMethod.POST, "/api/company/execute/MERGE_TO_COMPANY",
+				Map.of("companyId", own.getId(), "otherCompanyId", target.getId()), accessCookieFor(systemAdmin));
+
+		assertEquals(HttpStatus.OK, response.getStatusCode(), response.getBody());
+		assertEquals(CompanyStatus.DEACTIVATED, statusOf(own.getId()));
+	}
+
 	@Test
 	@DisplayName("a regional admin who is not enrolled in the company cannot act on it")
 	void unrelatedRegionalAdminCannotExecuteAction() {
@@ -864,6 +939,15 @@ class CompanyApiTest extends AbstractMySqlIntegrationTest {
 	}
 
 	/** Null when the user is not (or no longer) enrolled in the company. */
+	private boolean isMember(Long companyId, Long userId) {
+		return tx().execute(s -> em.createQuery(
+						"select count(cu) from CompanyUser cu where cu.company.id = :companyId and cu.user.id = :userId",
+						Long.class)
+				.setParameter("companyId", companyId)
+				.setParameter("userId", userId)
+				.getSingleResult()) > 0;
+	}
+
 	private CompanyUserRole roleOf(Long companyId, Long userId) {
 		return tx().execute(s -> em.createQuery(
 						"select cu.role from CompanyUser cu where cu.company.id = :companyId and cu.user.id = :userId",

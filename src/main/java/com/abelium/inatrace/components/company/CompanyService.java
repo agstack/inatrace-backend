@@ -321,6 +321,12 @@ public class CompanyService extends BaseService {
 				removeUserFromCompany(request.userId, c);
 				break;
 			case MERGE_TO_COMPANY:
+				// Merging adds every member of this company to the other one, so administering this
+				// company is not enough: unless they are a system admin, the caller must also be an
+				// admin of the company they merge into.
+				if (authUser.getUserRole() != UserRole.SYSTEM_ADMIN && !isCompanyAdmin(authUser, request.otherCompanyId)) {
+					throw new ApiException(ApiStatus.UNAUTHORIZED, "User doesn't have required permission!");
+				}
 				mergeToCompany(c, request.otherCompanyId);
 				break;
 			default:
