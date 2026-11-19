@@ -923,38 +923,6 @@ class TransactionTransitionConcurrencyTest extends AbstractMySqlIntegrationTest 
                                        boolean transactionActive) { }
     }
 
-    private static final class KnownFailureRecorder {
-        private final List<Throwable> failures = new CopyOnWriteArrayList<>();
-
-        void record(Throwable failure) {
-            failures.add(failure);
-        }
-
-        void clear() {
-            failures.clear();
-        }
-
-        boolean containsOnlyOptimisticOrDeadlockFailures() {
-            return !failures.isEmpty() && failures.stream().allMatch(this::isOptimisticOrDeadlockFailure);
-        }
-
-        boolean coversOnlyOptimisticOrDeadlockFailures(long expectedFailures) {
-            return expectedFailures == 0 || (failures.size() >= expectedFailures && containsOnlyOptimisticOrDeadlockFailures());
-        }
-
-        private boolean isOptimisticOrDeadlockFailure(Throwable failure) {
-            for (Throwable candidate = failure; candidate != null && candidate != candidate.getCause();
-                 candidate = candidate.getCause()) {
-                String name = candidate.getClass().getName();
-                if (name.contains("OptimisticLock") || name.contains("StaleObject")
-                        || name.contains("Deadlock") || name.contains("CannotAcquireLock")) {
-                    return true;
-                }
-            }
-            return false;
-        }
-    }
-
     private static final class TransactionEffectRecorder {
         private final java.util.Set<Long> canceledTransactionIds = ConcurrentHashMap.newKeySet();
 
