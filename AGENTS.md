@@ -5,7 +5,7 @@ apply; `README.md` and `docs/` are the place to start.
 
 ## What this is
 
-The INATrace Java backend: Spring Boot 3.3 on Java 17, Maven, MySQL 8.4. It serves
+The INATrace Java backend: Spring Boot 4.1 on Java 25, Maven, MySQL 8.4 (or PostgreSQL). It serves
 the web frontend (`inatrace-frontend`) and the mobile app. Read `docs/` before
 changing behaviour; `TECHNICAL_DOCUMENTATION.md` is background only and not current.
 
