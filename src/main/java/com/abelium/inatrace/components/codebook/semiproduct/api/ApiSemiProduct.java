@@ -2,6 +2,7 @@ package com.abelium.inatrace.components.codebook.semiproduct.api;
 
 import com.abelium.inatrace.api.ApiBaseEntity;
 import com.abelium.inatrace.components.codebook.measure_unit_type.api.ApiMeasureUnitType;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.springframework.validation.annotation.Validated;
 
 import java.util.List;
@@ -52,10 +53,12 @@ public class ApiSemiProduct extends ApiBaseEntity {
 		this.measurementUnitType = measurementUnitType;
 	}
 
+	@JsonProperty("sku")
 	public Boolean getSKU() {
 		return isSKU;
 	}
 
+	@JsonProperty("sku")
 	public void setSKU(Boolean SKU) {
 		isSKU = SKU;
 	}
@@ -68,10 +71,12 @@ public class ApiSemiProduct extends ApiBaseEntity {
 		isBuyable = buyable;
 	}
 
+	@JsonProperty("skuendCustomer")
 	public Boolean getSKUEndCustomer() {
 		return isSKUEndCustomer;
 	}
 
+	@JsonProperty("skuendCustomer")
 	public void setSKUEndCustomer(Boolean SKUEndCustomer) {
 		isSKUEndCustomer = SKUEndCustomer;
 	}

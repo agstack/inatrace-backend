@@ -108,6 +108,65 @@ public class CurrencyService extends BaseService {
         }
     }
 
+    /**
+     * Same conversion as {@link #convertAtDate(String, String, BigDecimal, Date)} but returns null
+     * when no exchange rate can be obtained (external provider unavailable). Public payloads use it
+     * to degrade instead of failing the request.
+     */
+    @Transactional
+    public BigDecimal convertAtDateOrNull(String from, String to, BigDecimal value, Date date) {
+
+        if (from.equals(to)) {
+            return value;
+        } else if ("EUR".equals(from)) {
+            return this.convertFromEurAtDateOrNull(to, value, date);
+        } else if ("EUR".equals(to)) {
+            return this.convertToEurAtDateOrNull(from, value, date);
+        } else {
+            BigDecimal valueInEur = this.convertToEurAtDateOrNull(from, value, date);
+            if (valueInEur == null) {
+                return null;
+            }
+            return this.convertFromEurAtDateOrNull(to, valueInEur, date);
+        }
+    }
+
+    @Transactional
+    public BigDecimal convertFromEurAtDateOrNull(String to, BigDecimal value, Date date) {
+
+        BigDecimal rate = rateAtDateOrNull(to, date);
+        return rate == null ? null : value.multiply(rate);
+    }
+
+    @Transactional
+    public BigDecimal convertToEurAtDateOrNull(String from, BigDecimal value, Date date) {
+
+        BigDecimal rate = rateAtDateOrNull(from, date);
+        return rate == null ? null : value.divide(rate, 6, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Returns the EUR based rate for the date, fetching it from the provider when it is missing.
+     * A null result means the rate could not be obtained and callers must degrade.
+     */
+    private BigDecimal rateAtDateOrNull(String currency, Date date) {
+
+        List<BigDecimal> rates = rateAtDateQuery(currency, date).getResultList();
+        if (!rates.isEmpty()) {
+            return rates.get(0);
+        }
+
+        fetchRates(date);
+
+        List<BigDecimal> fetchedRates = rateAtDateQuery(currency, date).getResultList();
+        if (fetchedRates.isEmpty()) {
+            logger.warn("No exchange rate available for {} at {} (requestId: {})",
+                    currency, date, ApiRequestObservability.requestId());
+            return null;
+        }
+        return fetchedRates.get(0);
+    }
+
     public void fetchRates(Date date) {
         String requestId = ApiRequestObservability.requestId();
         String isoDate = DateTimeFormatter.ISO_LOCAL_DATE.format(date.toInstant().atZone(ZoneId.of("GMT")));
