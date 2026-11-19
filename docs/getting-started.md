@@ -3,7 +3,7 @@
 Running the INATrace backend on a development machine. Configuration is covered separately in [Configuration](configuration.md).
 
 ## Requirements
-* Java `17` or higher
+* Java `25`
 * Maven `3.8.5`
 * Docker with Compose, for MySQL `8.4.11` (or your own MySQL `8.4.11`)
 

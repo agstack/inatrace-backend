@@ -7,7 +7,7 @@ Report security problems privately, as described in [SECURITY.md](SECURITY.md).
 
 ## Setup
 
-You need Java 17, Maven and Docker. [docs/getting-started.md](docs/getting-started.md)
+You need Java 25, Maven and Docker. [docs/getting-started.md](docs/getting-started.md)
 covers running the backend locally.
 
 ## Tests
