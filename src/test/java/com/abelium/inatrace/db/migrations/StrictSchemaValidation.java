@@ -8,13 +8,13 @@ import com.abelium.inatrace.components.user.AuthenticationTokenCleanup;
 import com.abelium.inatrace.configuration.MigrationsConfiguration;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
-import org.springframework.boot.autoconfigure.domain.EntityScan;
+import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
-import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.mysql.MySQLContainer;
 
 import java.nio.file.Path;
 
@@ -37,7 +37,7 @@ final class StrictSchemaValidation {
         @Bean AnalyticsEngine analyticsEngine() { return new AnalyticsEngine(); }
     }
 
-    static void createReadOnlyUser(MySQLContainer<?> mysql) throws Exception {
+    static void createReadOnlyUser(MySQLContainer mysql) throws Exception {
         String database = mysql.getDatabaseName();
         if (!database.matches("[A-Za-z0-9_]+")) throw new IllegalArgumentException("Unexpected database name");
         String sql = "CREATE USER '" + USER + "'@'%' IDENTIFIED BY '" + PASSWORD + "'; "
@@ -46,7 +46,7 @@ final class StrictSchemaValidation {
         if (result.getExitCode() != 0) throw new IllegalStateException("Could not create validation user: " + result.getStderr());
     }
 
-    static ConfigurableApplicationContext start(MySQLContainer<?> mysql, Path temporaryDirectory) {
+    static ConfigurableApplicationContext start(MySQLContainer mysql, Path temporaryDirectory) {
         return new SpringApplicationBuilder(ValidationApplication.class).run(
                 "--spring.config.location=classpath:/application-test.properties", "--spring.profiles.active=test",
                 "--server.port=0", "--spring.datasource.url=" + mysql.getJdbcUrl(),

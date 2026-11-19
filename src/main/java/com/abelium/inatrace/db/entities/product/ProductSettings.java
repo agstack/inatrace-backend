@@ -5,6 +5,9 @@ import com.abelium.inatrace.db.base.BaseEntity;
 import com.abelium.inatrace.db.entities.common.Document;
 import com.abelium.inatrace.types.Language;
 import jakarta.persistence.*;
+import org.hibernate.Length;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -36,8 +39,8 @@ public class ProductSettings extends BaseEntity {
 	/**
 	 * increase in income - description
 	 */
-	@Lob
-	@Column(columnDefinition = "LONGTEXT")
+	@JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+	@Column(length = Length.LONG32)
 	private String incomeIncreaseDescription;
 	
 	/**
@@ -50,22 +53,22 @@ public class ProductSettings extends BaseEntity {
 	/**
 	 * GDPR text
 	 */
-	@Lob
-	@Column(columnDefinition = "LONGTEXT")
+	@JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+	@Column(length = Length.LONG32)
 	private String gdprText;
 	
 	/**
 	 * Privacy policy text
 	 */
-	@Lob
-	@Column(columnDefinition = "LONGTEXT")
+	@JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+	@Column(length = Length.LONG32)
 	private String privacyPolicyText;
 	
 	/**
 	 * Terms of use text
 	 */
-	@Lob
-	@Column(columnDefinition = "LONGTEXT")
+	@JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+	@Column(length = Length.LONG32)
 	private String termsOfUseText;
 
 	public Boolean getCostBreakdown() {

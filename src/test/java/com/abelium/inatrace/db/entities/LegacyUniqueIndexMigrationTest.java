@@ -17,7 +17,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.core.env.Environment;
 import org.springframework.test.context.ActiveProfiles;
-import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.mysql.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
@@ -31,6 +31,9 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.BeforeAll;
+import com.abelium.inatrace.support.TestVendor;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -39,7 +42,7 @@ class LegacyUniqueIndexMigrationTest {
 
     @Container
     @ServiceConnection
-    static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4.11")
+    static final MySQLContainer MYSQL = new MySQLContainer("mysql:8.4.11")
             .withUrlParam("allowPublicKeyRetrieval", "true")
             .withUrlParam("useSSL", "false")
             .withTmpFs(Map.of("/var/lib/mysql", "rw"));
@@ -47,6 +50,11 @@ class LegacyUniqueIndexMigrationTest {
     @Autowired DataSource dataSource;
     @Autowired EntityManagerFactory entityManagerFactory;
     @Autowired Environment environment;
+
+    @BeforeAll
+    static void requireMySqlForMigrationTests() {
+        Assumptions.assumeTrue(TestVendor.isMySql(), "This migration test is MySQL-only");
+    }
 
     @Test
     void removesLegacyUniqueIndexAndAllowsTwoFacilitiesToShareLocation() throws Exception {

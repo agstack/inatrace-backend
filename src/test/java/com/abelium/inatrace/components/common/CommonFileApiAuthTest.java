@@ -14,8 +14,8 @@ import com.abelium.inatrace.types.CompanyUserRole;
 import com.abelium.inatrace.types.DocumentType;
 import com.abelium.inatrace.types.UserRole;
 import com.abelium.inatrace.types.UserStatus;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.AfterEach;
@@ -23,7 +23,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
@@ -263,12 +263,12 @@ class CommonFileApiAuthTest extends AbstractMySqlIntegrationTest {
         return em.createQuery("select count(d) from Document d", Long.class).getSingleResult();
     }
 
-    private void assertStatus(org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request, int status) throws Exception {
+    private void assertStatus(org.springframework.test.web.servlet.RequestBuilder request, int status) throws Exception {
         MvcResult result = mockMvc.perform(request).andReturn();
         assertEquals(status, result.getResponse().getStatus(), result.getResponse().getContentAsString());
     }
 
-    private void assertContains(org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request, int status, String marker) throws Exception {
+    private void assertContains(org.springframework.test.web.servlet.RequestBuilder request, int status, String marker) throws Exception {
         MvcResult result = mockMvc.perform(request).andReturn();
         assertEquals(status, result.getResponse().getStatus(), result.getResponse().getContentAsString());
         assertTrue(result.getResponse().getContentAsString().contains(marker), result.getResponse().getContentAsString());

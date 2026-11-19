@@ -24,6 +24,7 @@ import com.abelium.inatrace.tools.PasswordTools;
 import com.abelium.inatrace.tools.Queries;
 import com.abelium.inatrace.tools.QueryTools;
 import com.abelium.inatrace.types.*;
+import com.abelium.inatrace.tools.SearchTools;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
@@ -336,17 +337,17 @@ public class UserService extends BaseService {
         OnGoingLogicalCondition condition = Torpedo.condition(); // .Torpedo conditions = new ArrayList<>();
         if (StringUtils.isNotBlank(request.query)) {
         	OnGoingLogicalCondition queryCondition = 
-    				Torpedo.condition(uProxy.getName()).like().any(request.query).
-        				   or(uProxy.getSurname()).like().any(request.query).
-        				   or(uProxy.getEmail()).like().any(request.query);
+    				Torpedo.condition(SearchTools.normalized(uProxy.getName())).like().any(SearchTools.normalize(request.query)).
+        				   or(SearchTools.normalized(uProxy.getSurname())).like().any(SearchTools.normalize(request.query)).
+        				   or(SearchTools.normalized(uProxy.getEmail())).like().any(SearchTools.normalize(request.query));
         	condition = condition.and(queryCondition);
         	
         } else {
         	if (StringUtils.isNotBlank(request.email)) {
-        		condition = condition.and(uProxy.getEmail()).like().any(request.email);
+        		condition = condition.and(SearchTools.normalized(uProxy.getEmail())).like().any(SearchTools.normalize(request.email));
         	}
         	if (StringUtils.isNotBlank(request.surname)) {
-        		condition = condition.and(uProxy.getSurname()).like().any(request.surname);
+        		condition = condition.and(SearchTools.normalized(uProxy.getSurname())).like().any(SearchTools.normalize(request.surname));
         	}
         }
         if (request.role != null) {
@@ -386,16 +387,16 @@ public class UserService extends BaseService {
 
 		if (StringUtils.isNotBlank(request.query)) {
 			OnGoingLogicalCondition queryCondition = Torpedo
-					.condition(uProxy.getName()).like().any(request.query)
-					.or(uProxy.getSurname()).like().any(request.query)
-					.or(uProxy.getEmail()).like().any(request.query);
+					.condition(SearchTools.normalized(uProxy.getName())).like().any(SearchTools.normalize(request.query))
+					.or(SearchTools.normalized(uProxy.getSurname())).like().any(SearchTools.normalize(request.query))
+					.or(SearchTools.normalized(uProxy.getEmail())).like().any(SearchTools.normalize(request.query));
 			condition = condition.and(queryCondition);
 		} else {
 			if (StringUtils.isNotBlank(request.email)) {
-				condition = condition.and(uProxy.getEmail()).like().any(request.email);
+				condition = condition.and(SearchTools.normalized(uProxy.getEmail())).like().any(SearchTools.normalize(request.email));
 			}
 			if (StringUtils.isNotBlank(request.surname)) {
-				condition = condition.and(uProxy.getSurname()).like().any(request.surname);
+				condition = condition.and(SearchTools.normalized(uProxy.getSurname())).like().any(SearchTools.normalize(request.surname));
 			}
 		}
 
@@ -428,16 +429,16 @@ public class UserService extends BaseService {
         condition = condition.and(cuProxy.getCompany().getId()).in(companyIds); 
         if (StringUtils.isNotBlank(request.query)) {
         	OnGoingLogicalCondition queryCondition = 
-    				Torpedo.condition(cuProxy.getUser().getName()).like().any(request.query).
-        				   or(cuProxy.getUser().getSurname()).like().any(request.query).
-        				   or(cuProxy.getUser().getEmail()).like().any(request.query);
+    				Torpedo.condition(SearchTools.normalized(cuProxy.getUser().getName())).like().any(SearchTools.normalize(request.query)).
+        				   or(SearchTools.normalized(cuProxy.getUser().getSurname())).like().any(SearchTools.normalize(request.query)).
+        				   or(SearchTools.normalized(cuProxy.getUser().getEmail())).like().any(SearchTools.normalize(request.query));
         	condition = condition.and(queryCondition);
         } else {
         	if (StringUtils.isNotBlank(request.email)) {
-        		condition = condition.and(cuProxy.getUser().getEmail()).like().any(request.email);
+        		condition = condition.and(SearchTools.normalized(cuProxy.getUser().getEmail())).like().any(SearchTools.normalize(request.email));
         	}
         	if (StringUtils.isNotBlank(request.surname)) {
-        		condition = condition.and(cuProxy.getUser().getSurname()).like().any(request.surname);
+        		condition = condition.and(SearchTools.normalized(cuProxy.getUser().getSurname())).like().any(SearchTools.normalize(request.surname));
         	}
         }
         if (request.role != null) {

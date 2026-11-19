@@ -48,6 +48,9 @@ public class V2026_09_23_12_00__Drop_Legacy_OneToOne_Unique_Indexes implements J
 
     @Override
     public void migrate(EntityManager em, Environment environment) {
+        if (JpaMigrationSupport.isPostgreSql(em)) {
+            return;
+        }
         for (String[] join : JOIN_COLUMNS) {
             dropLegacyUniqueIndexes(em, join[0], join[1]);
         }

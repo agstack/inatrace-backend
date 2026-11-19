@@ -2,6 +2,9 @@ package com.abelium.inatrace.db.entities.common;
 
 import com.abelium.inatrace.db.base.BaseEntity;
 import jakarta.persistence.*;
+import org.hibernate.Length;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.time.LocalDate;
 
 /**
@@ -30,8 +33,8 @@ public class UserCustomerCertification extends BaseEntity {
 	/**
 	 * Description of this certification
 	 */
-	@Lob
-	@Column(columnDefinition = "LONGTEXT")
+	@JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+	@Column(length = Length.LONG32)
 	private String description;
 
 	/**

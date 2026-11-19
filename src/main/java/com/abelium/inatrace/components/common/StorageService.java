@@ -18,7 +18,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.MalformedURLException;
-import java.net.URL;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -74,11 +74,11 @@ public class StorageService extends BaseService
     	try {
     		byte[] chunk = new byte[4096];
     		int bytesRead;
-    		InputStream stream = new URL(url).openStream();
+    		InputStream stream = URI.create(url).toURL().openStream();
     		while ((bytesRead = stream.read(chunk)) > 0) {
     			outputStream.write(chunk, 0, bytesRead);
     		}
-    	} catch(MalformedURLException e) {
+    	} catch(MalformedURLException | IllegalArgumentException e) {
 			SafeExceptionLog.error(logger, "Malformed file download URL", e);
     		return null;
     	} catch (Exception e) {

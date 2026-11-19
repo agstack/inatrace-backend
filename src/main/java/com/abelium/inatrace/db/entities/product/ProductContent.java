@@ -4,6 +4,9 @@ import com.abelium.inatrace.db.base.BaseEntity;
 import com.abelium.inatrace.db.entities.common.Document;
 import com.abelium.inatrace.db.entities.process.Process;
 import jakarta.persistence.*;
+import org.hibernate.Length;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @MappedSuperclass
 public class ProductContent extends BaseEntity {
@@ -24,16 +27,16 @@ public class ProductContent extends BaseEntity {
 	 * product description - briefly describe the product AND reasons why your product is worth buying 
 	 * (example: special properties, health benefits, great value, organic production....)
 	 */
-	@Lob
-	@Column(columnDefinition = "LONGTEXT")
+	@JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+	@Column(length = Length.LONG32)
 	private String description;
 	
 	/**
 	 * origin - text and quantity input - Briefly describe where the product or its 
 	 * ingredients are produced. 
 	 */
-	@Lob
-	@Column(columnDefinition = "LONGTEXT")
+	@JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+	@Column(length = Length.LONG32)
 	private String originText;
 
 	/**

@@ -14,6 +14,10 @@ public class CustomMySQLDialect extends MySQLDialect {
 
         functionContributions.getFunctionRegistry()
                 .register("GROUP_CONCAT", new StandardSQLFunction("group_concat", StandardBasicTypes.STRING));
+
+        var stringType = functionContributions.getTypeConfiguration().getBasicTypeForJavaType(String.class);
+        functionContributions.getFunctionRegistry()
+                .registerPattern("SEARCH_NORMALIZE", "lower(?1)", stringType);
     }
 
 }

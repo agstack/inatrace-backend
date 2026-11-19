@@ -1,12 +1,6 @@
 package com.abelium.inatrace.configuration;
 
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.http.HttpMessageConverters;
-import org.springframework.boot.autoconfigure.web.client.RestTemplateAutoConfiguration;
-import org.springframework.boot.web.client.RestTemplateBuilder;
-import org.springframework.boot.web.client.RestTemplateCustomizer;
-import org.springframework.boot.web.client.RestTemplateRequestCustomizer;
+import org.springframework.boot.restclient.RestTemplateBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
@@ -17,30 +11,15 @@ import org.springframework.web.client.RestTemplate;
 @Configuration
 public class RestTemplateConfig {
 
-    @Autowired
-    private RestTemplateAutoConfiguration restTemplateConfiguration;
-    
-    @Autowired
-    private ObjectProvider<HttpMessageConverters> messageConverters;
-    
-    @Autowired
-    private ObjectProvider<RestTemplateCustomizer> restTemplateCustomizers;
-    
-    @Autowired
-    private ObjectProvider<RestTemplateRequestCustomizer<?>> restTemplateRequestCustomizers;
-
-    // replace Spring's RestTemplateBuilder because it allows only 5 concurrent requests
-    @Bean
-    public RestTemplateBuilder restTemplateBuilder() {
-
-        return restTemplateConfiguration.restTemplateBuilderConfigurer(messageConverters, restTemplateCustomizers,
-                restTemplateRequestCustomizers).configure(new RestTemplateBuilder()).requestFactory(
-                        () -> new BufferingClientHttpRequestFactory(new SimpleClientHttpRequestFactory()));
-    }
-
+    /**
+     * Build the application RestTemplate on top of the autoconfigured builder, but use a
+     * buffering request factory so retries/logging can read the body more than once and the
+     * connection behaviour stays under application control.
+     */
     @Lazy
     @Bean
-    public RestTemplate restTemplate() {
-        return restTemplateBuilder().build();
+    public RestTemplate restTemplate(RestTemplateBuilder builder) {
+        return builder.requestFactory(
+                () -> new BufferingClientHttpRequestFactory(new SimpleClientHttpRequestFactory())).build();
     }
 }

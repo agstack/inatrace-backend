@@ -42,6 +42,7 @@ public class Plot extends BaseEntity {
 	           cascade = CascadeType.ALL,
 	           orphanRemoval = true,
 	           fetch = FetchType.LAZY)
+	@OrderBy("id ASC")
 	private List<PlotCoordinate> coordinates;
 
 	@ManyToOne

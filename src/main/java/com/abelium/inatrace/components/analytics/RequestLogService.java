@@ -8,10 +8,10 @@ import com.abelium.inatrace.components.transactions.AbTransactionTemplate;
 import com.abelium.inatrace.db.entities.analytics.RequestGeoLocation;
 import com.abelium.inatrace.db.entities.analytics.RequestLog;
 import com.abelium.inatrace.types.RequestLogType;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.cfg.DateTimeFeature;
+import tools.jackson.databind.json.JsonMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
@@ -91,17 +91,14 @@ public class RequestLogService extends BaseService {
     	} else {
 			try {
 				return objectMapper.writeValueAsString(o);
-			} catch (JsonProcessingException e) {
+			} catch (JacksonException e) {
 				return null;
 			}
     	}
     }
     
     private static ObjectMapper createObjectMapper() {
-    	ObjectMapper om = new ObjectMapper();
-        om.registerModule(new JavaTimeModule());
-        om.configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false);
-    	return om;
+        return JsonMapper.builder().disable(DateTimeFeature.WRITE_DATES_AS_TIMESTAMPS).build();
     }
 
 }

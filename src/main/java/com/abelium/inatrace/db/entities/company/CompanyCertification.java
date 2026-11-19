@@ -4,6 +4,9 @@ import com.abelium.inatrace.api.types.Lengths;
 import com.abelium.inatrace.db.base.BaseEntity;
 import com.abelium.inatrace.db.entities.common.Document;
 import jakarta.persistence.*;
+import org.hibernate.Length;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.time.LocalDate;
 
 @Entity
@@ -40,8 +43,8 @@ public class CompanyCertification extends BaseEntity {
 	/**
 	 * Description of this certification
 	 */
-	@Lob
-	@Column(columnDefinition = "LONGTEXT")
+	@JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+	@Column(length = Length.LONG32)
 	private String description;
 
 	/**

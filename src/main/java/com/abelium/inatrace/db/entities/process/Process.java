@@ -1,5 +1,9 @@
 package com.abelium.inatrace.db.entities.process;
 
+import org.hibernate.Length;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import com.abelium.inatrace.db.base.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -13,8 +17,8 @@ public class Process extends BaseEntity {
 	 * If the ingredients are organic, describe how you achieve that 
 	 * (e.g. organic seedlings, no chemical fertilizers, etc.)
 	 */
-	@Lob
-	@Column(columnDefinition = "LONGTEXT")
+	@JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+	@Column(length = Length.LONG32)
 	private String production;
 
 	public String getProduction() {

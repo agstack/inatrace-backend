@@ -54,8 +54,9 @@ import org.junit.jupiter.api.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.SpyBean;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.boot.resttestclient.TestRestTemplate;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -101,6 +102,7 @@ import static org.mockito.Mockito.doAnswer;
 @ActiveProfiles("test")
 @Timeout(value = 90, unit = TimeUnit.SECONDS)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
+@AutoConfigureTestRestTemplate
 class TransactionTransitionConcurrencyTest extends AbstractMySqlIntegrationTest {
 
     private static final BigDecimal TEN = new BigDecimal("10.00");
@@ -114,7 +116,7 @@ class TransactionTransitionConcurrencyTest extends AbstractMySqlIntegrationTest 
     @Autowired private EntityManagerFactory entityManagerFactory;
     @PersistenceContext private EntityManager em;
 
-    @SpyBean private DefaultControllerExceptionHandler exceptionHandler;
+    @MockitoSpyBean private DefaultControllerExceptionHandler exceptionHandler;
 
     @Value("${INATrace.auth.accessTokenCookieName}")
     private String accessCookieName;
@@ -874,7 +876,7 @@ class TransactionTransitionConcurrencyTest extends AbstractMySqlIntegrationTest 
 
         void afterTransactionLoad(Transaction transaction, boolean transactionActive) {
             if (transactionId == null || !transactionId.equals(transaction.getId())) return;
-            LoadObservation observation = new LoadObservation(Thread.currentThread().getId(), transaction.getStatus(),
+            LoadObservation observation = new LoadObservation(Thread.currentThread().threadId(), transaction.getStatus(),
                     readVersion(transaction), transactionActive);
             if (observations.putIfAbsent(observation.threadId(), observation) != null) return;
             arrivals.countDown();

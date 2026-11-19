@@ -1,0 +1,108 @@
+# Header synonyms used to map a KoboToolbox / ODK export onto the farmer fields INATrace stores.
+#
+# Format: <CONCEPT>,<synonym>
+#
+# Headers in an export are written by whoever designed the form, so they are matched leniently:
+# the header is lower-cased, accents and punctuation are stripped, any "(...)" qualifier is
+# removed, and the remaining words are compared against these synonyms. A multi-word synonym must
+# appear as consecutive words. Each column is matched against the concepts in the order below, and
+# each concept is claimed by the left-most column that matches it.
+#
+# Add a row here to support another form's wording - no code change is needed.
+
+# Matched before FIRST_NAME/LAST_NAME so that "smartphone" columns never look like a phone number,
+# and so a plot/plant counting column is never mistaken for the Spanish "Nombre" (name).
+SMARTPHONE,smartphone
+SMARTPHONE,telephone intelligent
+
+EXCLUDE_COUNTING,parcelle
+EXCLUDE_COUNTING,parcelles
+EXCLUDE_COUNTING,parcela
+EXCLUDE_COUNTING,parcelas
+EXCLUDE_COUNTING,plot
+EXCLUDE_COUNTING,plots
+EXCLUDE_COUNTING,plants
+EXCLUDE_COUNTING,plantes
+EXCLUDE_COUNTING,plantas
+EXCLUDE_COUNTING,plan
+EXCLUDE_COUNTING,arbres
+EXCLUDE_COUNTING,arboles
+EXCLUDE_COUNTING,trees
+
+FIRST_NAME,first name
+FIRST_NAME,given name
+FIRST_NAME,prenom
+FIRST_NAME,prenoms
+FIRST_NAME,nombre
+FIRST_NAME,nombres
+
+LAST_NAME,last name
+LAST_NAME,family name
+LAST_NAME,surname
+LAST_NAME,nom
+LAST_NAME,nom de famille
+LAST_NAME,apellido
+LAST_NAME,apellidos
+
+CITY,city
+CITY,town
+CITY,village
+CITY,ville
+CITY,commune
+CITY,ciudad
+CITY,pueblo
+CITY,aldea
+
+STATE,state
+STATE,province
+STATE,region
+STATE,regione
+STATE,departement
+STATE,departamento
+STATE,district
+
+COUNTRY,country
+COUNTRY,pays
+COUNTRY,pais
+
+GENDER,gender
+GENDER,sex
+GENDER,genre
+GENDER,sexe
+GENDER,genero
+GENDER,sexo
+
+PHONE,phone
+PHONE,phone number
+PHONE,telephone
+PHONE,numero de telephone
+PHONE,mobile
+PHONE,celular
+PHONE,tel
+
+EMAIL,email
+EMAIL,e mail
+EMAIL,courriel
+EMAIL,correo
+
+INTERNAL_ID,internal id
+INTERNAL_ID,farmer id
+INTERNAL_ID,farmer code
+INTERNAL_ID,code producteur
+INTERNAL_ID,matricule
+INTERNAL_ID,codigo
+
+# Plot-sheet concepts. The geo column itself is found by the shape of its values, not by its
+# header, because form authors name it anything at all.
+PLOT_SIZE,size
+PLOT_SIZE,area
+PLOT_SIZE,taille
+PLOT_SIZE,superficie
+PLOT_SIZE,surface
+PLOT_SIZE,tamano
+
+PLOT_PLANTS,number of plants
+PLOT_PLANTS,nombre de plants
+PLOT_PLANTS,nombre de plan
+PLOT_PLANTS,nombre de pieds
+PLOT_PLANTS,numero de plantas

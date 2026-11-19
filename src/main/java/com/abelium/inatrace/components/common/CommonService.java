@@ -12,6 +12,7 @@ import com.abelium.inatrace.db.entities.common.User;
 import com.abelium.inatrace.tools.*;
 import com.abelium.inatrace.types.DocumentType;
 import com.abelium.inatrace.types.MediaObject;
+import com.abelium.inatrace.tools.SearchTools;
 import jakarta.transaction.Transactional;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,7 +33,7 @@ public class CommonService extends BaseService {
         Country cProxy = Torpedo.from(Country.class);
 
         if (StringUtils.isNotBlank(request.queryString)) {
-            Torpedo.where(cProxy.getName()).like().startsWith(request.queryString);
+            Torpedo.where(SearchTools.normalized(cProxy.getName())).like().startsWith(SearchTools.normalize(request.queryString));
         }
         if (request.sortBy.equals("name")) {
             QueryTools.orderBy(request.sort, cProxy.getName());

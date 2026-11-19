@@ -317,8 +317,37 @@ public class CompanyController {
             @AuthenticationPrincipal CustomUserDetails authUser,
             @Valid @Parameter(description = "Company ID", required = true) @PathVariable("companyId") Long companyId,
             @Valid @Parameter(description = "Document ID", required = true) @PathVariable("documentId") Long documentId,
-            @RequestHeader(value = "language", defaultValue = "EN", required = false) Language language) throws ApiException {
-        return userCustomerImportService.importFarmersSpreadsheet(companyId, documentId, authUser, language);
+            @RequestHeader(value = "language", defaultValue = "EN", required = false) Language language,
+            @RequestParam(value = "koboSelections", required = false) List<String> koboSelections) throws ApiException {
+        return userCustomerImportService.importFarmersSpreadsheet(companyId, documentId, authUser, language, koboSelections == null ? List.of() : koboSelections);
+    }
+
+    @PostMapping(value = "/userCustomers/import/farmers/{companyId}/{documentId}/confirm-plots")
+    @PreAuthorize("hasAnyAuthority('SYSTEM_ADMIN', 'REGIONAL_ADMIN')")
+    @Operation(summary = "Confirm imported plots for an existing farmer")
+    public ApiDefaultResponse confirmImportedFarmerPlots(
+            @AuthenticationPrincipal CustomUserDetails authUser,
+            @PathVariable("companyId") Long companyId,
+            @PathVariable("documentId") Long documentId,
+            @Valid @RequestBody ApiUserCustomer selection,
+            @RequestHeader(value = "language", defaultValue = "EN", required = false) Language language,
+            @RequestParam(value = "koboSelections", required = false) List<String> koboSelections) throws ApiException {
+        userCustomerImportService.confirmImportedFarmerPlots(companyId, documentId, selection, authUser, language, koboSelections == null ? List.of() : koboSelections);
+        return new ApiDefaultResponse();
+    }
+
+    @PostMapping(value = "/userCustomers/import/farmers/{companyId}/{documentId}/create-separate")
+    @PreAuthorize("hasAnyAuthority('SYSTEM_ADMIN', 'REGIONAL_ADMIN')")
+    @Operation(summary = "Create a separate farmer from an imported duplicate")
+    public ApiDefaultResponse createSeparateImportedFarmer(
+            @AuthenticationPrincipal CustomUserDetails authUser,
+            @PathVariable("companyId") Long companyId,
+            @PathVariable("documentId") Long documentId,
+            @Valid @RequestBody ApiUserCustomer selection,
+            @RequestHeader(value = "language", defaultValue = "EN", required = false) Language language,
+            @RequestParam(value = "koboSelections", required = false) List<String> koboSelections) throws ApiException {
+        userCustomerImportService.createSeparateImportedFarmer(companyId, documentId, selection, authUser, language, koboSelections == null ? List.of() : koboSelections);
+        return new ApiDefaultResponse();
     }
 
     @GetMapping(value = "/{id}/value-chains")

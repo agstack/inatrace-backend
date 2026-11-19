@@ -28,6 +28,7 @@ import com.abelium.inatrace.tools.Queries;
 import com.abelium.inatrace.tools.QueryTools;
 import com.abelium.inatrace.types.Language;
 import com.abelium.inatrace.types.UserRole;
+import com.abelium.inatrace.tools.SearchTools;
 import jakarta.transaction.Transactional;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -84,7 +85,7 @@ public class ValueChainService extends BaseService {
 		OnGoingLogicalCondition condition = Torpedo.condition();
 
 		if (StringUtils.isNotBlank(request.getName())) {
-			condition = condition.and(valueChainProxy.getName()).like().any(request.getName());
+			condition = condition.and(SearchTools.normalized(valueChainProxy.getName())).like().any(SearchTools.normalize(request.getName()));
 		}
 		if (request.getValueChainStatus() != null) {
 			condition = condition.and(valueChainProxy.getValueChainStatus()).eq(request.getValueChainStatus());

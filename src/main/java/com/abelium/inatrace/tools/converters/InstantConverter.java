@@ -1,21 +1,20 @@
 package com.abelium.inatrace.tools.converters;
 
-import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.databind.JsonSerializer;
-import com.fasterxml.jackson.databind.SerializerProvider;
+import tools.jackson.core.JsonGenerator;
+import tools.jackson.databind.SerializationContext;
+import tools.jackson.databind.ValueSerializer;
 
-import java.io.IOException;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 
 public class InstantConverter {
 
-    public static class Serializer extends JsonSerializer<Instant> {
-        private DateTimeFormatter fmt = DateTimeFormatter.ISO_INSTANT.withZone(ZoneOffset.UTC);
+    public static class Serializer extends ValueSerializer<Instant> {
+        private final DateTimeFormatter fmt = DateTimeFormatter.ISO_INSTANT.withZone(ZoneOffset.UTC);
 
         @Override
-        public void serialize(Instant value, JsonGenerator gen, SerializerProvider serializerProvider) throws IOException {
+        public void serialize(Instant value, JsonGenerator gen, SerializationContext serializerContext) {
             gen.writeString(fmt.format(value));
         }
     }

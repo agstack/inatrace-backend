@@ -22,8 +22,9 @@ public class AuthenticationTokenCleanup {
     @Scheduled(initialDelay = 3_600_000, fixedDelay = 300_000)
     @Transactional
     public void removeExpiredSessions() {
-        em.createNativeQuery("DELETE FROM `AuthenticationToken` WHERE `expiration` < :cutoff "
-                        + "ORDER BY `expiration` LIMIT " + BATCH_SIZE)
+        em.createNativeQuery("DELETE FROM AuthenticationToken WHERE id IN ("
+                        + "SELECT id FROM (SELECT id FROM AuthenticationToken "
+                        + "WHERE expiration < :cutoff ORDER BY expiration LIMIT " + BATCH_SIZE + ") batch)")
                 .setParameter("cutoff", Instant.now().minus(RETENTION_DAYS, ChronoUnit.DAYS))
                 .executeUpdate();
     }

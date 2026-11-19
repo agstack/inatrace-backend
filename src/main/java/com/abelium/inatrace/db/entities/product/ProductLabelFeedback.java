@@ -5,6 +5,9 @@ import com.abelium.inatrace.db.base.TimestampEntity;
 import com.abelium.inatrace.types.ProductLabelFeedbackType;
 
 import jakarta.persistence.*;
+import org.hibernate.Length;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -33,8 +36,8 @@ public class ProductLabelFeedback extends TimestampEntity {
 	/**
 	 * feedback
 	 */
-	@Lob
-	@Column(columnDefinition = "LONGTEXT")
+	@JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+	@Column(length = Length.LONG32)
 	private String feedback;
 	
 	/**

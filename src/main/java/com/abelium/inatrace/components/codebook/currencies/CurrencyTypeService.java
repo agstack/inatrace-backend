@@ -14,6 +14,7 @@ import com.abelium.inatrace.db.entities.codebook.CurrencyType;
 import com.abelium.inatrace.db.entities.currencies.CurrencyPair;
 import com.abelium.inatrace.tools.PaginationTools;
 import com.abelium.inatrace.tools.QueryTools;
+import com.abelium.inatrace.tools.SearchTools;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
@@ -148,8 +149,8 @@ public class CurrencyTypeService extends BaseService {
         }
 
         if (request.getQuery() != null) {
-            OnGoingLogicalCondition codeLikeQuery = Torpedo.condition(currencyTypeProxy.getCode()).like().any(request.getQuery());
-            OnGoingLogicalCondition labelLikeQuery = Torpedo.condition(currencyTypeProxy.getLabel()).like().any(request.getQuery());
+            OnGoingLogicalCondition codeLikeQuery = Torpedo.condition(SearchTools.normalized(currencyTypeProxy.getCode())).like().any(SearchTools.normalize(request.getQuery()));
+            OnGoingLogicalCondition labelLikeQuery = Torpedo.condition(SearchTools.normalized(currencyTypeProxy.getLabel())).like().any(SearchTools.normalize(request.getQuery()));
             condition = condition.and(codeLikeQuery.or(labelLikeQuery));
         }
 

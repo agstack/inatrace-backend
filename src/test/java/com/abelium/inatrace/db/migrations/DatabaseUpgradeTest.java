@@ -27,7 +27,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.support.EncodedResource;
 import org.springframework.jdbc.datasource.init.ScriptUtils;
-import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.mysql.MySQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 import javax.sql.DataSource;
@@ -52,13 +52,18 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.BeforeAll;
+import com.abelium.inatrace.support.TestVendor;
 
 /** Restores a pinned source fixture, then exercises the real current upgrade bootstrap. */
 class DatabaseUpgradeTest {
 
     private static final String SOURCE_REVISION = "fb4fecf87c97c0ae65994850446a73bceb99d201";
     private static final String FIXTURE = "db/upgrade/fb4fecf/source-fixture.sql";
-    private static final String LOCATIONS = "classpath:com/abelium/inatrace/db/migrations,classpath:/db/migrations";
+    private static final String LOCATIONS = "classpath:com/abelium/inatrace/db/migrations,classpath:/db/migrations/mysql,classpath:/db/migrations/common";
+    private static final String IMPORT_DECISION_VERSION = "2026.11.06.12.00";
+    private static final String IMPORT_DECISION_SCRIPT = "V2026_11_06_12_00__Create_Farmer_Import_Decision.sql";
     // Review migrations and schema deltas when the target changes; see docs/stability/database-upgrade.md.
     private static final Map<String, String> TARGET_MIGRATIONS = Map.of(
             "2026.09.23.12.00", "com.abelium.inatrace.db.migrations.V2026_09_23_12_00__Drop_Legacy_OneToOne_Unique_Indexes",
@@ -94,11 +99,16 @@ class DatabaseUpgradeTest {
     @TempDir
     Path temporaryDirectory;
 
+    @BeforeAll
+    static void requireMySqlForMigrationTests() {
+        Assumptions.assumeTrue(TestVendor.isMySql(), "This migration test is MySQL-only");
+    }
+
     @Test
     @Timeout(300)
     void upgradesPinnedHistoricalDatabaseWithoutLosingSyntheticData() throws Exception {
         Manifest manifest = readManifest();
-        try (MySQLContainer<?> mysql = new MySQLContainer<>(DockerImageName.parse(manifest.mysqlImage() + "@" + manifest.mysqlDigest())
+        try (MySQLContainer mysql = new MySQLContainer(DockerImageName.parse(manifest.mysqlImage() + "@" + manifest.mysqlDigest())
                 .asCompatibleSubstituteFor("mysql"))
                 .withUrlParam("allowPublicKeyRetrieval", "true")
                 .withUrlParam("useSSL", "false")
@@ -154,7 +164,7 @@ class DatabaseUpgradeTest {
         }
     }
 
-    private ConfigurableApplicationContext start(MySQLContainer<?> mysql, String ddlMode) {
+    private ConfigurableApplicationContext start(MySQLContainer mysql, String ddlMode) {
         return new SpringApplicationBuilder(INATraceBackendApplication.class).run(
                 "--spring.config.location=classpath:/application-test.properties", "--spring.profiles.active=test",
                 "--server.port=0", "--spring.datasource.url=" + mysql.getJdbcUrl(),
@@ -166,7 +176,7 @@ class DatabaseUpgradeTest {
                 "--INATrace.documents.root=" + temporaryDirectory.resolve("documents"));
     }
 
-    private void restoreSourceFixture(MySQLContainer<?> mysql) throws Exception {
+    private void restoreSourceFixture(MySQLContainer mysql) throws Exception {
         try (Connection connection = connection(mysql); Statement statement = connection.createStatement()) {
             statement.execute("SET NAMES utf8mb4");
             statement.execute("SET SESSION time_zone = '+00:00'");
@@ -188,7 +198,7 @@ class DatabaseUpgradeTest {
         }
     }
 
-    private Connection connection(MySQLContainer<?> mysql) throws Exception {
+    private Connection connection(MySQLContainer mysql) throws Exception {
         return DriverManager.getConnection(mysql.getJdbcUrl(), mysql.getUsername(), mysql.getPassword());
     }
 
@@ -230,7 +240,7 @@ class DatabaseUpgradeTest {
             properties.load(input);
         }
         assertEquals(SOURCE_REVISION, properties.getProperty("source.revision"));
-        assertTrue(TARGET_MIGRATIONS.containsKey(properties.getProperty("target.required.migration")),
+        assertTrue(IMPORT_DECISION_VERSION.equals(properties.getProperty("target.required.migration")),
                 "Required migration must be included in TARGET_MIGRATIONS; see docs/stability/database-upgrade.md");
         assertEquals("sha256:0744ee5ef89ce6ccfa13de3e579fe6b9e27f93dd70da9c06d2c908b1b193fb8d",
                 properties.getProperty("mysql.image.digest"));
@@ -288,13 +298,15 @@ class DatabaseUpgradeTest {
 
     private void assertTargetHistory(DataSource dataSource, Manifest manifest) throws Exception {
         try (Connection connection = dataSource.getConnection()) {
-            Set<String> actual = rows(connection, "SELECT CONCAT(version, '|', script, '|', type, '|', COALESCE(CAST(checksum AS CHAR), '<NULL>'), '|', success) FROM schema_version WHERE installed_rank > " + manifest.historyCount());
+            Set<String> actual = rows(connection, "SELECT CONCAT(version, '|', script, '|', type, '|', COALESCE(CAST(checksum AS CHAR), '<NULL>'), '|', success) FROM schema_version WHERE installed_rank > " + manifest.historyCount() + " AND version <> '" + IMPORT_DECISION_VERSION + "'");
             Set<String> expected = new LinkedHashSet<>();
             TARGET_MIGRATIONS.forEach((version, script) -> expected.add(version + "|" + script + "|CUSTOM|<NULL>|1"));
             assertEquals(expected, actual, "Unexpected or missing migrations: extra=" + difference(actual, expected)
                     + ", missing=" + difference(expected, actual) + "; see docs/stability/database-upgrade.md");
-            assertEquals(manifest.historyCount() + TARGET_MIGRATIONS.size(), scalar(connection, "SELECT COUNT(*) FROM schema_version WHERE success"),
+            assertEquals(manifest.historyCount() + TARGET_MIGRATIONS.size() + 1, scalar(connection, "SELECT COUNT(*) FROM schema_version WHERE success"),
                     "Unexpected migration count; see docs/stability/database-upgrade.md");
+            assertEquals(1, scalar(connection, "SELECT COUNT(*) FROM schema_version WHERE version='" + IMPORT_DECISION_VERSION
+                    + "' AND script='" + IMPORT_DECISION_SCRIPT + "' AND type='SQL' AND checksum IS NOT NULL AND success"));
             assertEquals(manifest.historySha256(), sourceHistorySignature(connection));
             for (Map.Entry<String, String> migration : TARGET_MIGRATIONS.entrySet()) {
                 assertEquals(1, scalar(connection, "SELECT COUNT(*) FROM schema_version WHERE version='" + migration.getKey()
@@ -461,10 +473,15 @@ class DatabaseUpgradeTest {
     private void assertExpectedSchemaDelta(SchemaSnapshot source, DataSource dataSource) throws Exception {
         try (Connection connection = dataSource.getConnection()) {
             SchemaSnapshot target = schemaSnapshot(connection);
-            assertEquals(source.tables(), target.tables(), "Target must not add or remove tables in this upgrade path");
+            assertEquals(Set.of("FarmerImportDecision"), difference(target.tables(), source.tables()), "Unexpected added tables");
+            assertTrue(difference(source.tables(), target.tables()).isEmpty(), "Target must not remove source tables");
             Set<String> addedColumns = difference(target.columns(), source.columns());
-            assertEquals(1, addedColumns.size(), "Unexpected added columns: " + addedColumns + "; see docs/stability/database-upgrade.md");
-            assertTrue(addedColumns.iterator().next().startsWith("Document|uploadedBy_id|bigint|YES|<NULL>|"));
+            assertEquals(5, addedColumns.size(), "Unexpected added columns: " + addedColumns + "; see docs/stability/database-upgrade.md");
+            for (String prefix : List.of("Document|uploadedBy_id|bigint|YES|<NULL>|", "FarmerImportDecision|id|bigint|NO|",
+                    "FarmerImportDecision|companyId|bigint|NO|", "FarmerImportDecision|documentId|bigint|NO|",
+                    "FarmerImportDecision|selectionKey|varchar(64)|NO|")) {
+                assertTrue(addedColumns.stream().anyMatch(column -> column.startsWith(prefix)), "Missing expected column: " + prefix);
+            }
             assertTrue(difference(source.columns(), target.columns()).isEmpty(), "Target must not remove source columns");
             Set<String> removedIndexes = difference(source.indexes(), target.indexes());
             assertEquals(legacyUniqueIndexes(source.indexes()), removedIndexes, "Unexpected removed indexes; see docs/stability/database-upgrade.md");
@@ -489,15 +506,30 @@ class DatabaseUpgradeTest {
         Set<String> expected = new LinkedHashSet<>();
         expected.add("AuthenticationToken|IDX_AUTH_TOKEN_EXPIRATION|1|BTREE|expiration");
         expected.add("Document|IDX_DOCUMENT_UPLOADED_BY|1|BTREE|uploadedBy_id");
+        expected.add("FarmerImportDecision|PRIMARY|0|BTREE|id");
+        expected.add("FarmerImportDecision|UK_farmer_import_decision|0|BTREE|companyId,documentId,selectionKey");
+        expected.add("FarmerImportDecision|FK_farmer_import_document|1|BTREE|documentId");
         for (JoinColumn join : LEGACY_ONE_TO_ONE_COLUMNS) {
             expected.add(join.table() + "|IDX_SHARED_" + join.column() + "|1|BTREE|" + join.column());
         }
+        // Hibernate 7.4 names generated unique indexes IDX... instead of UK.... On an
+        // existing database it adds the new index beside the legacy constraint, so the
+        // upgrade path keeps both until a dedicated cleanup migration removes the old one.
+        expected.add("CompanyTranslation|IDXhg3olp2ynrkn4htdvmn7va2qs|0|BTREE|company_id,language");
+        expected.add("CompanyValueChain|IDXbbly17yyupinf6ryi9o4vjnta|0|BTREE|valueChain_id,company_id");
+        expected.add("User|IDXe6gkqunxajvyxl5uctpl2vl2p|0|BTREE|email");
+        expected.add("ValueChainFacilityType|IDXp4nh3wfjqp8grrrny232u2jkc|0|BTREE|valueChain_id,facilityType_id");
+        expected.add("ValueChainMeasureUnitType|IDXbkw7lhamgim4k6ef78x7nh50q|0|BTREE|valueChain_id,measureUnitType_id");
+        expected.add("ValueChainProcEvidenceType|IDX6odw4g6gvmlt1xvbjqyf0bh51|0|BTREE|valueChain_id,processingEvidenceType_id");
+        expected.add("ValueChainSemiProduct|IDXlsuycp13s1d417cikemfdp0b7|0|BTREE|valueChain_id,semiProduct_id");
         return expected;
     }
 
     private void assertExpectedDocumentUploaderForeignKeys(Set<String> addedForeignKeys) {
-        assertEquals(Set.of("Document|FK_DOCUMENT_UPLOADED_BY|uploadedBy_id|User|id|NO ACTION|NO ACTION"), addedForeignKeys,
-                "The cleanup migration must retain one canonical uploader foreign key");
+        assertEquals(Set.of("Document|FK_DOCUMENT_UPLOADED_BY|uploadedBy_id|User|id|NO ACTION|NO ACTION",
+                "FarmerImportDecision|FK_farmer_import_company|companyId|Company|id|NO ACTION|CASCADE",
+                "FarmerImportDecision|FK_farmer_import_document|documentId|Document|id|NO ACTION|CASCADE"), addedForeignKeys,
+                "Uploader and import decision foreign keys must match the reviewed schema");
     }
 
     private void assertFixtureDataPreserved(String sourceFixtureDataSha256, DataSource dataSource) throws Exception {

@@ -3,7 +3,7 @@ package com.abelium.inatrace.components.flyway;
 import jakarta.persistence.EntityManagerFactory;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.configuration.ClassicConfiguration;
-import org.springframework.boot.autoconfigure.flyway.FlywayMigrationStrategy;
+import org.springframework.boot.flyway.autoconfigure.FlywayMigrationStrategy;
 import org.springframework.core.env.Environment;
 
 public class JpaMigrationStrategy implements FlywayMigrationStrategy {

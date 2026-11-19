@@ -26,40 +26,36 @@ public class PaginationTools
     
     public static <DBT, APIT> ApiPaginatedList<APIT> createPaginatedResponse(EntityManager em, ApiPaginatedRequest request, 
             Supplier<DBT> proxyObjectSupplier, Function<DBT, APIT> typeConverter) {
+        long count = 0;
+        if (request.requestType != PaginatedRequestType.FETCH) {
+            count = QueryTools.withoutOrderBy(() ->
+                    Torpedo.select(Torpedo.count(proxyObjectSupplier.get())).setFirstResult(0).get(em).orElse(0L));
+        }
         List<APIT> items;
-        long count;
-        
         if (request.requestType == PaginatedRequestType.COUNT) {
             items = Collections.emptyList();
         } else {
             List<DBT> dbItems = Torpedo.select(proxyObjectSupplier.get()).
                     setFirstResult(request.offset).setMaxResults(request.limit).list(em);
             items = dbItems.stream().map(typeConverter).collect(Collectors.toList());
-        }
-        if (request.requestType == PaginatedRequestType.FETCH) {
-            count = 0;
-        } else {
-            count = Torpedo.select(Torpedo.count(proxyObjectSupplier.get())).get(em).orElse(0L);
         }
         return new ApiPaginatedList<>(items, count);
     }
     
     public static <DBT, APIT> ApiPaginatedList<APIT> createPaginatedResponse1(EntityManager em, ApiPaginatedRequest request, 
             Supplier<org.torpedoquery.jakarta.jpa.Function<DBT>> proxyObjectSupplier, Function<DBT, APIT> typeConverter) {
+        long count = 0;
+        if (request.requestType != PaginatedRequestType.FETCH) {
+            count = QueryTools.withoutOrderBy(() ->
+                    Torpedo.select(Torpedo.count(proxyObjectSupplier.get())).setFirstResult(0).get(em).orElse(0L));
+        }
         List<APIT> items;
-        long count;
-        
         if (request.requestType == PaginatedRequestType.COUNT) {
             items = Collections.emptyList();
         } else {
             List<DBT> dbItems = Torpedo.select(proxyObjectSupplier.get()).
                     setFirstResult(request.offset).setMaxResults(request.limit).list(em);
             items = dbItems.stream().map(typeConverter).collect(Collectors.toList());
-        }
-        if (request.requestType == PaginatedRequestType.FETCH) {
-            count = 0;
-        } else {
-            count = Torpedo.select(Torpedo.count(proxyObjectSupplier.get())).get(em).orElse(0L);
         }
         return new ApiPaginatedList<>(items, count);
     }
@@ -67,14 +63,13 @@ public class PaginationTools
 
     public static <DBT, APIT> ApiPaginatedList<APIT> createPaginatedResponse(EntityManager em, ApiPaginatedRequest request, 
     		Supplier<TorpedoProjector<DBT, APIT>> projectorSupplier) {
+        long count = 0;
+        if (request.requestType != PaginatedRequestType.FETCH) {
+            count = QueryTools.withoutOrderBy(() -> projectorSupplier.get().count(em));
+        }
         List<APIT> items;
-        long count;
-        
         if (request.requestType == PaginatedRequestType.COUNT) items = Collections.emptyList();
         else items = projectorSupplier.get().list(em, request.offset, request.limit);
-
-        if (request.requestType == PaginatedRequestType.FETCH) count = 0;
-        else count = projectorSupplier.get().count(em);
 
         return new ApiPaginatedList<>(items, count);
     }

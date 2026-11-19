@@ -34,7 +34,8 @@ Hibernate/Flyway delta: the document uploader column, its canonical named
 foreign key (after the cleanup migration removes any Hibernate duplicate), the
 intended indexes, and the removal of all 28 obsolete unique indexes. The target preserves the graph
 through update, validate and restart; verifies the document-uploader
-column/FK/index and authentication-token expiration index; and performs current
+column/FK/index, authentication-token expiration index, and the new
+`FarmerImportDecision` table with its uniqueness constraint; and performs current
 JPA writes for shared facility locations, stock, and processing metadata. The
 effective SQL plus custom-JPA Flyway resolver rejects pending migrations and
 validates the historical SQL checksums against current migration resources. A

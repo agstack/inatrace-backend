@@ -9,6 +9,9 @@ public class V2026_10_17_12_00__Add_Authentication_Token_Expiration_Index implem
 
     @Override
     public void migrate(EntityManager em, Environment environment) {
+        if (JpaMigrationSupport.isPostgreSql(em)) {
+            return;
+        }
         Number count = (Number) em.createNativeQuery("SELECT COUNT(*) FROM information_schema.STATISTICS "
                         + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'AuthenticationToken' "
                         + "AND INDEX_NAME = 'IDX_AUTH_TOKEN_EXPIRATION'")

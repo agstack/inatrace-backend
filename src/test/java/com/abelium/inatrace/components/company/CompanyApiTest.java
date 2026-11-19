@@ -1,15 +1,24 @@
 package com.abelium.inatrace.components.company;
 
 import com.abelium.inatrace.support.AbstractMySqlIntegrationTest;
+import com.abelium.inatrace.db.entities.codebook.ProductType;
+import com.abelium.inatrace.db.entities.common.Country;
 import com.abelium.inatrace.db.entities.common.User;
 import com.abelium.inatrace.db.entities.company.Company;
+import com.abelium.inatrace.db.entities.company.CompanyCustomer;
 import com.abelium.inatrace.db.entities.company.CompanyUser;
+import com.abelium.inatrace.db.entities.product.Product;
+import com.abelium.inatrace.db.entities.product.ProductCompany;
+import com.abelium.inatrace.db.entities.value_chain.CompanyValueChain;
+import com.abelium.inatrace.db.entities.value_chain.ValueChain;
+import com.abelium.inatrace.db.entities.value_chain.enums.ValueChainStatus;
 import com.abelium.inatrace.types.CompanyStatus;
 import com.abelium.inatrace.types.CompanyUserRole;
 import com.abelium.inatrace.types.Language;
+import com.abelium.inatrace.types.ProductCompanyType;
 import com.abelium.inatrace.types.UserRole;
 import com.abelium.inatrace.types.UserStatus;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,7 +26,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -56,9 +66,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
+@AutoConfigureTestRestTemplate
 class CompanyApiTest extends AbstractMySqlIntegrationTest {
 
 	private static final String PASSWORD = "correct-horse-battery";
+	private static final java.util.concurrent.atomic.AtomicInteger COUNTRY_SEQUENCE =
+			new java.util.concurrent.atomic.AtomicInteger();
 
 	@Autowired
 	private TestRestTemplate rest;
@@ -633,6 +646,165 @@ class CompanyApiTest extends AbstractMySqlIntegrationTest {
 		assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
 	}
 
+	// ------------------------------------------------- profile/{id}/onboardingState
+
+	@Test
+	@DisplayName("profile/{id}/onboardingState reports an empty company as not onboarded")
+	void onboardingStateReportsEmptyCompany() {
+		User user = seedUser(UserRole.USER);
+		Company company = seedCompany(CompanyStatus.ACTIVE, "Onboarding " + UUID.randomUUID());
+		enroll(company, user, CompanyUserRole.COMPANY_USER);
+
+		ResponseEntity<String> response = get(
+				"/api/company/profile/" + company.getId() + "/onboardingState", accessCookieFor(user));
+
+		assertEquals(HttpStatus.OK, response.getStatusCode(), response.getBody());
+		assertTrue(response.getBody().contains("\"hasCreatedProduct\":false"), response.getBody());
+		assertTrue(response.getBody().contains("\"hasCreatedFacility\":false"), response.getBody());
+		assertTrue(response.getBody().contains("\"hasCreatedProcessingAction\":false"), response.getBody());
+		assertTrue(response.getBody().contains("\"hasAddedFarmers\":false"), response.getBody());
+	}
+
+	// --------------------------------------------------------- companyCustomers
+
+	@Test
+	@DisplayName("POST companyCustomers creates a customer for the caller's company")
+	void createCompanyCustomerStoresIt() throws Exception {
+		User user = seedUser(UserRole.USER);
+		Company company = seedCompany(CompanyStatus.ACTIVE, "Buyers " + UUID.randomUUID());
+		enroll(company, user, CompanyUserRole.COMPANY_USER);
+		String name = "Buyer " + UUID.randomUUID();
+
+		ResponseEntity<String> response = exchange(HttpMethod.POST, "/api/company/companyCustomers",
+				customerPayload(company.getId(), name, "buyer@test.invalid"), accessCookieFor(user));
+
+		assertEquals(HttpStatus.OK, response.getStatusCode(), response.getBody());
+		long id = createdId(response);
+		assertEquals(name, customerNameOf(id));
+		assertEquals(company.getId(), customerCompanyIdOf(id));
+	}
+
+	@Test
+	@DisplayName("GET companyCustomers/{id} returns a customer of the caller's company")
+	void getCompanyCustomerReturnsIt() {
+		User user = seedUser(UserRole.USER);
+		Company company = seedCompany(CompanyStatus.ACTIVE, "Buyers " + UUID.randomUUID());
+		enroll(company, user, CompanyUserRole.COMPANY_USER);
+		CompanyCustomer customer = seedCompanyCustomer(company, "Buyer " + UUID.randomUUID());
+
+		ResponseEntity<String> response = get("/api/company/companyCustomers/" + customer.getId(),
+				accessCookieFor(user));
+
+		assertEquals(HttpStatus.OK, response.getStatusCode(), response.getBody());
+		assertTrue(response.getBody().contains(customer.getName()), response.getBody());
+	}
+
+	@Test
+	@DisplayName("GET companyCustomers/list lists the caller's company customers")
+	void listCompanyCustomersReturnsThem() {
+		User user = seedUser(UserRole.USER);
+		Company company = seedCompany(CompanyStatus.ACTIVE, "Buyers " + UUID.randomUUID());
+		enroll(company, user, CompanyUserRole.COMPANY_USER);
+		CompanyCustomer customer = seedCompanyCustomer(company, "Buyer " + UUID.randomUUID());
+
+		ResponseEntity<String> response = get("/api/company/companyCustomers/list/" + company.getId(),
+				accessCookieFor(user));
+
+		assertEquals(HttpStatus.OK, response.getStatusCode(), response.getBody());
+		assertTrue(response.getBody().contains(customer.getName()), response.getBody());
+	}
+
+	@Test
+	@DisplayName("PUT companyCustomers updates a customer of the caller's company")
+	void updateCompanyCustomerChangesIt() {
+		User user = seedUser(UserRole.USER);
+		Company company = seedCompany(CompanyStatus.ACTIVE, "Buyers " + UUID.randomUUID());
+		enroll(company, user, CompanyUserRole.COMPANY_USER);
+		CompanyCustomer customer = seedCompanyCustomer(company, "Buyer " + UUID.randomUUID());
+		String updatedName = "Buyer Updated " + UUID.randomUUID();
+
+		ResponseEntity<String> response = exchange(HttpMethod.PUT, "/api/company/companyCustomers",
+				customerUpdatePayload(customer.getId(), updatedName, "updated@test.invalid"), accessCookieFor(user));
+
+		assertEquals(HttpStatus.OK, response.getStatusCode(), response.getBody());
+		assertEquals(updatedName, customerNameOf(customer.getId()));
+		assertEquals("updated@test.invalid", customerEmailOf(customer.getId()));
+	}
+
+	// ------------------------------------------------------- company relations
+
+	@Test
+	@DisplayName("GET associations lists companies associated with the caller's company")
+	void getAssociationsListsAssociatedCompanies() {
+		User user = seedUser(UserRole.USER);
+		Company owner = seedCompany(CompanyStatus.ACTIVE, "Owner " + UUID.randomUUID());
+		Company partner = seedCompany(CompanyStatus.ACTIVE, "Partner " + UUID.randomUUID());
+		enroll(owner, user, CompanyUserRole.COMPANY_USER);
+		ValueChain valueChain = seedValueChain(user, seedProductType());
+		Product product = seedProduct(owner, valueChain);
+		seedProductCompany(product, owner, ProductCompanyType.OWNER);
+		seedProductCompany(product, partner, ProductCompanyType.ASSOCIATION);
+
+		ResponseEntity<String> response = get("/api/company/associations/" + owner.getId(),
+				accessCookieFor(user));
+
+		assertEquals(HttpStatus.OK, response.getStatusCode(), response.getBody());
+		assertTrue(response.getBody().contains(partner.getName()), response.getBody());
+		assertFalse(response.getBody().contains(owner.getName()), response.getBody());
+	}
+
+	@Test
+	@DisplayName("GET {id}/connected-companies lists companies sharing a product with the caller's company")
+	void getConnectedCompaniesListsPartners() {
+		User user = seedUser(UserRole.USER);
+		Company owner = seedCompany(CompanyStatus.ACTIVE, "Owner " + UUID.randomUUID());
+		Company partner = seedCompany(CompanyStatus.ACTIVE, "Partner " + UUID.randomUUID());
+		enroll(owner, user, CompanyUserRole.COMPANY_USER);
+		ValueChain valueChain = seedValueChain(user, seedProductType());
+		Product product = seedProduct(owner, valueChain);
+		seedProductCompany(product, owner, ProductCompanyType.OWNER);
+		seedProductCompany(product, partner, ProductCompanyType.PRODUCER);
+
+		ResponseEntity<String> response = get("/api/company/" + owner.getId() + "/connected-companies",
+				accessCookieFor(user));
+
+		assertEquals(HttpStatus.OK, response.getStatusCode(), response.getBody());
+		assertTrue(response.getBody().contains(partner.getName()), response.getBody());
+		assertFalse(response.getBody().contains(owner.getName()), response.getBody());
+	}
+
+	@Test
+	@DisplayName("GET {id}/value-chains lists the value chains connected to the company")
+	void getCompanyValueChainsListsThem() {
+		User user = seedUser(UserRole.USER);
+		Company company = seedCompany(CompanyStatus.ACTIVE, "Value Chains " + UUID.randomUUID());
+		enroll(company, user, CompanyUserRole.COMPANY_USER);
+		ValueChain valueChain = seedValueChain(user, seedProductType());
+		seedCompanyValueChain(company, valueChain);
+
+		ResponseEntity<String> response = get("/api/company/" + company.getId() + "/value-chains",
+				accessCookieFor(user));
+
+		assertEquals(HttpStatus.OK, response.getStatusCode(), response.getBody());
+		assertTrue(response.getBody().contains(valueChain.getName()), response.getBody());
+	}
+
+	@Test
+	@DisplayName("GET {id}/product-types lists the product types of the company's value chains")
+	void getCompanyProductTypesListsThem() {
+		User user = seedUser(UserRole.USER);
+		Company company = seedCompany(CompanyStatus.ACTIVE, "Product Types " + UUID.randomUUID());
+		enroll(company, user, CompanyUserRole.COMPANY_USER);
+		ProductType productType = seedProductType();
+		seedCompanyValueChain(company, seedValueChain(user, productType));
+
+		ResponseEntity<String> response = get("/api/company/" + company.getId() + "/product-types",
+				accessCookieFor(user));
+
+		assertEquals(HttpStatus.OK, response.getStatusCode(), response.getBody());
+		assertTrue(response.getBody().contains("\"code\":\"" + productType.getCode() + "\""), response.getBody());
+	}
+
 	// ---------------------------------------------------------------------------- helpers
 
 	private TransactionTemplate tx() {
@@ -709,6 +881,145 @@ class CompanyApiTest extends AbstractMySqlIntegrationTest {
 		long id = new ObjectMapper().readTree(response.getBody()).path("data").path("id").asLong();
 		assertTrue(id > 0, "create should answer with the new company's id: " + response.getBody());
 		return id;
+	}
+
+	private long createdId(ResponseEntity<String> response) throws Exception {
+		long id = new ObjectMapper().readTree(response.getBody()).path("data").path("id").asLong();
+		assertTrue(id > 0, "create should answer with the new record's id: " + response.getBody());
+		return id;
+	}
+
+	/** Any country is enough for the customer address; reuse one when the database already has it. */
+	private long countryId() {
+		return tx().execute(s -> {
+			List<Long> existing = em.createQuery("select c.id from Country c order by c.id", Long.class)
+					.setMaxResults(1)
+					.getResultList();
+			if (!existing.isEmpty()) {
+				return existing.get(0);
+			}
+			for (int attempt = 0; attempt < 26 * 26; attempt++) {
+				int value = Math.floorMod(COUNTRY_SEQUENCE.getAndIncrement(), 26 * 26);
+				String code = "" + (char) ('A' + value / 26) + (char) ('A' + value % 26);
+				Long taken = em.createQuery("select count(c) from Country c where c.code = :code", Long.class)
+						.setParameter("code", code)
+						.getSingleResult();
+				if (taken == 0) {
+					Country country = new Country();
+					country.setCode(code);
+					country.setName("Test country " + code);
+					em.persist(country);
+					em.flush();
+					return country.getId();
+				}
+			}
+			throw new IllegalStateException("No free two-letter country code");
+		});
+	}
+
+	private Map<String, Object> customerPayload(Long companyId, String name, String email) {
+		return Map.of(
+				"companyId", companyId,
+				"name", name,
+				"email", email,
+				"location", Map.of("country", Map.of("id", countryId())));
+	}
+
+	private Map<String, Object> customerUpdatePayload(Long id, String name, String email) {
+		return Map.of(
+				"id", id,
+				"name", name,
+				"email", email,
+				"location", Map.of("country", Map.of("id", countryId())));
+	}
+
+	private CompanyCustomer seedCompanyCustomer(Company company, String name) {
+		return tx().execute(s -> {
+			CompanyCustomer customer = new CompanyCustomer();
+			customer.setCompany(em.find(Company.class, company.getId()));
+			customer.setName(name);
+			customer.setEmail("customer-" + UUID.randomUUID() + "@test.invalid");
+			em.persist(customer);
+			em.flush();
+			return customer;
+		});
+	}
+
+	private String customerNameOf(Long id) {
+		return tx().execute(s -> em.find(CompanyCustomer.class, id).getName());
+	}
+
+	private String customerEmailOf(Long id) {
+		return tx().execute(s -> em.find(CompanyCustomer.class, id).getEmail());
+	}
+
+	private Long customerCompanyIdOf(Long id) {
+		return tx().execute(s -> em.find(CompanyCustomer.class, id).getCompany().getId());
+	}
+
+	private ProductType seedProductType() {
+		return tx().execute(s -> {
+			ProductType productType = new ProductType();
+			productType.setCode("PT-" + UUID.randomUUID());
+			productType.setName("Product type " + UUID.randomUUID());
+			em.persist(productType);
+			em.flush();
+			return productType;
+		});
+	}
+
+	private ValueChain seedValueChain(User creator, ProductType productType) {
+		return tx().execute(s -> {
+			ValueChain valueChain = new ValueChain();
+			valueChain.setName("Value chain " + UUID.randomUUID());
+			valueChain.setDescription("Test value chain");
+			valueChain.setValueChainStatus(ValueChainStatus.ENABLED);
+			valueChain.setCreatedBy(em.find(User.class, creator.getId()));
+			valueChain.setProductType(em.find(ProductType.class, productType.getId()));
+			em.persist(valueChain);
+			em.flush();
+			return valueChain;
+		});
+	}
+
+	private void seedCompanyValueChain(Company company, ValueChain valueChain) {
+		tx().executeWithoutResult(s -> {
+			CompanyValueChain link = new CompanyValueChain();
+			link.setCompany(em.find(Company.class, company.getId()));
+			link.setValueChain(em.find(ValueChain.class, valueChain.getId()));
+			em.persist(link);
+			em.flush();
+		});
+	}
+
+	/** A product with no optional document/process graph, enough for the company relations queries. */
+	private Product seedProduct(Company owner, ValueChain valueChain) {
+		return tx().execute(s -> {
+			Product product = new Product();
+			product.setName("Product " + UUID.randomUUID());
+			product.setCompany(em.find(Company.class, owner.getId()));
+			product.setValueChain(em.find(ValueChain.class, valueChain.getId()));
+			product.setProcess(null);
+			product.setResponsibility(null);
+			product.setSustainability(null);
+			product.setJourney(null);
+			product.setSettings(null);
+			product.setBusinessToCustomerSettings(null);
+			em.persist(product);
+			em.flush();
+			return product;
+		});
+	}
+
+	private void seedProductCompany(Product product, Company company, ProductCompanyType type) {
+		tx().executeWithoutResult(s -> {
+			ProductCompany link = new ProductCompany();
+			link.setProduct(em.find(Product.class, product.getId()));
+			link.setCompany(em.find(Company.class, company.getId()));
+			link.setType(type);
+			em.persist(link);
+			em.flush();
+		});
 	}
 
 	private String accessCookieFor(User user) {

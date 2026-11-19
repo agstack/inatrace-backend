@@ -6,6 +6,9 @@ import com.abelium.inatrace.db.entities.common.Document;
 import com.abelium.inatrace.types.KnowledgeBlogType;
 
 import jakarta.persistence.*;
+import org.hibernate.Length;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -36,15 +39,15 @@ public class KnowledgeBlog extends TimestampEntity {
 	/**
 	 * Abstract
 	 */
-	@Lob
-	@Column(columnDefinition = "LONGTEXT")
+	@JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+	@Column(length = Length.LONG32)
 	private String summary;
 	
 	/**
 	 * Content
 	 */
-	@Lob
-	@Column(columnDefinition = "LONGTEXT")
+	@JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+	@Column(length = Length.LONG32)
 	private String content;
 
 	/**

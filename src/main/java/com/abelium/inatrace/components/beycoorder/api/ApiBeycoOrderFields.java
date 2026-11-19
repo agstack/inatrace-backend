@@ -3,7 +3,7 @@ package com.abelium.inatrace.components.beycoorder.api;
 import com.abelium.inatrace.api.ApiBaseEntity;
 import com.abelium.inatrace.tools.converters.InstantConverter;
 import com.abelium.inatrace.types.BeycoPrivacy;
-import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import tools.jackson.databind.annotation.JsonSerialize;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import jakarta.validation.constraints.Size;

@@ -6,6 +6,9 @@ import com.abelium.inatrace.db.entities.codebook.ProductType;
 import com.abelium.inatrace.db.entities.common.User;
 import com.abelium.inatrace.db.entities.value_chain.enums.ValueChainStatus;
 import jakarta.persistence.*;
+import org.hibernate.Length;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -23,8 +26,8 @@ public class ValueChain extends TimestampEntity {
 	@Column(nullable = false)
 	private String name;
 
-	@Lob
-	@Column(nullable = false, columnDefinition = "LONGTEXT")
+	@JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+	@Column(nullable = false, length = Length.LONG32)
 	private String description;
 
 	@Enumerated(EnumType.STRING)

@@ -12,8 +12,6 @@ import org.flywaydb.core.api.resolver.ResolvedMigration;
 import org.flywaydb.core.internal.resolver.MigrationInfoHelper;
 import org.flywaydb.core.internal.resolver.ResolvedMigrationComparator;
 import org.flywaydb.core.internal.resolver.ResolvedMigrationImpl;
-import org.flywaydb.core.internal.scanner.LocationScannerCache;
-import org.flywaydb.core.internal.scanner.ResourceNameCache;
 import org.flywaydb.core.internal.scanner.Scanner;
 import org.flywaydb.core.internal.util.ClassUtils;
 import org.flywaydb.core.internal.util.Pair;
@@ -66,10 +64,8 @@ public class JpaMigrationResolver implements MigrationResolver {
             // silently falls back to Flyway's default location ("classpath:db/migration") and finds nothing.
             Collection<Class<? extends JpaMigration>> classes = new Scanner<>(
                     JpaMigration.class,
-                    true,
-                    new ResourceNameCache(),
-                    new LocationScannerCache(),
-                    new FluentConfiguration(classLoader).locations(locations).encoding(StandardCharsets.UTF_8)
+                    new FluentConfiguration(classLoader).locations(locations).encoding(StandardCharsets.UTF_8),
+                    locations
             ).getClasses();
 
             for (Class<?> clazz : classes) {

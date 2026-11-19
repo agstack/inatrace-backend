@@ -26,6 +26,7 @@ import com.abelium.inatrace.db.entities.value_chain.ProcessingActionValueChain;
 import com.abelium.inatrace.db.entities.value_chain.ValueChain;
 import com.abelium.inatrace.security.service.CustomUserDetails;
 import com.abelium.inatrace.security.utils.PermissionsUtil;
+import com.abelium.inatrace.tools.QueryTools;
 import com.abelium.inatrace.tools.PaginationTools;
 import com.abelium.inatrace.tools.Queries;
 import com.abelium.inatrace.types.Language;
@@ -257,8 +258,8 @@ public class ProcessingActionService extends BaseService {
 
 		Torpedo.where(condition);
 
-		Torpedo.orderBy(processingActionProxy.getId());
-		Torpedo.orderBy(processingActionProxy.getSortOrder());
+		QueryTools.orderByColumns(processingActionProxy.getId());
+		QueryTools.orderByColumns(processingActionProxy.getSortOrder());
 
 		return processingActionProxy;
 	}

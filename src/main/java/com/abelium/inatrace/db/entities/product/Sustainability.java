@@ -1,5 +1,9 @@
 package com.abelium.inatrace.db.entities.product;
 
+import org.hibernate.Length;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import com.abelium.inatrace.db.base.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -13,8 +17,8 @@ public class Sustainability extends BaseEntity {
 	 * and how you mitigate the pollution, how you utilize your waste, if you practice circular 
 	 * production… (max 1000 characters)
 	 */
-	@Lob
-	@Column(columnDefinition = "LONGTEXT")
+	@JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+	@Column(length = Length.LONG32)
 	private String production;
 
 	/**
@@ -22,8 +26,8 @@ public class Sustainability extends BaseEntity {
 	 * do you use recycled packing, is your packing recyclable, do you collect the packaging and 
 	 * reuse it? (max 1000 characters)
 	 */
-	@Lob
-	@Column(columnDefinition = "LONGTEXT")
+	@JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+	@Column(length = Length.LONG32)
 	private String packaging;
 	
 	/**

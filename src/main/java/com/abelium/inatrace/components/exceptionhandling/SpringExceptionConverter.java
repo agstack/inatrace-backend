@@ -16,13 +16,13 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 
 import com.abelium.inatrace.api.errors.validation.ApiValidationError;
 import com.abelium.inatrace.configuration.SafeExceptionLog;
-import com.fasterxml.jackson.databind.JsonMappingException;
+import tools.jackson.core.JacksonException;
 
 public class SpringExceptionConverter {
 	
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(SpringExceptionConverter.class);
 
-    public static ApiValidationError buildValidationError(JsonMappingException exc) {
+    public static ApiValidationError buildValidationError(JacksonException exc) {
         String path = SpringExceptionConverter.buildPathReference(exc.getPath());
         ApiValidationError error = new ApiValidationError();
         error.getValidationErrorDetails().setClassName(SpringExceptionConverter.buildObjectType(exc.getPath(), "?")); 
@@ -30,24 +30,24 @@ public class SpringExceptionConverter {
         return error;
     }
     
-    private static String buildObjectType(List<JsonMappingException.Reference> path, String defaultValue) {
+    private static String buildObjectType(List<JacksonException.Reference> path, String defaultValue) {
         if ( path == null || path.isEmpty() )
             return defaultValue;
-        Object obj = path.get(0).getFrom();
+        Object obj = path.get(0).from();
         if ( obj != null )
             return obj.getClass().getSimpleName();
         return defaultValue;
     }
     
-    private static String buildPathReference(List<JsonMappingException.Reference> path) {
+    private static String buildPathReference(List<JacksonException.Reference> path) {
         if ( path == null )
             return "";
         StringBuilder sb = new StringBuilder();
-        for ( JsonMappingException.Reference part : path ) {
-            if ( part.getFieldName() != null ) {
+        for ( JacksonException.Reference part : path ) {
+            if ( part.getPropertyName() != null ) {
                 if ( sb.length() > 0 )
                     sb.append('.');
-                sb.append(part.getFieldName());
+                sb.append(part.getPropertyName());
             } else {
                 sb.append('[').append(part.getIndex()).append(']');
             }

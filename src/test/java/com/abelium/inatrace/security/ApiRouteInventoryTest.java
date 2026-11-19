@@ -1,12 +1,12 @@
 package com.abelium.inatrace.security;
 
 import com.abelium.inatrace.support.AbstractMySqlIntegrationTest;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.context.ActiveProfiles;
@@ -103,9 +103,9 @@ class ApiRouteInventoryTest extends AbstractMySqlIntegrationTest {
         assertTrue(paths.isObject(), "OpenAPI must contain a paths object");
 
         SortedSet<String> documented = new TreeSet<>();
-        paths.fields().forEachRemaining(path -> path.getValue().fieldNames().forEachRemaining(method -> {
-            if (Set.of("get", "post", "put", "patch", "delete", "head", "options", "trace").contains(method)) {
-                documented.add(method.toUpperCase(Locale.ROOT) + "\t" + path.getKey());
+        paths.properties().forEach(path -> path.getValue().properties().forEach(method -> {
+            if (Set.of("get", "post", "put", "patch", "delete", "head", "options", "trace").contains(method.getKey())) {
+                documented.add(method.getKey().toUpperCase(Locale.ROOT) + "\t" + path.getKey());
             }
         }));
 

@@ -1,7 +1,7 @@
 package com.abelium.inatrace.db.migrations;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
 
 import javax.sql.DataSource;
 import java.nio.file.Files;
@@ -84,8 +84,8 @@ final class SchemaSnapshot {
         if (result.size() >= 20 || expected.equals(actual)) return;
         if (expected.isObject() && actual.isObject()) {
             TreeSet<String> keys = new TreeSet<>();
-            expected.fieldNames().forEachRemaining(keys::add);
-            actual.fieldNames().forEachRemaining(keys::add);
+            expected.properties().forEach(entry -> keys.add(entry.getKey()));
+            actual.properties().forEach(entry -> keys.add(entry.getKey()));
             for (String key : keys) {
                 JsonNode left = expected.get(key), right = actual.get(key);
                 if (left == null || right == null) result.add(path + "/" + key + ": " + left + " -> " + right);

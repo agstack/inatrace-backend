@@ -5,6 +5,9 @@ import com.abelium.inatrace.components.company.types.CompanyTranslatables;
 import com.abelium.inatrace.db.base.TranslatedEntity;
 import com.abelium.inatrace.types.Language;
 import jakarta.persistence.*;
+import org.hibernate.Length;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.util.*;
 
 @Entity
@@ -40,16 +43,16 @@ public class CompanyTranslation extends TranslatedEntity implements CompanyTrans
 	 * about the company - briefly describe your company and its history. 
 	 * Include the company mission and vision as well as core values. (max 2000 characters)
 	 */
-	@Lob
-	@Column(columnDefinition = "LONGTEXT")
+	@JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+	@Column(length = Length.LONG32)
 	private String about;
 	
 	/**
 	 * interview - 
 	 * (max 2000 characters)
 	 */
-	@Lob
-	@Column(columnDefinition = "LONGTEXT")
+	@JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+	@Column(length = Length.LONG32)
 	private String interview;
 	
 	/**

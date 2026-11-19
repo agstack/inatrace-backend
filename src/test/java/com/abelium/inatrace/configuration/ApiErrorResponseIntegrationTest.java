@@ -3,10 +3,11 @@ package com.abelium.inatrace.configuration;
 import com.abelium.inatrace.support.AbstractMySqlIntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.core.io.ClassPathResource;
@@ -38,7 +39,7 @@ class ApiErrorResponseIntegrationTest extends AbstractMySqlIntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(header().string("Content-Type", MediaType.APPLICATION_JSON_VALUE))
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(content().json(fixture("login-missing-username.json"), true))
+                .andExpect(content().json(fixture("login-missing-username.json"), JsonCompareMode.STRICT))
                 .andExpect(jsonPath("$.status").value("VALIDATION_ERROR"))
                 .andExpect(jsonPath("$.errorMessage").value("Invalid field(s) in request"))
                 .andExpect(jsonPath("$.validationErrorDetails.fieldErrors.username").value("must not be null"));
@@ -51,7 +52,7 @@ class ApiErrorResponseIntegrationTest extends AbstractMySqlIntegrationTest {
                         .content("{\"username\":\"unknown-user@test.invalid\",\"password\":\"correct-horse-battery\"}"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(header().string("Content-Type", MediaType.APPLICATION_JSON_VALUE))
-                .andExpect(content().json(fixture("login-invalid-credentials.json"), true))
+                .andExpect(content().json(fixture("login-invalid-credentials.json"), JsonCompareMode.STRICT))
                 .andExpect(jsonPath("$.status").value("AUTH_ERROR"))
                 .andExpect(jsonPath("$.errorMessage").value("Invalid credentials"));
     }

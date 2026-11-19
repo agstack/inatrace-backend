@@ -3,7 +3,7 @@
 # Builds the backend image from source. CI runs the test suite before building, so
 # tests are skipped here. REVISION is the version embedded in the build (see RELEASE.md).
 
-FROM maven:3.9-eclipse-temurin-17 AS build
+FROM maven:3.9-eclipse-temurin-25 AS build
 WORKDIR /src
 # Dependencies get their own layer, rebuilt only when pom.xml changes, so the layer
 # cache (local or CI) avoids downloading them on every build.
@@ -15,7 +15,7 @@ RUN mvn -B --no-transfer-progress -Drevision="${REVISION}" -DskipTests package \
  && java -Djarmode=tools -jar target/app.jar extract --layers --launcher --destination /extracted \
  && rm -rf target # keeps this per-commit layer, exported to the CI cache, small
 
-FROM eclipse-temurin:17-jre
+FROM eclipse-temurin:25-jre
 # /data/storage is where uploads go (INATrace.fileStorage.root). It exists in the image,
 # owned by the application user, so a volume mounted there inherits a writable owner.
 RUN groupadd --system inatrace && useradd --system --gid inatrace --home-dir /app inatrace \
