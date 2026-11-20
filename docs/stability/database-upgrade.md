@@ -2,11 +2,13 @@
 
 `DatabaseUpgradeTest` covers one reviewed, synthetic upgrade path from
 `fb4fecf87c97c0ae65994850446a73bceb99d201` to the target reference revision
-`19d0ea3b119e78713720a9a4f2b81e6c3deceb24`, which includes migration
-`2026.10.21.12.00`. The test starts the application compiled from the current
-checkout, not a separate checkout of that SHA. The target revision records the
-reference for this reviewed upgrade path; a run on another revision exercises
-that revision's code and does not, by itself, prove it matches the reference.
+`19d0ea3b119e78713720a9a4f2b81e6c3deceb24`, which includes migrations through
+`2026.10.21.12.00`. The current checkout also applies the data-only
+country-coordinate migration `2026.11.20.12.00`. The test starts the application
+compiled from the current checkout, not a separate checkout of that SHA. The
+target revision records the reference for this reviewed upgrade path; a run on
+another revision exercises that revision's code and does not, by itself, prove
+it matches the reference.
 
 The fixture is source-produced rather than a production dump: its 97-table
 schema and `schema_version` export were made by the pinned source revision,
@@ -40,9 +42,10 @@ JPA writes for shared facility locations, stock, and processing metadata. The
 effective SQL plus custom-JPA Flyway resolver rejects pending migrations and
 validates the historical SQL checksums against current migration resources. A
 negative control changes a historical SQL checksum and verifies that validation
-fails. The four custom JPA delta migrations are checked by version, type and
+fails. The five custom JPA delta migrations are checked by version, type and
 script, with null checksums: the application's JPA resolver does not provide
-checksums for their contents. This test does not claim checksum protection for
+checksums for their contents. The country-coordinate migration is data-only and
+does not add a schema delta. This test does not claim checksum protection for
 those Java migration bodies. The full source history is hashed as ordered rows,
 with a negative control covering the last row; it is not limited by MySQL's
 `GROUP_CONCAT` length.
