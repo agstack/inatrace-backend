@@ -1,7 +1,7 @@
 # Roles and permissions
 
 > **Draft for discussion (#78, #168).** This page describes what the backend **does today** (`main` at
-> `b6073264`), read from the code, role by role. It does not decide what *should* happen: the
+> `f3335b90`), read from the code, role by role. It does not decide what *should* happen: the
 > **Intended?** column is for the maintainers to fill in. A row marked "no" becomes an issue with a
 > test; a row marked "yes" becomes the policy that tests can rely on. Where a behavior looked
 > surprising while writing this page, it is listed under [Open questions](#open-questions).
@@ -85,6 +85,7 @@ and made `COMPANY_ADMIN` of every active company (`UserService.createUser`).
 | Add an account to the company, with any company role | `POST execute/ADD_USER_TO_COMPANY` | ✗ | ✓ any account of the instance, by id | ✓ if member | ✓ any | |
 | Change a member's company role | `POST execute/SET_USER_COMPANY_ROLE` | ✗ | ✓ including other admins and oneself | ✓ if member | ✓ any | |
 | Remove a member | `POST execute/REMOVE_USER_FROM_COMPANY` | ✗ | ✓ including other admins and oneself | ✓ if member | ✓ any | |
+| Merge the company into another one (its members join the other company; this one is deactivated) | `POST execute/MERGE_TO_COMPANY` | ✗ | ✓ only if also admin of the other company (since `11a12506`) | ✗ | ✓ any | |
 
 ## Farmers, collectors, plots and company customers (`/api/company`)
 
@@ -95,7 +96,7 @@ All of these are scoped to the company that owns the record.
 | List, read, add, edit and delete farmers and collectors | `userCustomers/{companyId}/{type}`, `userCustomers/{id}`, `userCustomers/add/{companyId}`, `userCustomers/edit`, `DELETE userCustomers/{id}` | ✓ | ✓ | ✓ if member | ✓ **only if member** | |
 | Plots: list the company's, add, refresh a GeoID; upload and export GeoJSON | `userCustomers/{companyId}/plots`, `…/plots/add`, `…/updateGeoID`, `…/uploadGeoData`, `…/exportGeoData` | ✓ | ✓ | ✓ if member | ✓ **only if member** | |
 | Export the company's farmers to a spreadsheet | `userCustomers/{companyId}/exportFarmerData` | ✓ | ✓ | ✓ if member | ✓ **only if member** | |
-| Import farmers from a spreadsheet | `userCustomers/import/farmers/{companyId}/{documentId}` | ✗ | ✗ | ✓ if member | ✓ any | |
+| Import farmers from a spreadsheet, and confirm or separate the plots of an imported farmer | `userCustomers/import/farmers/{companyId}/{documentId}`, `…/confirm-plots`, `…/create-separate` | ✗ | ✗ | ✓ if member | ✓ any | |
 | Company customers: list, read, create, edit, delete | `companyCustomers…` | ✓ | ✓ | ✓ if member | ✓ **only if member** | |
 | Associations, connected companies, value chains and product types of the company | `associations/{id}`, `{id}/connected-companies`, `{id}/value-chains`, `{id}/product-types` | ✓ | ✓ | ✓ if member | ✓ **only if member** | |
 
@@ -148,4 +149,5 @@ These came up while reading the code for this page. Each one is "is this intende
 8. **Company admins and other admins.** A company admin can add any account of the instance by id,
    with any role, and can demote or remove other admins, including the last one.
 9. **Importing farmers** is limited to system and regional admins: a company admin cannot import
-   its own farmers, although it can add them one by one.
+   its own farmers, although it can add them one by one. The import also requires the spreadsheet
+   to have been uploaded by the same account.
