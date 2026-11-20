@@ -535,6 +535,49 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 	}
 
 	@Test
+	@DisplayName("Geo-data upload for a farmer without a product type is rejected")
+	void geoDataUploadWithoutProductTypeIsRejected() throws Exception {
+
+		Long farmerId = farmerWithoutProductType();
+		long before = plotCount(farmerId);
+		String geoJson = "{\"type\":\"FeatureCollection\",\"features\":["
+				+ "{\"type\":\"Feature\",\"properties\":{},\"geometry\":{\"type\":\"Point\",\"coordinates\":[30.1,-1.9]}},"
+				+ "{\"type\":\"Feature\",\"properties\":{},\"geometry\":{\"type\":\"Polygon\",\"coordinates\":["
+				+ "[[30.0600,-1.9400],[30.0610,-1.9400],[30.0610,-1.9410],[30.0600,-1.9410],[30.0600,-1.9400]]]}}]}";
+
+		MvcResult result = mockMvc.perform(multipart("/api/company/userCustomers/" + farmerId + "/uploadGeoData")
+						.file(new MockMultipartFile("file", "no-product-type.geojson", "application/geo+json",
+								geoJson.getBytes(StandardCharsets.UTF_8)))
+						.cookie(aliceSession))
+				.andReturn();
+
+		assertEquals(400, result.getResponse().getStatus(), body(result));
+		assertTrue(body(result).contains("product type"), body(result));
+		assertEquals(before, plotCount(farmerId),
+				"a rejected upload must not create a plot");
+	}
+
+	@Test
+	@DisplayName("Unsupported geo-data without a product type remains a no-op")
+	void unsupportedGeoDataWithoutProductTypeRemainsNoOp() throws Exception {
+
+		Long farmerId = farmerWithoutProductType();
+		long before = plotCount(farmerId);
+		String geoJson = "{\"type\":\"FeatureCollection\",\"features\":[{\"type\":\"Feature\",\"properties\":{},"
+				+ "\"geometry\":{\"type\":\"LineString\",\"coordinates\":[[30.0600,-1.9400],[30.0610,-1.9410]]}}]}";
+
+		MvcResult result = mockMvc.perform(multipart("/api/company/userCustomers/" + farmerId + "/uploadGeoData")
+						.file(new MockMultipartFile("file", "line.geojson", "application/geo+json",
+								geoJson.getBytes(StandardCharsets.UTF_8)))
+						.cookie(aliceSession))
+				.andReturn();
+
+		assertEquals(200, result.getResponse().getStatus(), body(result));
+		assertEquals(before, plotCount(farmerId),
+				"unsupported geometry must remain a no-op");
+	}
+
+	@Test
 	@DisplayName("GeoJSON polygon areas are converted from square metres to truncated hectares")
 	void geoDataUploadConvertsPolygonAreaToHectares() throws Exception {
 
@@ -1164,13 +1207,23 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 
 		em.persist(farmer);
 
-		UserCustomerProductType farmerCrop = new UserCustomerProductType();
-		farmerCrop.setUserCustomer(farmer);
-		farmerCrop.setProductType(crop);
-		em.persist(farmerCrop);
-		farmer.getProductTypes().add(farmerCrop);
+		if (crop != null) {
+			UserCustomerProductType farmerCrop = new UserCustomerProductType();
+			farmerCrop.setUserCustomer(farmer);
+			farmerCrop.setProductType(crop);
+			em.persist(farmerCrop);
+			farmer.getProductTypes().add(farmerCrop);
+		}
 
 		return farmer;
+	}
+
+	private Long farmerWithoutProductType() {
+
+		Company acme = em.find(Company.class, acmeId);
+		Country rwanda = em.find(Country.class, rwandaId);
+
+		return farmer(acme, "No", "ProductType", rwanda, null).getId();
 	}
 
 	/** A four-corner boundary, the shape the mobile app records when a farm is walked. */
