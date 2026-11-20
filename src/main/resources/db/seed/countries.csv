@@ -1,250 +1,250 @@
-Code,Name
-AF,Afghanistan
-AX,Ålland Islands
-AL,Albania
-DZ,Algeria
-AS,American Samoa
-AD,Andorra
-AO,Angola
-AI,Anguilla
-AQ,Antarctica
-AG,Antigua and Barbuda
-AR,Argentina
-AM,Armenia
-AW,Aruba
-AU,Australia
-AT,Austria
-AZ,Azerbaijan
-BS,Bahamas
-BH,Bahrain
-BD,Bangladesh
-BB,Barbados
-BY,Belarus
-BE,Belgium
-BZ,Belize
-BJ,Benin
-BM,Bermuda
-BT,Bhutan
-BO,"Bolivia, Plurinational State of"
-BQ,"Bonaire, Sint Eustatius and Saba"
-BA,Bosnia and Herzegovina
-BW,Botswana
-BV,Bouvet Island
-BR,Brazil
-IO,British Indian Ocean Territory
-BN,Brunei Darussalam
-BG,Bulgaria
-BF,Burkina Faso
-BI,Burundi
-KH,Cambodia
-CM,Cameroon
-CA,Canada
-CV,Cape Verde
-KY,Cayman Islands
-CF,Central African Republic
-TD,Chad
-CL,Chile
-CN,China
-CX,Christmas Island
-CC,Cocos (Keeling) Islands
-CO,Colombia
-KM,Comoros
-CG,Congo
-CD,"Congo, the Democratic Republic of the"
-CK,Cook Islands
-CR,Costa Rica
-CI,Côte d'Ivoire
-HR,Croatia
-CU,Cuba
-CW,Curaçao
-CY,Cyprus
-CZ,Czech Republic
-DK,Denmark
-DJ,Djibouti
-DM,Dominica
-DO,Dominican Republic
-EC,Ecuador
-EG,Egypt
-SV,El Salvador
-GQ,Equatorial Guinea
-ER,Eritrea
-EE,Estonia
-ET,Ethiopia
-FK,Falkland Islands (Malvinas)
-FO,Faroe Islands
-FJ,Fiji
-FI,Finland
-FR,France
-GF,French Guiana
-PF,French Polynesia
-TF,French Southern Territories
-GA,Gabon
-GM,Gambia
-GE,Georgia
-DE,Germany
-GH,Ghana
-GI,Gibraltar
-GR,Greece
-GL,Greenland
-GD,Grenada
-GP,Guadeloupe
-GU,Guam
-GT,Guatemala
-GG,Guernsey
-GN,Guinea
-GW,Guinea-Bissau
-GY,Guyana
-HT,Haiti
-HM,Heard Island and McDonald Islands
-VA,Holy See (Vatican City State)
-HN,Honduras
-HK,Hong Kong
-HU,Hungary
-IS,Iceland
-IN,India
-ID,Indonesia
-IR,"Iran, Islamic Republic of"
-IQ,Iraq
-IE,Ireland
-IM,Isle of Man
-IL,Israel
-IT,Italy
-JM,Jamaica
-JP,Japan
-JE,Jersey
-JO,Jordan
-KZ,Kazakhstan
-KE,Kenya
-KI,Kiribati
-KP,"Korea, Democratic People's Republic of"
-KR,"Korea, Republic of"
-KW,Kuwait
-KG,Kyrgyzstan
-LA,Lao People's Democratic Republic
-LV,Latvia
-LB,Lebanon
-LS,Lesotho
-LR,Liberia
-LY,Libya
-LI,Liechtenstein
-LT,Lithuania
-LU,Luxembourg
-MO,Macao
-MK,"Macedonia, the former Yugoslav Republic of"
-MG,Madagascar
-MW,Malawi
-MY,Malaysia
-MV,Maldives
-ML,Mali
-MT,Malta
-MH,Marshall Islands
-MQ,Martinique
-MR,Mauritania
-MU,Mauritius
-YT,Mayotte
-MX,Mexico
-FM,"Micronesia, Federated States of"
-MD,"Moldova, Republic of"
-MC,Monaco
-MN,Mongolia
-ME,Montenegro
-MS,Montserrat
-MA,Morocco
-MZ,Mozambique
-MM,Myanmar
-NA,Namibia
-NR,Nauru
-NP,Nepal
-NL,Netherlands
-NC,New Caledonia
-NZ,New Zealand
-NI,Nicaragua
-NE,Niger
-NG,Nigeria
-NU,Niue
-NF,Norfolk Island
-MP,Northern Mariana Islands
-NO,Norway
-OM,Oman
-PK,Pakistan
-PW,Palau
-PS,"Palestinian Territory, Occupied"
-PA,Panama
-PG,Papua New Guinea
-PY,Paraguay
-PE,Peru
-PH,Philippines
-PN,Pitcairn
-PL,Poland
-PT,Portugal
-PR,Puerto Rico
-QA,Qatar
-RE,Réunion
-RO,Romania
-RU,Russian Federation
-RW,Rwanda
-BL,Saint Barthélemy
-SH,"Saint Helena, Ascension and Tristan da Cunha"
-KN,Saint Kitts and Nevis
-LC,Saint Lucia
-MF,Saint Martin (French part)
-PM,Saint Pierre and Miquelon
-VC,Saint Vincent and the Grenadines
-WS,Samoa
-SM,San Marino
-ST,Sao Tome and Principe
-SA,Saudi Arabia
-SN,Senegal
-RS,Serbia
-SC,Seychelles
-SL,Sierra Leone
-SG,Singapore
-SX,Sint Maarten (Dutch part)
-SK,Slovakia
-SI,Slovenia
-SB,Solomon Islands
-SO,Somalia
-ZA,South Africa
-GS,South Georgia and the South Sandwich Islands
-SS,South Sudan
-ES,Spain
-LK,Sri Lanka
-SD,Sudan
-SR,Suriname
-SJ,Svalbard and Jan Mayen
-SZ,Swaziland
-SE,Sweden
-CH,Switzerland
-SY,Syrian Arab Republic
-TW,"Taiwan, Province of China"
-TJ,Tajikistan
-TZ,"Tanzania, United Republic of"
-TH,Thailand
-TL,Timor-Leste
-TG,Togo
-TK,Tokelau
-TO,Tonga
-TT,Trinidad and Tobago
-TN,Tunisia
-TR,Turkey
-TM,Turkmenistan
-TC,Turks and Caicos Islands
-TV,Tuvalu
-UG,Uganda
-UA,Ukraine
-AE,United Arab Emirates
-GB,United Kingdom
-US,United States
-UM,United States Minor Outlying Islands
-UY,Uruguay
-UZ,Uzbekistan
-VU,Vanuatu
-VE,"Venezuela, Bolivarian Republic of"
-VN,Viet Nam
-VG,"Virgin Islands, British"
-VI,"Virgin Islands, U.S."
-WF,Wallis and Futuna
-EH,Western Sahara
-YE,Yemen
-ZM,Zambia
-ZW,Zimbabwe
+Code,Name,Latitude,Longitude
+AF,Afghanistan,33.9050,67.8450
+AX,Ålland Islands,,
+AL,Albania,41.1550,20.1600
+DZ,Algeria,28.0900,1.6600
+AS,American Samoa,,
+AD,Andorra,,
+AO,Angola,-11.1850,17.8600
+AI,Anguilla,,
+AQ,Antarctica,,
+AG,Antigua and Barbuda,,
+AR,Argentina,-38.5400,-63.5250
+AM,Armenia,39.9950,45.0450
+AW,Aruba,,
+AU,Australia,-27.1500,133.4550
+AT,Austria,47.7350,13.2300
+AZ,Azerbaijan,40.0650,47.5900
+BS,Bahamas,25.3750,-77.9900
+BH,Bahrain,,
+BD,Bangladesh,23.5600,90.3750
+BB,Barbados,,
+BY,Belarus,53.7450,27.9450
+BE,Belgium,50.5050,4.3350
+BZ,Belize,17.1950,-88.6700
+BJ,Benin,9.1900,2.2850
+BM,Bermuda,,
+BT,Bhutan,27.5100,90.4550
+BO,"Bolivia, Plurinational State of",-16.3150,-63.5450
+BQ,"Bonaire, Sint Eustatius and Saba",,
+BA,Bosnia and Herzegovina,43.9400,17.6750
+BW,Botswana,-22.2450,24.6650
+BV,Bouvet Island,,
+BR,Brazil,-14.2650,-54.3600
+IO,British Indian Ocean Territory,,
+BN,Brunei Darussalam,4.7300,114.8250
+BG,Bulgaria,42.7300,25.4700
+BF,Burkina Faso,12.3650,-1.6450
+BI,Burundi,-3.4250,29.8850
+KH,Cambodia,12.5300,104.9800
+CM,Cameroon,7.2950,12.2500
+CA,Canada,57.4550,-96.8250
+CV,Cape Verde,,
+KY,Cayman Islands,,
+CF,Central African Republic,6.7050,20.9150
+TD,Chad,15.4150,18.7150
+CL,Chile,-36.5950,-71.3000
+CN,China,35.8300,104.3550
+CX,Christmas Island,,
+CC,Cocos (Keeling) Islands,,
+CO,Colombia,4.0700,-72.9350
+KM,Comoros,,
+CG,Congo,-0.6550,14.7700
+CD,"Congo, the Democratic Republic of the",-4.0000,21.6750
+CK,Cook Islands,,
+CR,Costa Rica,9.7250,-84.2450
+CI,Côte d'Ivoire,7.4300,-5.5800
+HR,Croatia,44.4900,16.5250
+CU,Cuba,21.5250,-79.5750
+CW,Curaçao,,
+CY,Cyprus,34.8700,33.1300
+CZ,Czech Republic,49.8400,15.5450
+DK,Denmark,56.2650,10.3900
+DJ,Djibouti,11.8150,42.4900
+DM,Dominica,,
+DO,Dominican Republic,18.7400,-70.1350
+EC,Ecuador,-1.7900,-78.1000
+EG,Egypt,26.7950,30.7850
+SV,El Salvador,13.7850,-88.9100
+GQ,Equatorial Guinea,1.6450,10.3000
+ER,Eritrea,15.2300,39.7000
+EE,Estonia,58.5400,25.7350
+ET,Ethiopia,9.1900,40.3700
+FK,Falkland Islands (Malvinas),-51.7000,-59.4750
+FO,Faroe Islands,,
+FJ,Fiji,,
+FI,Finland,65.0050,26.0850
+FR,France,46.8250,2.2800
+GF,French Guiana,,
+PF,French Polynesia,,
+TF,French Southern Territories,-49.2050,69.6400
+GA,Gabon,-0.8250,11.6150
+GM,Gambia,13.5050,-15.3400
+GE,Georgia,42.3050,43.3000
+DE,Germany,51.1400,10.5050
+GH,Ghana,7.9050,-1.0900
+GI,Gibraltar,,
+GR,Greece,38.3750,23.3750
+GL,Greenland,71.8450,-42.7550
+GD,Grenada,,
+GP,Guadeloupe,,
+GU,Guam,,
+GT,Guatemala,15.7800,-90.2300
+GG,Guernsey,,
+GN,Guinea,9.9500,-11.4800
+GW,Guinea-Bissau,11.8350,-15.1900
+GY,Guyana,4.8200,-58.9750
+HT,Haiti,18.9750,-73.0400
+HM,Heard Island and McDonald Islands,,
+VA,Holy See (Vatican City State),,
+HN,Honduras,14.4950,-86.2500
+HK,Hong Kong,,
+HU,Hungary,47.1900,19.4550
+IS,Iceland,65.0150,-18.9700
+IN,India,21.7300,82.7900
+ID,Indonesia,-2.4400,118.1600
+IR,"Iran, Islamic Republic of",32.3950,53.7150
+IQ,Iraq,33.2450,43.6800
+IE,Ireland,53.4000,-8.0050
+IM,Isle of Man,,
+IL,Israel,31.3900,35.0550
+IT,Italy,41.8700,12.6150
+JM,Jamaica,18.1100,-77.2700
+JP,Japan,38.2900,137.4750
+JE,Jersey,,
+JO,Jordan,31.2900,37.0600
+KZ,Kazakhstan,48.0250,66.9150
+KE,Kenya,0.4150,37.8750
+KI,Kiribati,,
+KP,"Korea, Democratic People's Republic of",40.3300,127.5250
+KR,"Korea, Republic of",36.5000,127.7950
+KW,Kuwait,29.2950,47.4950
+KG,Kyrgyzstan,41.2900,74.8600
+LA,Lao People's Democratic Republic,18.1700,103.8400
+LV,Latvia,56.7950,24.6200
+LB,Lebanon,33.8650,35.8700
+LS,Lesotho,-29.6500,28.1650
+LR,Liberia,6.4500,-9.4900
+LY,Libya,26.3600,17.2400
+LI,Liechtenstein,,
+LT,Lithuania,55.1400,23.8250
+LU,Luxembourg,49.7850,5.9550
+MO,Macao,,
+MK,"Macedonia, the former Yugoslav Republic of",41.5800,21.7050
+MG,Madagascar,-18.8200,46.8650
+MW,Malawi,-13.0150,34.2300
+MY,Malaysia,3.8500,109.6350
+MV,Maldives,,
+ML,Mali,17.5350,-3.9500
+MT,Malta,,
+MH,Marshall Islands,,
+MQ,Martinique,,
+MR,Mauritania,21.0100,-10.9900
+MU,Mauritius,,
+YT,Mayotte,,
+MX,Mexico,23.6300,-101.9700
+FM,"Micronesia, Federated States of",,
+MD,"Moldova, Republic of",46.9800,28.3200
+MC,Monaco,,
+MN,Mongolia,46.8250,103.7600
+ME,Montenegro,42.7000,19.3950
+MS,Montserrat,,
+MA,Morocco,28.5900,-9.0700
+MZ,Mozambique,-18.5300,35.4800
+MM,Myanmar,19.1350,96.7400
+NA,Namibia,-22.9950,18.4050
+NR,Nauru,,
+NP,Nepal,28.4100,84.1300
+NL,Netherlands,52.1550,5.2000
+NC,New Caledonia,-21.2550,165.5750
+NZ,New Zealand,-40.5450,172.5150
+NI,Nicaragua,12.8750,-85.4100
+NE,Niger,17.5650,8.1000
+NG,Nigeria,9.0550,8.6350
+NU,Niue,,
+NF,Norfolk Island,,
+MP,Northern Mariana Islands,,
+NO,Norway,64.5000,18.1400
+OM,Oman,21.5250,55.9050
+PK,Pakistan,30.4100,69.3550
+PW,Palau,,
+PS,"Palestinian Territory, Occupied",31.9400,35.2400
+PA,Panama,8.4150,-80.1050
+PG,Papua New Guinea,-6.5750,148.5100
+PY,Paraguay,-23.4450,-58.4900
+PE,Peru,-9.2050,-75.0400
+PH,Philippines,12.0450,121.8550
+PN,Pitcairn,,
+PL,Poland,51.9400,19.0500
+PT,Portugal,39.5600,-7.9600
+PR,Puerto Rico,18.2350,-66.4150
+QA,Qatar,25.3350,51.1750
+RE,Réunion,,
+RO,Romania,45.9550,24.9250
+RU,Russian Federation,,
+RW,Rwanda,-2.0250,29.9200
+BL,Saint Barthélemy,,
+SH,"Saint Helena, Ascension and Tristan da Cunha",,
+KN,Saint Kitts and Nevis,,
+LC,Saint Lucia,,
+MF,Saint Martin (French part),,
+PM,Saint Pierre and Miquelon,,
+VC,Saint Vincent and the Grenadines,,
+WS,Samoa,,
+SM,San Marino,,
+ST,Sao Tome and Principe,,
+SA,Saudi Arabia,24.2550,45.1500
+SN,Senegal,14.4650,-14.5500
+RS,Serbia,44.2100,20.9100
+SC,Seychelles,,
+SL,Sierra Leone,8.4200,-11.7400
+SG,Singapore,,
+SX,Sint Maarten (Dutch part),,
+SK,Slovakia,48.6650,19.7200
+SI,Slovenia,46.1500,15.1300
+SB,Solomon Islands,-8.7150,159.4450
+SO,Somalia,5.1700,46.0550
+ZA,South Africa,-28.4550,24.5850
+GS,South Georgia and the South Sandwich Islands,,
+SS,South Sudan,7.8800,29.5950
+ES,Spain,39.8500,-3.1750
+LK,Sri Lanka,7.8950,80.7450
+SD,Sudan,15.3100,30.1750
+SR,Suriname,3.9250,-56.0000
+SJ,Svalbard and Jan Mayen,,
+SZ,Swaziland,-26.4750,31.3750
+SE,Sweden,62.2350,17.4650
+CH,Switzerland,46.8050,8.2300
+SY,Syrian Arab Republic,34.7700,39.0250
+TW,"Taiwan, Province of China",23.6350,121.0300
+TJ,Tajikistan,38.8500,71.2100
+TZ,"Tanzania, United Republic of",-6.3350,34.8300
+TH,Thailand,13.0550,101.4850
+TL,Timor-Leste,-8.8300,126.1550
+TG,Togo,8.4750,0.9100
+TK,Tokelau,,
+TO,Tonga,,
+TT,Trinidad and Tobago,10.4450,-61.4250
+TN,Tunisia,33.8300,9.5050
+TR,Turkey,38.9800,35.4150
+TM,Turkmenistan,39.0100,59.5250
+TC,Turks and Caicos Islands,,
+TV,Tuvalu,,
+UG,Uganda,1.4050,32.3100
+UA,Ukraine,48.3500,31.0850
+AE,United Arab Emirates,24.2800,53.9900
+GB,United Kingdom,54.3000,-2.9450
+US,United States,37.2500,-95.9800
+UM,United States Minor Outlying Islands,,
+UY,Uruguay,-32.5300,-55.8200
+UZ,Uzbekistan,41.3650,64.4950
+VU,Vanuatu,-15.6150,167.2350
+VE,"Venezuela, Bolivarian Republic of",6.4400,-66.5300
+VN,Viet Nam,15.9750,105.7550
+VG,"Virgin Islands, British",,
+VI,"Virgin Islands, U.S.",,
+WF,Wallis and Futuna,,
+EH,Western Sahara,,
+YE,Yemen,15.7950,47.8550
+ZM,Zambia,-13.1000,27.6900
+ZW,Zimbabwe,-18.8900,29.0550

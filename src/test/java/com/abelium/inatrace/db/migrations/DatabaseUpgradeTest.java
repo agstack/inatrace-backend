@@ -69,7 +69,8 @@ class DatabaseUpgradeTest {
             "2026.09.23.12.00", "com.abelium.inatrace.db.migrations.V2026_09_23_12_00__Drop_Legacy_OneToOne_Unique_Indexes",
             "2026.10.13.12.00", "com.abelium.inatrace.db.migrations.V2026_10_13_12_00__Add_Document_Uploaded_By",
             "2026.10.17.12.00", "com.abelium.inatrace.db.migrations.V2026_10_17_12_00__Add_Authentication_Token_Expiration_Index",
-            "2026.10.21.12.00", "com.abelium.inatrace.db.migrations.V2026_10_21_12_00__Deduplicate_Document_Uploader_Foreign_Keys");
+            "2026.10.21.12.00", "com.abelium.inatrace.db.migrations.V2026_10_21_12_00__Deduplicate_Document_Uploader_Foreign_Keys",
+            "2026.11.20.12.00", "com.abelium.inatrace.db.migrations.V2026_11_20_12_00__Update_Country_Coordinates");
     private static final List<JoinColumn> LEGACY_ONE_TO_ONE_COLUMNS = List.of(
             new JoinColumn("UserCustomer", "userCustomerLocation_id"),
             new JoinColumn("Company", "logo_id"), new JoinColumn("Facility", "facilityLocation_id"),
