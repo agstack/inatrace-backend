@@ -1525,9 +1525,15 @@ public class CompanyService extends BaseService {
 			throw new ApiException(ApiStatus.INVALID_REQUEST, "Invalid GeoJSON file");
 		}
 		if (!CollectionUtils.isEmpty(featureCollection.features())) {
+			List<Feature> features = featureCollection.features();
+			boolean hasPlottableGeometry = features.stream()
+					.anyMatch(feature -> feature != null
+							&& (feature.geometry() instanceof Polygon || feature.geometry() instanceof Point));
+			ProductType productType = hasPlottableGeometry ? requireProductType(userCustomer) : null;
+
 			int plotIndex = 1;
 			int pointIndex = 1;
-			for (Feature feature : featureCollection.features()) {
+			for (Feature feature : features) {
 				if (feature == null) {
 					throw new ApiException(ApiStatus.INVALID_REQUEST, "Invalid GeoJSON feature");
 				}
@@ -1562,7 +1568,7 @@ public class CompanyService extends BaseService {
 					}).collect(Collectors.toList()));
 
 					ApiProductType apiProductType = new ApiProductType();
-					apiProductType.setId(userCustomer.getProductTypes().stream().toList().get(0).getProductType().getId());
+					apiProductType.setId(productType.getId());
 					apiPlot.setCrop(apiProductType);
 
 					createUserCustomerPlot(id, authUser, Language.EN, apiPlot);
@@ -1580,7 +1586,7 @@ public class CompanyService extends BaseService {
 					apiPlot.setCoordinates(List.of(coordinate));
 
 					ApiProductType apiProductType = new ApiProductType();
-					apiProductType.setId(userCustomer.getProductTypes().stream().toList().get(0).getProductType().getId());
+					apiProductType.setId(productType.getId());
 					apiPlot.setCrop(apiProductType);
 
 					createUserCustomerPlot(id, authUser, Language.EN, apiPlot);
@@ -1588,6 +1594,15 @@ public class CompanyService extends BaseService {
 				}
 			}
     }
+
+	private ProductType requireProductType(UserCustomer userCustomer) throws ApiException {
+		return userCustomer.getProductTypes().stream()
+				.map(UserCustomerProductType::getProductType)
+				.filter(Objects::nonNull)
+				.findFirst()
+				.orElseThrow(() -> new ApiException(ApiStatus.INVALID_REQUEST,
+						"The farmer has no product type. Add one before uploading geo-data."));
+	}
 
 	@Transactional
 	public void deleteUserCustomer(Long id, CustomUserDetails user) throws ApiException {
