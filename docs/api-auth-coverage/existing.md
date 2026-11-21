@@ -42,10 +42,10 @@ sub-issue PRs remain focused.
 | `GET` | `/api/company/{id}/product-types` | `CompanyController#getCompanyProductTypes` | Companies | No HTTP case identified in the merged suites | Gap |
 | `GET` | `/api/company/{id}/value-chains` | `CompanyController#getCompanyValueChains` | Companies | No HTTP case identified in the merged suites | Gap |
 | `GET` | `/api/user/admin/list` | `UserController#adminListUsers` | Auth/Users | UserAuthApiTest#plainUserCannotListAllUsers; #systemAdminCanListAllUsers | Partial |
-| `GET` | `/api/user/admin/profile/{id}` | `UserController#getProfileForAdmin` | Auth/Users | No HTTP case identified in the merged suites | Gap |
+| `GET` | `/api/user/admin/profile/{id}` | `UserController#getProfileForAdmin` | Auth/Users | RegionalAdminUserScopeTest#regionalAdminCanReadProfileWithinOwnCompany; #regionalAdminCannotReadProfileOutsideOwnCompanies; #adminProfileEndpointsRefuseAnonymousAndPlainUsers | Partial |
 | `GET` | `/api/user/list` | `UserController#listUsers` | Auth/Users | UserListApiTest#userListRejectsAnonymousRequests; #ownCompanyUserListIsScopedToSharedActiveCompanies; #userListFiltersCannotWidenTheScope | Partial |
 | `GET` | `/api/user/profile` | `UserController#getProfileForUser` | Auth/Users | UserAuthApiTest#profileRequiresAuthentication; #accessCookieOpensProfile | Partial |
-| `GET` | `/api/user/regional-admin/list` | `UserController#regionalAdminListUsers` | Auth/Users | UserAuthApiTest#plainUserCannotListRegionalUsers | Partial |
+| `GET` | `/api/user/regional-admin/list` | `UserController#regionalAdminListUsers` | Auth/Users | RegionalAdminUserScopeTest#regionalAdminListIsScopedToOwnCompaniesAndUnassignedAccounts; #regionalAdminListRefusesAnonymousAndPlainUsers; #regionalAdminListFiltersCannotWidenScope | Partial |
 | `POST` | `/api/company/companyCustomers` | `CompanyController#createCompanyCustomer` | Companies | No HTTP case identified in the merged suites | Gap |
 | `POST` | `/api/company/create` | `CompanyController#createCompany` | Companies | CompanyApiTest#createRequiresAuthentication; #systemAdminCanCreateCompany | Partial |
 | `POST` | `/api/company/execute/{action}` | `CompanyController#executeAction` | Companies | CompanyApiTest#systemAdminCanActivateCompany; #unrelatedPlainUserCannotExecuteAction | Partial |
@@ -56,7 +56,7 @@ sub-issue PRs remain focused.
 | `POST` | `/api/company/userCustomers/{id}/plots/add` | `CompanyController#createUserCustomerPlot` | Farmers/plots | FarmerAndPlotApiTest#plotCanBeAddedToOwnFarmer; #plotCannotBeAddedToForeignFarmer | Partial |
 | `POST` | `/api/company/userCustomers/{id}/plots/{plotId}/updateGeoID` | `CompanyController#refreshGeoIDForUserCustomerPlot` | Farmers/plots | FarmerAndPlotApiTest#geoIdRefreshOnForeignPlotIsRejected | Partial |
 | `POST` | `/api/company/userCustomers/{id}/uploadGeoData` | `CompanyController#uploadUserCustomerGeoData` | Farmers/plots | FarmerAndPlotApiTest#foreignFarmerGeoDataUploadIsRejected | Partial |
-| `POST` | `/api/user/admin/execute/{action}` | `UserController#activateUser` | Auth/Users | No HTTP case identified in the merged suites | Gap |
+| `POST` | `/api/user/admin/execute/{action}` | `UserController#activateUser` | Auth/Users | RegionalAdminUserActionTest#cannotPromoteToSystemAdmin; #canStillOnboard; RegionalAdminUserScopeTest#regionalAdminCannotExecuteOnAnotherCompany; #regionalAdminCannotExecuteOnSelf; #anonymousAndPlainUserCannotExecuteAdminAction | Partial |
 | `POST` | `/api/user/confirm_email` | `UserController#confirmEmail` | Auth/Users | UserAuthApiTest#confirmEmailAdvancesStatus; #confirmEmailRejectsUnknownToken | Partial |
 | `POST` | `/api/user/login` | `UserController#login` | Auth/Users | UserAuthApiTest#loginIssuesBothCookies; #loginRejectsWrongPassword | Partial |
 | `POST` | `/api/user/logout` | `UserController#logout` | Auth/Users | UserAuthApiTest#logoutClearsCookies | Partial |
@@ -67,5 +67,5 @@ sub-issue PRs remain focused.
 | `PUT` | `/api/company/companyCustomers` | `CompanyController#updateCompanyCustomer` | Companies | No HTTP case identified in the merged suites | Gap |
 | `PUT` | `/api/company/profile` | `CompanyController#updateCompany` | Companies | CompanyApiTest#updateAllowsCompanyAdmin; #updateRefusesUnrelatedUser | Partial |
 | `PUT` | `/api/company/userCustomers/edit` | `CompanyController#updateUserCustomer` | Farmers/plots | FarmerAndPlotApiTest#foreignFarmerCannotBeEdited | Partial |
-| `PUT` | `/api/user/admin/profile` | `UserController#adminUpdateProfile` | Auth/Users | No HTTP case identified in the merged suites | Gap |
-| `PUT` | `/api/user/profile` | `UserController#updateProfile` | Auth/Users | No HTTP case identified in the merged suites | Gap |
+| `PUT` | `/api/user/admin/profile` | `UserController#adminUpdateProfile` | Auth/Users | RegionalAdminUserScopeTest#regionalAdminCanUpdateProfileWithinOwnCompany; #regionalAdminCannotUpdateProfileOutsideOwnCompanies; #adminProfileEndpointsRefuseAnonymousAndPlainUsers | Partial |
+| `PUT` | `/api/user/profile` | `UserController#updateProfile` | Auth/Users | RegionalAdminUserScopeTest#activeUserCanUpdateOwnProfile | Partial |
