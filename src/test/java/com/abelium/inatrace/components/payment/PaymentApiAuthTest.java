@@ -21,6 +21,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.servlet.http.Cookie;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -31,6 +32,8 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
@@ -60,6 +63,7 @@ class PaymentApiAuthTest extends AbstractMySqlIntegrationTest {
     @Autowired private MockMvc mockMvc;
     @Autowired private EntityManager em;
     @Autowired private TokenService tokenService;
+    @Autowired private ObjectMapper objectMapper;
 
     @Value("${INATrace.auth.accessTokenCookieName}")
     private String accessCookieName;
@@ -124,6 +128,7 @@ class PaymentApiAuthTest extends AbstractMySqlIntegrationTest {
         payment.setPaymentPurposeType(PaymentPurposeType.INVOICE_PAYMENT);
         payment.setPaymentStatus(PaymentStatus.UNCONFIRMED);
         payment.setAmount(new BigDecimal("731.25"));
+        payment.setTotalPaid(new BigDecimal("700.00"));
         payment.setPurchased(new BigDecimal("321.50"));
         payment.setCurrency("USD");
         payment.setProductionDate(LocalDate.of(2025, 8, 18));
@@ -159,6 +164,39 @@ class PaymentApiAuthTest extends AbstractMySqlIntegrationTest {
             assertAllowedJson(path, RECEIPT);
             assertRefusedJson(path, RECEIPT);
         }
+    }
+
+    @Test
+    @DisplayName("payment detail and purchase list return the stored totalPaid")
+    void paymentResponsesExposeStoredTotalPaid() throws Exception {
+        MvcResult detail = mockMvc.perform(get("/api/chain/payment/" + paymentId).cookie(ownerSession)).andReturn();
+        assertEquals(200, detail.getResponse().getStatus(), detail.getResponse().getContentAsString());
+
+        JsonNode detailData = objectMapper.readTree(detail.getResponse().getContentAsString()).path("data");
+        assertTrue(detailData.has("totalPaid"), detailData.toString());
+        assertEquals(0, new BigDecimal("700.00").compareTo(detailData.path("totalPaid").decimalValue()),
+                detailData.toString());
+        assertEquals(0, new BigDecimal("731.25").compareTo(detailData.path("amount").decimalValue()),
+                detailData.toString());
+
+        MvcResult list = mockMvc.perform(get("/api/chain/payment/list/purchase/" + purchaseId)
+                .cookie(ownerSession)).andReturn();
+        assertEquals(200, list.getResponse().getStatus(), list.getResponse().getContentAsString());
+
+        JsonNode items = objectMapper.readTree(list.getResponse().getContentAsString()).path("data").path("items");
+        JsonNode paymentItem = null;
+        for (JsonNode item : items) {
+            if (RECEIPT.equals(item.path("receiptNumber").asText())) {
+                paymentItem = item;
+                break;
+            }
+        }
+        assertNotNull(paymentItem, "the seeded payment must be in the purchase list: " + items);
+        assertTrue(paymentItem.has("totalPaid"), paymentItem.toString());
+        assertEquals(0, new BigDecimal("700.00").compareTo(paymentItem.path("totalPaid").decimalValue()),
+                paymentItem.toString());
+        assertEquals(0, new BigDecimal("731.25").compareTo(paymentItem.path("amount").decimalValue()),
+                paymentItem.toString());
     }
 
     @Test

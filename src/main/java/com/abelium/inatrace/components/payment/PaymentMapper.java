@@ -31,6 +31,7 @@ public final class PaymentMapper {
 		apiPayment.setCurrency(entity.getCurrency());
 		apiPayment.setAmount(entity.getAmount());
 		apiPayment.setAmountPaidToTheCollector(entity.getAmountPaidToTheCollector());
+		apiPayment.setTotalPaid(entity.getTotalPaid());
 		apiPayment.setRecipientType(entity.getRecipientType());
 		apiPayment.setReceiptNumber(entity.getReceiptNumber());
 		apiPayment.setReceiptDocumentType(entity.getReceiptDocumentType());
