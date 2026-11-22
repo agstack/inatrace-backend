@@ -1,6 +1,10 @@
 package com.abelium.inatrace.components.stockorder;
 
 import com.abelium.inatrace.configuration.SafeExceptionLog;
+import com.mapbox.geojson.Feature;
+import com.mapbox.geojson.Point;
+import com.mapbox.geojson.Polygon;
+import com.mapbox.turf.TurfMeasurement;
 
 import com.abelium.inatrace.api.ApiBaseEntity;
 import com.abelium.inatrace.api.ApiPaginatedList;
@@ -57,8 +61,8 @@ import com.abelium.inatrace.types.ProductCompanyType;
 import com.abelium.inatrace.types.UserRole;
 import com.abelium.inatrace.tools.SearchTools;
 import tools.jackson.core.JacksonException;
-import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 import jakarta.persistence.TypedQuery;
 import jakarta.transaction.Transactional;
@@ -1767,90 +1771,172 @@ public class StockOrderService extends BaseService {
         Plot pcProxy = Torpedo.from(Plot.class);
         Torpedo.where(pcProxy.getFarmer().getId()).in(customerIds);
         List<Plot> plotList = Torpedo.select(pcProxy).list(em);
+        plotList.sort(Comparator.comparing(Plot::getId, Comparator.nullsLast(Long::compareTo)));
 
-        // Convert plot values into GeoJson coordinates
         ObjectMapper mapper = new ObjectMapper();
-        
-        // FeatureCollection, combines Multipoint feature and Multipolygon feature
         ObjectNode rootFeatureCollection = mapper.createObjectNode();
-        rootFeatureCollection.set("type", mapper.convertValue("FeatureCollection", JsonNode.class));
-        
-        // Multi points
-        ObjectNode rootMultiPoint = mapper.createObjectNode();
-        rootMultiPoint.set("type", mapper.convertValue("Feature", JsonNode.class));
-        
-        ObjectNode geometryMultiPoint = mapper.createObjectNode();
-        geometryMultiPoint.set("type", mapper.convertValue("MultiPoint", JsonNode.class));
-        rootMultiPoint.set("geometry", geometryMultiPoint);
+        rootFeatureCollection.put("type", "FeatureCollection");
+        ArrayNode features = mapper.createArrayNode();
 
-        List<List<Double>> pointCoordinatesList = new ArrayList<>();
-        plotList.forEach(plot -> {
-            // if point (less than 3 coordinates)
-            if (!plot.getCoordinates().isEmpty() && plot.getCoordinates().size() < 3) {
-                plot.getCoordinates().forEach(plotCoordinate -> {
-                    List<Double> cList = new ArrayList<>();
-                    cList.add(plotCoordinate.getLongitude());
-                    cList.add(plotCoordinate.getLatitude());
-                    pointCoordinatesList.add(cList);
-                });
+        for (Plot plot : plotList) {
+            List<PlotCoordinate> coordinates = plot.getCoordinates().stream()
+                    .filter(coordinate -> coordinate.getLatitude() != null && coordinate.getLongitude() != null)
+                    .toList();
+            if (coordinates.isEmpty()) {
+                continue;
             }
-        });
 
-        geometryMultiPoint.set("coordinates", mapper.convertValue(pointCoordinatesList, JsonNode.class));
-        rootMultiPoint.set("properties",mapper.createObjectNode());
-        
-        // Multi polygon
-        ObjectNode rootMultiPolygon = mapper.createObjectNode();
-        rootMultiPolygon.set("type", mapper.convertValue("Feature", JsonNode.class));
+            String geometryType = geometryType(coordinates);
+            ObjectNode feature = mapper.createObjectNode();
+            feature.put("type", "Feature");
+            feature.set("geometry", geometryNode(coordinates, geometryType, mapper));
+            feature.set("properties", plotProperties(plot, geometryType, mapper));
+            features.add(feature);
+        }
 
-        ObjectNode geometryMultiPolygon = mapper.createObjectNode();
-        geometryMultiPolygon.set("type", mapper.convertValue("MultiPolygon", JsonNode.class));
-        rootMultiPolygon.set("geometry", geometryMultiPolygon);
+        // Match the existing frontend behavior: an empty payload means "no Geo data",
+        // instead of saving a FeatureCollection with no features.
+        if (features.isEmpty()) {
+            return new byte[0];
+        }
 
-        List<List<List<List<Double>>>> plotCoordinatesList = new ArrayList<>();
-        plotList.forEach(plot -> {
-            // if polygon (more than 3 coordinates)
-            if (!plot.getCoordinates().isEmpty() && plot.getCoordinates().size() > 2) {
-                List<List<List<Double>>> plotCoordinatesListArray = new ArrayList<>();
-                List<List<Double>> coordinatesList = new ArrayList<>();
-
-                plot.getCoordinates().forEach(plotCoordinate -> {
-                    List<Double> cList = new ArrayList<>();
-                    cList.add(plotCoordinate.getLongitude());
-                    cList.add(plotCoordinate.getLatitude());
-                    coordinatesList.add(cList);
-                });
-
-                // polygons must follow right-hand rule (counter-clockwise)
-                if (!isPolygonCounterClockwise(coordinatesList)) {
-                    Collections.reverse(coordinatesList);
-                }
-
-                if (!coordinatesList.get(0).equals(coordinatesList.get(coordinatesList.size() - 1))) {
-                    // add first as last
-                    coordinatesList.add(coordinatesList.get(0));
-                }
-                plotCoordinatesListArray.add(coordinatesList);
-                plotCoordinatesList.add(plotCoordinatesListArray);
-            }
-        });
-
-        geometryMultiPolygon.set("coordinates", mapper.convertValue(plotCoordinatesList, JsonNode.class));
-
-        rootMultiPolygon.set("properties",mapper.createObjectNode());
-        
-        // combine MultiPolygon and Multipoint features
-        List<ObjectNode> featureList = new ArrayList<>();
-        featureList.add(rootMultiPoint);
-        featureList.add(rootMultiPolygon);
-        
-        rootFeatureCollection.set("features", mapper.convertValue(featureList, JsonNode.class));
+        rootFeatureCollection.set("features", features);
 
         try {
-           return mapper.writer().writeValueAsBytes(rootFeatureCollection);
+            return mapper.writer().writeValueAsBytes(rootFeatureCollection);
         } catch (JacksonException e) {
             SafeExceptionLog.error(logger, "Error while generating geoJson file", e);
             throw new ApiException(ApiStatus.ERROR, "Error while generating geojson file");
+        }
+    }
+
+    private String geometryType(List<PlotCoordinate> coordinates) {
+        if (coordinates.size() == 1) {
+            return "Point";
+        }
+        if (coordinates.size() == 2) {
+            return "MultiPoint";
+        }
+        return "Polygon";
+    }
+
+    private ObjectNode geometryNode(List<PlotCoordinate> coordinates, String geometryType, ObjectMapper mapper) {
+        ObjectNode geometry = mapper.createObjectNode();
+        geometry.put("type", geometryType);
+
+        if ("Point".equals(geometryType)) {
+            geometry.set("coordinates", pointNode(coordinates.get(0), mapper));
+        } else if ("MultiPoint".equals(geometryType)) {
+            ArrayNode points = mapper.createArrayNode();
+            coordinates.forEach(coordinate -> points.add(pointNode(coordinate, mapper)));
+            geometry.set("coordinates", points);
+        } else {
+            List<List<Double>> ring = new ArrayList<>();
+            coordinates.forEach(coordinate -> ring.add(new ArrayList<>(List.of(
+                    coordinate.getLongitude(), coordinate.getLatitude()))));
+
+            // Polygons must follow the right-hand rule (counter-clockwise).
+            if (!isPolygonCounterClockwise(ring)) {
+                Collections.reverse(ring);
+            }
+            if (!ring.get(0).equals(ring.get(ring.size() - 1))) {
+                ring.add(ring.get(0));
+            }
+
+            ArrayNode ringNode = mapper.createArrayNode();
+            ring.forEach(pair -> {
+                ArrayNode point = mapper.createArrayNode();
+                point.add(pair.get(0));
+                point.add(pair.get(1));
+                ringNode.add(point);
+            });
+            ArrayNode polygon = mapper.createArrayNode();
+            polygon.add(ringNode);
+            geometry.set("coordinates", polygon);
+        }
+
+        return geometry;
+    }
+
+    private ArrayNode pointNode(PlotCoordinate coordinate, ObjectMapper mapper) {
+        ArrayNode point = mapper.createArrayNode();
+        point.add(coordinate.getLongitude());
+        point.add(coordinate.getLatitude());
+        return point;
+    }
+
+    private ObjectNode plotProperties(Plot plot, String geometryType, ObjectMapper mapper) {
+        ObjectNode properties = mapper.createObjectNode();
+        UserCustomer farmer = plot.getFarmer();
+
+        if (farmer != null) {
+            putIfNotBlank(properties, "FarmerInternalId", farmer.getFarmerCompanyInternalId());
+            if (farmer.getId() != null) {
+                properties.put("FarmerId", farmer.getId());
+            }
+            putIfNotBlank(properties, "FarmerName", farmer.getName());
+            putIfNotBlank(properties, "FarmerSurname", farmer.getSurname());
+            putIfNotBlank(properties, "ProducerCountry", farmerCountryCode(farmer));
+        }
+
+        if (plot.getId() != null) {
+            properties.put("PlotId", plot.getId());
+        }
+        putIfNotBlank(properties, "PlotName", plot.getPlotName());
+        putIfNotBlank(properties, "GeoId", plot.getGeoId());
+
+        String productionPlace = StringUtils.isNotBlank(plot.getPlotName())
+                ? plot.getPlotName() : plot.getGeoId();
+        putIfNotBlank(properties, "ProductionPlace", productionPlace);
+
+        Double area = plotAreaHa(plot);
+        if (area != null) {
+            properties.put("Area", area);
+            properties.put("AreaUnit", "ha");
+        }
+        properties.put("GeometryType", geometryType);
+
+        return properties;
+    }
+
+    private void putIfNotBlank(ObjectNode node, String key, String value) {
+        if (StringUtils.isNotBlank(value)) {
+            node.put(key, value);
+        }
+    }
+
+    private String farmerCountryCode(UserCustomer farmer) {
+        if (farmer.getUserCustomerLocation() == null || farmer.getUserCustomerLocation().getAddress() == null) {
+            return null;
+        }
+        Country country = farmer.getUserCustomerLocation().getAddress().getCountry();
+        return country != null ? country.getCode() : null;
+    }
+
+    private Double plotAreaHa(Plot plot) {
+        if (plot.getSize() != null && "ha".equalsIgnoreCase(plot.getUnit())) {
+            return plot.getSize();
+        }
+        if (plot.getCoordinates().size() < 3) {
+            return null;
+        }
+
+        try {
+            List<Point> points = plot.getCoordinates().stream()
+                    .filter(coordinate -> coordinate.getLatitude() != null && coordinate.getLongitude() != null)
+                    .map(coordinate -> Point.fromLngLat(coordinate.getLongitude(), coordinate.getLatitude()))
+                    .collect(Collectors.toList());
+            if (points.size() < 3) {
+                return null;
+            }
+            if (!points.get(0).equals(points.get(points.size() - 1))) {
+                points.add(points.get(0));
+            }
+            double areaM2 = TurfMeasurement.area(Feature.fromGeometry(Polygon.fromLngLats(List.of(points))));
+            return Math.floor((areaM2 / 10_000d) * 100d) / 100d;
+        } catch (RuntimeException e) {
+            // Invalid legacy geometry: keep the plot's properties, but do not invent an area.
+            return null;
         }
     }
 
