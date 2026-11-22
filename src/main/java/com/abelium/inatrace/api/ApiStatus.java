@@ -34,6 +34,11 @@ public enum ApiStatus {
     VALIDATION_ERROR(HttpStatus.BAD_REQUEST),
 
     /**
+     * The request lost a concurrent write race and was safely rolled back.
+     */
+    CONFLICT(HttpStatus.CONFLICT),
+
+    /**
      * rate limiting (e.g. for login) exceeded
      */
     TOO_MANY_REQUESTS(HttpStatus.TOO_MANY_REQUESTS),

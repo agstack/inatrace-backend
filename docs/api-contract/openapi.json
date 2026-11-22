@@ -1508,7 +1508,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -2973,7 +2973,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -2999,7 +2999,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -3025,7 +3025,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -3051,7 +3051,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -3077,7 +3077,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -3103,7 +3103,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -3129,7 +3129,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -3155,7 +3155,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -3181,7 +3181,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -3207,7 +3207,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -3233,7 +3233,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -3259,7 +3259,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -3285,7 +3285,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -3311,7 +3311,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -3337,7 +3337,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -3363,7 +3363,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -3389,7 +3389,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -3415,7 +3415,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -3441,7 +3441,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -3467,7 +3467,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -3493,7 +3493,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -3519,7 +3519,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -3545,7 +3545,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -3571,7 +3571,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -3597,7 +3597,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -5410,7 +5410,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -5437,7 +5437,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -5464,7 +5464,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -5491,7 +5491,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -5518,7 +5518,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -5545,7 +5545,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -5572,7 +5572,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -5599,7 +5599,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -5626,7 +5626,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -5653,7 +5653,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -5680,7 +5680,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -5707,7 +5707,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -5734,7 +5734,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -5761,7 +5761,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -5788,7 +5788,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -5815,7 +5815,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -5842,7 +5842,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -5869,7 +5869,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -5896,7 +5896,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -5923,7 +5923,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -5950,7 +5950,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -5977,7 +5977,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -6004,7 +6004,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -6031,7 +6031,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -6058,7 +6058,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -6085,7 +6085,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -6112,7 +6112,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -6139,7 +6139,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -6166,7 +6166,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -6193,7 +6193,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -6220,7 +6220,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -6247,7 +6247,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -6274,7 +6274,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -6301,7 +6301,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -6328,7 +6328,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -6355,7 +6355,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -6382,7 +6382,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -6409,7 +6409,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -6436,7 +6436,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -6463,7 +6463,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -6491,7 +6491,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -6522,7 +6522,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -6553,7 +6553,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -6584,7 +6584,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -6615,7 +6615,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -6646,7 +6646,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },
@@ -6674,7 +6674,7 @@
           },
           "status" : {
             "description" : "Response status. OK for successful reponses.",
-            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
+            "enum" : [ "OK", "ERROR", "REQUEST_BODY_ERROR", "VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "UNAUTHORIZED", "AUTH_ERROR", "UPSTREAM_HTTP_ERROR", "INVALID_REQUEST", "INVALID_OR_EXPIRED_STORAGE_KEY", "NOT_IMPLEMENTED", "NOT_FOUND" ],
             "example" : "OK",
             "type" : "string"
           },

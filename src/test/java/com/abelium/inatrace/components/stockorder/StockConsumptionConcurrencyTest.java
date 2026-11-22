@@ -943,10 +943,16 @@ class StockConsumptionConcurrencyTest extends AbstractMySqlIntegrationTest {
     }
 
     private void assertConcurrentResponsesAreSuccessfulOrConflicts(List<ProcessingRequestResult> results) {
-        assertTrue(results.stream().allMatch(result -> isSuccess(result)
-                        || result.response().getStatusCode() == HttpStatus.INTERNAL_SERVER_ERROR
-                        || result.response().getStatusCode() == HttpStatus.CONFLICT),
-                () -> "concurrent requests must not be mistaken for validation or authorization failures: " + describe(results));
+        for (ProcessingRequestResult result : results) {
+            if (isSuccess(result)) {
+                continue;
+            }
+            assertEquals(HttpStatus.CONFLICT, result.response().getStatusCode(),
+                    () -> "a lost concurrent write must be a conflict, not a 500 or a validation failure: "
+                            + describe(results));
+            assertTrue(result.response().getBody().contains("\"status\":\"CONFLICT\""),
+                    () -> "the conflict must use the stable API status: " + describe(results));
+        }
     }
 
     private String describe(List<ProcessingRequestResult> results) {
