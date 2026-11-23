@@ -95,6 +95,30 @@ class PlotGeometryTransactionTest extends AbstractMySqlIntegrationTest {
                 assertEquals(0L, afterInvalid.longValue(), ring);
             }
 
+            for (String coordinates : new String[]{"[200,0]", "[0,100]", "[0,-181]", "[-181,0]", "[0,-91]"}) {
+                String invalidPoint = "{\"type\":\"FeatureCollection\",\"features\":["
+                        + "{\"type\":\"Feature\",\"properties\":{},\"geometry\":{\"type\":\"Point\",\"coordinates\":" + coordinates + "}}]}";
+                var invalid = mockMvc.perform(multipart("/api/company/userCustomers/" + fixture[3] + "/uploadGeoData")
+                        .file(new MockMultipartFile("file", "invalid-point.geojson", "application/geo+json", invalidPoint.getBytes(StandardCharsets.UTF_8)))
+                        .cookie((Cookie) fixture[4])).andReturn();
+                assertEquals(400, invalid.getResponse().getStatus(), coordinates);
+                Long afterInvalid = tx.execute(status -> em.createQuery("select count(p) from Plot p where p.farmer.id = :id", Long.class)
+                        .setParameter("id", fixture[3]).getSingleResult());
+                assertEquals(0L, afterInvalid.longValue(), coordinates);
+            }
+
+            String validPointThenInvalidPolygon = "{\"type\":\"FeatureCollection\",\"features\":["
+                    + "{\"type\":\"Feature\",\"properties\":{},\"geometry\":{\"type\":\"Point\",\"coordinates\":[30,-1]}},"
+                    + "{\"type\":\"Feature\",\"properties\":{},\"geometry\":{\"type\":\"Polygon\",\"coordinates\":[[[30,-1],[31,-1],[181,-1],[30,-1]]]}}]}";
+            var invalidMixed = mockMvc.perform(multipart("/api/company/userCustomers/" + fixture[3] + "/uploadGeoData")
+                    .file(new MockMultipartFile("file", "invalid-mixed.geojson", "application/geo+json", validPointThenInvalidPolygon.getBytes(StandardCharsets.UTF_8)))
+                    .cookie((Cookie) fixture[4])).andReturn();
+            assertEquals(400, invalidMixed.getResponse().getStatus());
+            Long afterInvalidMixed = tx.execute(status -> em.createQuery("select count(p) from Plot p where p.farmer.id = :id", Long.class)
+                    .setParameter("id", fixture[3]).getSingleResult());
+            assertEquals(0L, afterInvalidMixed.longValue());
+            verifyNoInteractions(agStack);
+
             for (String payload : new String[]{"null", "{\"type\":\"FeatureCollection\",\"features\":[]}"}) {
                 var empty = mockMvc.perform(multipart("/api/company/userCustomers/" + fixture[3] + "/uploadGeoData")
                         .file(new MockMultipartFile("file", "empty.geojson", "application/geo+json", payload.getBytes(StandardCharsets.UTF_8)))
