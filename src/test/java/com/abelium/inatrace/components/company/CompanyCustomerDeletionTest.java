@@ -28,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -53,6 +54,7 @@ class CompanyCustomerDeletionTest extends AbstractMySqlIntegrationTest {
 
     private Long customerId;
     private Cookie session;
+    private Cookie foreignSession;
 
     @BeforeEach
     void seed() {
@@ -81,6 +83,27 @@ class CompanyCustomerDeletionTest extends AbstractMySqlIntegrationTest {
         em.persist(customer);
         customerId = customer.getId();
         session = new Cookie(accessCookieName, tokenService.createAccessToken(user));
+
+        Company foreignCompany = new Company();
+        foreignCompany.setName("Foreign customer deletion company");
+        foreignCompany.setStatus(CompanyStatus.ACTIVE);
+        em.persist(foreignCompany);
+        User foreignUser = new User();
+        foreignUser.setEmail("foreign-customer-deletion@company.test");
+        foreignUser.setName("Foreign");
+        foreignUser.setSurname("Deletion");
+        foreignUser.setPassword("not-used-in-this-test");
+        foreignUser.setRole(UserRole.USER);
+        foreignUser.setStatus(UserStatus.ACTIVE);
+        em.persist(foreignUser);
+        CompanyUser foreignEnrollment = new CompanyUser();
+        foreignEnrollment.setUser(foreignUser);
+        foreignEnrollment.setCompany(foreignCompany);
+        foreignEnrollment.setRole(CompanyUserRole.COMPANY_USER);
+        em.persist(foreignEnrollment);
+        foreignCompany.getUsers().add(foreignEnrollment);
+        foreignSession = new Cookie(accessCookieName, tokenService.createAccessToken(foreignUser));
+
         em.flush();
         em.clear();
     }
@@ -110,6 +133,27 @@ class CompanyCustomerDeletionTest extends AbstractMySqlIntegrationTest {
         MvcResult result = mockMvc.perform(delete("/api/company/companyCustomers/" + customerId).cookie(session)).andReturn();
         assertEquals(400, result.getResponse().getStatus(), result.getResponse().getContentAsString());
         assertTrue(result.getResponse().getContentAsString().contains("Cannot delete a company customer that has orders"));
+        em.clear();
+        assertNotNull(em.find(CompanyCustomer.class, customerId));
+    }
+
+    @Test
+    void deleteRefusesCustomerFromAnotherCompanyAndKeepsIt() throws Exception {
+        MvcResult result = mockMvc.perform(delete("/api/company/companyCustomers/" + customerId)
+                .cookie(foreignSession)).andReturn();
+
+        assertEquals(403, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+        assertFalse(result.getResponse().getContentAsString().contains("Roaster customer"));
+        em.clear();
+        assertNotNull(em.find(CompanyCustomer.class, customerId));
+    }
+
+    @Test
+    void deleteRefusesAnonymousCallerAndKeepsTheCustomer() throws Exception {
+        MvcResult result = mockMvc.perform(delete("/api/company/companyCustomers/" + customerId)).andReturn();
+
+        assertEquals(401, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+        assertFalse(result.getResponse().getContentAsString().contains("Roaster customer"));
         em.clear();
         assertNotNull(em.find(CompanyCustomer.class, customerId));
     }
