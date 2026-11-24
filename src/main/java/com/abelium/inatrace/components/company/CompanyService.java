@@ -1082,6 +1082,7 @@ public class CompanyService extends BaseService {
 		Company company = companyQueries.fetchCompany(companyId);
 		PermissionsUtil.checkUserIfCompanyEnrolled(company.getUsers().stream().toList(), user);
 		requireCountryInAddress(apiUserCustomer);
+		validatePlotCoordinates(apiUserCustomer.getPlots());
 
 		UserCustomer userCustomer = new UserCustomer();
 		userCustomer.setCompany(company);
@@ -1241,6 +1242,7 @@ public class CompanyService extends BaseService {
 		UserCustomer userCustomer = fetchUserCustomer(apiUserCustomer.getId());
 		PermissionsUtil.checkUserIfCompanyEnrolled(userCustomer.getCompany().getUsers().stream().toList(), user);
 		requireCountryInAddress(apiUserCustomer);
+		validatePlotCoordinates(apiUserCustomer.getPlots());
 
 		userCustomer.setName(apiUserCustomer.getName());
 		userCustomer.setSurname(apiUserCustomer.getSurname());
@@ -1606,6 +1608,34 @@ public class CompanyService extends BaseService {
 		}
 	}
 
+	/**
+	 * Rejects out-of-range plot coordinates before the caller mutates the farmer or calls an
+	 * external service. Empty coordinate lists stay allowed: an incomplete plot is a valid
+	 * registration and existing records may not have a boundary yet.
+	 */
+	private void validatePlotCoordinates(List<ApiPlot> plots) throws ApiException {
+		if (plots == null) {
+			return;
+		}
+		for (ApiPlot plot : plots) {
+			if (plot == null || plot.getCoordinates() == null) {
+				continue;
+			}
+			for (ApiPlotCoordinate coordinate : plot.getCoordinates()) {
+				if (coordinate == null || coordinate.getLatitude() == null || coordinate.getLongitude() == null) {
+					throw new ApiException(ApiStatus.INVALID_REQUEST,
+							"Plot coordinates must contain latitude and longitude");
+				}
+				try {
+					GeoCoordinateValidator.validate(coordinate.getLatitude(), coordinate.getLongitude());
+				} catch (IllegalArgumentException e) {
+					throw new ApiException(ApiStatus.INVALID_REQUEST,
+							"Invalid plot coordinates: " + e.getMessage());
+				}
+			}
+		}
+	}
+
 	private ApiProductType apiProductType(ProductType productType) {
 		ApiProductType apiProductType = new ApiProductType();
 		apiProductType.setId(productType.getId());
@@ -1638,6 +1668,7 @@ public class CompanyService extends BaseService {
 
 		UserCustomer userCustomer = fetchUserCustomer(userCustomerId);
 		PermissionsUtil.checkUserIfCompanyEnrolled(userCustomer.getCompany().getUsers().stream().toList(), user);
+		validatePlotCoordinates(List.of(request));
 
 		Plot plot = new Plot();
 		plot.setPlotName(request.getPlotName());
