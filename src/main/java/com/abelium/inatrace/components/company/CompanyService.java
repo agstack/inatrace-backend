@@ -1531,6 +1531,7 @@ public class CompanyService extends BaseService {
 							&& (feature.geometry() instanceof Polygon || feature.geometry() instanceof Point));
 			ProductType productType = hasPlottableGeometry ? requireProductType(userCustomer) : null;
 
+			List<ApiPlot> plots = new ArrayList<>();
 			int plotIndex = 1;
 			int pointIndex = 1;
 			for (Feature feature : features) {
@@ -1551,14 +1552,17 @@ public class CompanyService extends BaseService {
 						throw new ApiException(ApiStatus.INVALID_REQUEST, "Invalid GeoJSON polygon ring");
 					}
 
+					List<Point> polygonCoordinates = polygon.coordinates().get(0);
+					for (Point coordinate : polygonCoordinates) {
+						validateGeoJsonCoordinate(coordinate.latitude(), coordinate.longitude());
+					}
+
 					ApiPlot apiPlot = new ApiPlot();
 					apiPlot.setPlotName("Plot " + plotIndex++);
 
 					double polygonSizeInHa = TurfMeasurement.area(feature) / SQUARE_METRES_PER_HECTARE;
 					apiPlot.setSize(Math.floor(polygonSizeInHa * 100) / 100);
 					apiPlot.setUnit("ha");
-
-					List<Point> polygonCoordinates = polygon.coordinates().get(0);
 
 					apiPlot.setCoordinates(polygonCoordinates.stream().map(lngLat -> {
 						ApiPlotCoordinate coordinate = new ApiPlotCoordinate();
@@ -1567,15 +1571,13 @@ public class CompanyService extends BaseService {
 						return coordinate;
 					}).collect(Collectors.toList()));
 
-					ApiProductType apiProductType = new ApiProductType();
-					apiProductType.setId(productType.getId());
-					apiPlot.setCrop(apiProductType);
-
-					createUserCustomerPlot(id, authUser, Language.EN, apiPlot);
+					apiPlot.setCrop(apiProductType(productType));
+					plots.add(apiPlot);
 
 				} else if (feature.geometry() instanceof Point) {
 
 					Point point = (Point) feature.geometry();
+					validateGeoJsonCoordinate(point.latitude(), point.longitude());
 
 					ApiPlot apiPlot = new ApiPlot();
 					apiPlot.setPlotName("Point " + pointIndex++);
@@ -1585,15 +1587,30 @@ public class CompanyService extends BaseService {
 					coordinate.setLatitude(point.latitude());
 					apiPlot.setCoordinates(List.of(coordinate));
 
-					ApiProductType apiProductType = new ApiProductType();
-					apiProductType.setId(productType.getId());
-					apiPlot.setCrop(apiProductType);
-
-					createUserCustomerPlot(id, authUser, Language.EN, apiPlot);
-					}
+					apiPlot.setCrop(apiProductType(productType));
+					plots.add(apiPlot);
 				}
 			}
-    }
+
+			for (ApiPlot apiPlot : plots) {
+				createUserCustomerPlot(id, authUser, Language.EN, apiPlot);
+			}
+		}
+	}
+
+	private void validateGeoJsonCoordinate(double latitude, double longitude) throws ApiException {
+		try {
+			GeoCoordinateValidator.validate(latitude, longitude);
+		} catch (IllegalArgumentException e) {
+			throw new ApiException(ApiStatus.INVALID_REQUEST, "Invalid GeoJSON coordinates: " + e.getMessage());
+		}
+	}
+
+	private ApiProductType apiProductType(ProductType productType) {
+		ApiProductType apiProductType = new ApiProductType();
+		apiProductType.setId(productType.getId());
+		return apiProductType;
+	}
 
 	private ProductType requireProductType(UserCustomer userCustomer) throws ApiException {
 		return userCustomer.getProductTypes().stream()

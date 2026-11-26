@@ -561,18 +561,7 @@ public final class GeoDataParser {
 
 	/** Validates global latitude/longitude ranges, returning the same list for chaining. */
 	private static List<double[]> validated(List<double[]> points) {
-		for (double[] point : points) {
-			if (!Double.isFinite(point[0]) || !Double.isFinite(point[1])) {
-				throw new IllegalArgumentException("Coordinates must be finite numbers");
-			}
-			if (point[0] < -90 || point[0] > 90) {
-				throw new IllegalArgumentException("Latitude out of range: " + point[0]);
-			}
-			if (point[1] < -180 || point[1] > 180) {
-				throw new IllegalArgumentException("Longitude out of range: " + point[1]);
-			}
-		}
-		return points;
+		return GeoCoordinateValidator.validateAll(points);
 	}
 
 	/**
