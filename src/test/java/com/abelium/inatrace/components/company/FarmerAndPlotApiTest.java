@@ -369,6 +369,11 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 
 		assertRefused(result, "refreshing the GeoID of another tenant's plot");
 		assertDoesNotLeak(result, PLOT_NAME, PLOT_GEO_ID);
+
+		em.flush();
+		em.clear();
+		assertEquals(PLOT_GEO_ID, em.find(Plot.class, acmePlotId).getGeoId(),
+				"a refused refresh must not change the stored GeoID");
 	}
 
 	@Test
@@ -983,6 +988,8 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 	@DisplayName("Bob cannot add a farmer to a company he does not belong to")
 	void farmerCannotBeAddedToForeignCompany() throws Exception {
 
+		long before = farmersWithSurname("ByBob");
+
 		MvcResult result = mockMvc.perform(post("/api/company/userCustomers/add/" + acmeId)
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("{\"type\":\"FARMER\",\"name\":\"Planted\",\"surname\":\"ByBob\"}")
@@ -990,6 +997,8 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 				.andReturn();
 
 		assertRefused(result, "planting a farmer in another tenant's register");
+		assertEquals(before, farmersWithSurname("ByBob"),
+				"a refused add must not create a farmer");
 	}
 
 	@Test
@@ -1006,7 +1015,15 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 		assertRefused(result, "editing another tenant's farmer");
 
 		em.flush();
-		assertEquals(FARMER_SURNAME, em.find(UserCustomer.class, acmeFarmerId).getSurname(),
+		em.clear();
+		UserCustomer stored = em.find(UserCustomer.class, acmeFarmerId);
+		assertEquals(FARMER_NAME, stored.getName(),
+				"the farmer's own company owns this record; a stranger's edit must not stick");
+		assertEquals(FARMER_SURNAME, stored.getSurname(),
+				"the farmer's own company owns this record; a stranger's edit must not stick");
+		assertEquals("uwaseacmeonly@farmers.test", stored.getEmail(),
+				"the farmer's own company owns this record; a stranger's edit must not stick");
+		assertEquals(BANK_ACCOUNT, stored.getBank().getAccountNumber(),
 				"the farmer's own company owns this record; a stranger's edit must not stick");
 	}
 
@@ -1021,8 +1038,30 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 		assertRefused(result, "deleting another tenant's farmer");
 
 		em.flush();
+		em.clear();
 		assertNotNull(em.find(UserCustomer.class, acmeFarmerId),
 				"the farmer must survive a refused delete");
+		assertNotNull(em.find(Plot.class, acmePlotId),
+				"the farmer's plot must survive a refused delete");
+	}
+
+	@Test
+	@DisplayName("Alice can delete her own farmer and its plots")
+	void deleteFarmerSuccessRemovesIt() throws Exception {
+
+		MvcResult result = mockMvc.perform(delete("/api/company/userCustomers/" + acmeSecondFarmerId)
+						.cookie(aliceSession))
+				.andReturn();
+
+		assertEquals(200, result.getResponse().getStatus(), body(result));
+		em.flush();
+		em.clear();
+		assertNull(em.find(UserCustomer.class, acmeSecondFarmerId),
+				"the deleted farmer must be gone");
+		assertNull(em.find(Plot.class, acmeSecondFarmerPlotId),
+				"the farmer's plots must be removed with it");
+		assertNotNull(em.find(UserCustomer.class, acmeFarmerId),
+				"deleting one farmer must not remove another");
 	}
 
 	// ------------------------------------------------------------------ no session at all
@@ -1045,6 +1084,68 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 					path + " answered an anonymous caller with " + result.getResponse().getStatus());
 			assertDoesNotLeak(result, FARMER_SURNAME, BANK_ACCOUNT, PLOT_GEO_ID);
 		}
+	}
+
+	@Test
+	@DisplayName("Farmer writes refuse anonymous callers without changing rows")
+	void farmerWritesRefuseAnonymousCallers() throws Exception {
+
+		long plotsBefore = plotCount(acmeFarmerId);
+
+		MockMultipartFile upload = new MockMultipartFile(
+				"file", "boundary.geojson", "application/geo+json",
+				("{\"type\":\"FeatureCollection\",\"features\":[{\"type\":\"Feature\",\"properties\":{},"
+						+ "\"geometry\":{\"type\":\"Point\",\"coordinates\":[30.1,-1.9]}}]}")
+						.getBytes(StandardCharsets.UTF_8));
+
+		List<MvcResult> results = List.of(
+				mockMvc.perform(post("/api/company/userCustomers/add/" + acmeId)
+								.contentType(MediaType.APPLICATION_JSON)
+								.content("{\"type\":\"FARMER\",\"name\":\"Anonymous\",\"surname\":\"AnonymousInjected\","
+										+ "\"location\":{\"address\":{\"country\":{\"id\":" + rwandaId + "}}}}"))
+						.andReturn(),
+				mockMvc.perform(put("/api/company/userCustomers/edit")
+								.contentType(MediaType.APPLICATION_JSON)
+								.content("{\"id\":" + acmeFarmerId + ",\"type\":\"FARMER\",\"name\":\"Anonymous\","
+										+ "\"surname\":\"AnonymousInjected\",\"email\":\"anonymous@test.invalid\","
+										+ "\"location\":{\"address\":{\"country\":{\"id\":" + rwandaId + "}}}}"))
+						.andReturn(),
+				mockMvc.perform(delete("/api/company/userCustomers/" + acmeFarmerId))
+						.andReturn(),
+				mockMvc.perform(post("/api/company/userCustomers/" + acmeFarmerId + "/plots/add")
+								.contentType(MediaType.APPLICATION_JSON)
+								.content(newPlotJson("Anonymous Plot")))
+						.andReturn(),
+				mockMvc.perform(post("/api/company/userCustomers/" + acmeFarmerId
+								+ "/plots/" + acmePlotId + "/updateGeoID"))
+						.andReturn(),
+				mockMvc.perform(multipart("/api/company/userCustomers/" + acmeFarmerId + "/uploadGeoData")
+								.file(upload))
+						.andReturn()
+		);
+
+		for (MvcResult result : results) {
+			assertEquals(401, result.getResponse().getStatus(),
+					"an anonymous write answered with " + result.getResponse().getStatus() + ": " + body(result));
+			assertDoesNotLeak(result, FARMER_SURNAME, BANK_ACCOUNT, PLOT_GEO_ID);
+		}
+
+		em.flush();
+		em.clear();
+		assertEquals(0L, farmersWithSurname("AnonymousInjected"),
+				"an anonymous add must not create a farmer");
+		UserCustomer stored = em.find(UserCustomer.class, acmeFarmerId);
+		assertNotNull(stored, "an anonymous delete must not remove the farmer");
+		assertEquals(FARMER_NAME, stored.getName(), "an anonymous edit must not change the farmer");
+		assertEquals(FARMER_SURNAME, stored.getSurname(), "an anonymous edit must not change the farmer");
+		assertEquals("uwaseacmeonly@farmers.test", stored.getEmail(),
+				"an anonymous edit must not change the farmer");
+		assertEquals(BANK_ACCOUNT, stored.getBank().getAccountNumber(),
+				"an anonymous edit must not change the farmer");
+		assertEquals(plotsBefore, plotCount(acmeFarmerId),
+				"anonymous plot writes must not create a plot");
+		assertEquals(PLOT_GEO_ID, em.find(Plot.class, acmePlotId).getGeoId(),
+				"an anonymous refresh must not change the GeoID");
 	}
 
 	// ------------------------------------------------------------------ assertions
