@@ -75,6 +75,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
  * {@code SpringSecurityConfig}, so an unauthenticated request is answered 401 by the filter chain's
  * {@code RestAuthenticationEntryPoint} -- never an empty 200, which would make a broken session
  * indistinguishable from a caller with no colleagues.
+ *
+ * <p><b>Transactions.</b> MockMvc runs the request on the test's thread, inside the test's own
+ * transaction, which is rolled back afterwards. The service therefore reads the fixture before it
+ * is committed; a separately committed request is not exercised here.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -255,12 +259,12 @@ class UserListApiTest extends AbstractMySqlIntegrationTest {
     @DisplayName("the company user list shows colleagues of an active shared company and nobody else")
     void ownCompanyUserListIsScopedToSharedActiveCompanies() throws Exception {
         MvcResult companyAView = perform(get("/api/user/list?limit=1000").cookie(companyAUserSession));
-        assertEquals(200, companyAView.getResponse().getStatus(), body(companyAView));
+        assertListsExactly(companyAView, COMPANY_A_MEMBERS, "company A");
         assertContainsAccounts(companyAView, COMPANY_A_MEMBERS);
         assertDoesNotLeak(companyAView, OUTSIDE_COMPANY_A);
 
         MvcResult companyBView = perform(get("/api/user/list?limit=1000").cookie(companyBUserSession));
-        assertEquals(200, companyBView.getResponse().getStatus(), body(companyBView));
+        assertListsExactly(companyBView, COMPANY_B_MEMBERS, "company B");
         assertContainsAccounts(companyBView, COMPANY_B_MEMBERS);
         assertDoesNotLeak(companyBView, OUTSIDE_COMPANY_B);
     }
@@ -349,15 +353,13 @@ class UserListApiTest extends AbstractMySqlIntegrationTest {
     @DisplayName("an administrator calling the company user list is scoped to its own companies too")
     void companyUserListIsCompanyScopedForAdministratorsAsWell() throws Exception {
         MvcResult systemAdminView = perform(get("/api/user/list?limit=1000").cookie(companyASystemAdminSession));
-        assertEquals(200, systemAdminView.getResponse().getStatus(), body(systemAdminView));
+        assertListsExactly(systemAdminView, COMPANY_A_MEMBERS, "system admin of company A");
         assertContainsAccounts(systemAdminView, COMPANY_A_MEMBERS);
         assertDoesNotLeak(systemAdminView, OUTSIDE_COMPANY_A);
 
         MvcResult regionalAdminView = perform(get("/api/user/list?limit=1000").cookie(companyBRegionalAdminSession));
-        assertEquals(200, regionalAdminView.getResponse().getStatus(), body(regionalAdminView));
+        assertListsExactly(regionalAdminView, COMPANY_B_MEMBERS, "regional admin of company B");
         assertContainsAccounts(regionalAdminView, COMPANY_B_MEMBERS);
-        assertEquals(COMPANY_B_MEMBERS.size(), dataOf(regionalAdminView).get("count").asInt(),
-                body(regionalAdminView));
         assertDoesNotLeak(regionalAdminView, OUTSIDE_COMPANY_B);
     }
 
@@ -416,6 +418,29 @@ class UserListApiTest extends AbstractMySqlIntegrationTest {
         assertEquals(200, count.getResponse().getStatus(), body(count));
         assertEquals(COMPANY_A_MEMBERS.size(), dataOf(count).get("count").asInt(),
                 "a COUNT request must count only the caller's company members: " + body(count));
+    }
+
+    @Test
+    @DisplayName("the role, status, query, email and surname filters return exactly the matching colleagues")
+    void userListFiltersReturnExactlyTheMatchingColleagues() throws Exception {
+        assertFilter("role=SYSTEM_ADMIN", List.of(COMPANY_A_SYSTEM_ADMIN));
+        assertFilter("role=REGIONAL_ADMIN", List.of(COMPANY_A_REGIONAL_ADMIN));
+        assertFilter("status=DEACTIVATED", List.of(COMPANY_A_DEACTIVATED_USER));
+        assertFilter("status=UNCONFIRMED", List.of(COMPANY_A_UNCONFIRMED_USER));
+        assertFilter("status=ACTIVE&role=USER",
+                List.of(COMPANY_A_USER, COMPANY_A_COMPANY_ADMIN, SHARED_AB_USER, SHARED_AD_USER));
+        assertFilter("role=SYSTEM_ADMIN&status=DEACTIVATED", List.of());
+
+        assertFilter("query=" + COMPANY_A_USER.name(), List.of(COMPANY_A_USER));
+        assertFilter("query=" + COMPANY_A_USER.surname(), List.of(COMPANY_A_USER));
+        assertFilter("query=" + COMPANY_A_USER.email(), List.of(COMPANY_A_USER));
+        assertFilter("email=" + COMPANY_A_USER.email(), List.of(COMPANY_A_USER));
+        assertFilter("surname=" + COMPANY_A_USER.surname(), List.of(COMPANY_A_USER));
+
+        assertFilter("query=" + COMPANY_B_USER.name(), List.of());
+        assertFilter("query=" + COMPANY_B_USER.email(), List.of());
+        assertFilter("email=" + COMPANY_B_USER.email(), List.of());
+        assertFilter("surname=" + COMPANY_B_USER.surname(), List.of());
     }
 
     @Test
@@ -491,6 +516,20 @@ class UserListApiTest extends AbstractMySqlIntegrationTest {
     private MvcResult perform(MockHttpServletRequestBuilder request) throws Exception {
         flushAndDetach();
         return mockMvc.perform(request).andReturn();
+    }
+
+    private void assertFilter(String filter, List<Account> expected) throws Exception {
+        assertListsExactly(perform(get("/api/user/list?limit=1000&" + filter).cookie(companyAUserSession)),
+                expected, filter);
+    }
+
+    private void assertListsExactly(MvcResult result, List<Account> accounts, String context) throws Exception {
+        assertEquals(200, result.getResponse().getStatus(), context + ": " + body(result));
+        List<String> emails = new ArrayList<>();
+        dataOf(result).path("items").forEach(item -> emails.add(item.path("email").asText()));
+        assertEquals(accounts.stream().map(Account::email).sorted().toList(), emails.stream().sorted().toList(),
+                context + ": " + body(result));
+        assertEquals(accounts.size(), dataOf(result).path("count").asInt(), context + ": " + body(result));
     }
 
     private void assertContainsAccounts(MvcResult result, List<Account> accounts) throws Exception {
