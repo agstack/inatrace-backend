@@ -10,16 +10,21 @@ import com.abelium.inatrace.api.exceptions.ApiUpstreamServiceException;
 import com.abelium.inatrace.components.exceptionhandling.SpringExceptionConverter;
 import com.abelium.inatrace.components.exceptionhandling.SpringExceptionResponseBuilder;
 import tools.jackson.core.JacksonException;
+import jakarta.persistence.OptimisticLockException;
+import jakarta.persistence.PessimisticLockException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import org.apache.catalina.connector.ClientAbortException;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
+import org.hibernate.StaleStateException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindException;
 import org.springframework.web.HttpMediaTypeNotAcceptableException;
@@ -71,7 +76,29 @@ public class DefaultControllerExceptionHandler {
         }
         return exceptionResponseBuilder.getAcceptableResponse(exc.responseHttpStatus(), exc.createResponseBody(), request);
     }
-    
+
+    /**
+     * A stock/processing write that lost a concurrent version or lock race is an expected,
+     * safely rolled-back outcome. Keep the response shape stable and let clients refresh and
+     * retry; do not expose the underlying SQL or entity state.
+     */
+    @ExceptionHandler({
+            ObjectOptimisticLockingFailureException.class,
+            OptimisticLockException.class,
+            PessimisticLockException.class,
+            PessimisticLockingFailureException.class,
+            StaleStateException.class
+    })
+    public ResponseEntity<?> handleConcurrentMutationConflict(Exception exc, HttpServletRequest request) {
+        logger.warn("Concurrent mutation conflict request_id={} type={}",
+                ApiRequestObservability.requestId(), exc.getClass().getSimpleName());
+        return exceptionResponseBuilder.getAcceptableResponse(
+                HttpStatus.CONFLICT,
+                ApiStatus.CONFLICT,
+                "The resource was modified by another request. Refresh and try again.",
+                request);
+    }
+
     @ExceptionHandler
     public ResponseEntity<String> handleHtmlPageException(HtmlPageException exc, HttpServletRequest request) {
         warnOrError(exc.getStatus(), "HtmlPageException", null);
