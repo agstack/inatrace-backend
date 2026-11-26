@@ -880,6 +880,116 @@ class CompanyApiTest extends AbstractMySqlIntegrationTest {
 		assertTrue(response.getBody().contains("\"code\":\"" + productType.getCode() + "\""), response.getBody());
 	}
 
+	// --------------------------------------------------- endpoint authorization
+
+	@Test
+	@DisplayName("Company reads refuse anonymous callers")
+	void companyReadEndpointsRefuseAnonymousCallers() {
+		Company owner = seedCompany(CompanyStatus.ACTIVE, "Owner " + UUID.randomUUID());
+		CompanyCustomer customer = seedCompanyCustomer(owner, "Secret customer " + UUID.randomUUID());
+
+		List<String> guarded = List.of(
+				"/api/company/list",
+				"/api/company/admin/list",
+				"/api/company/profile/" + owner.getId(),
+				"/api/company/profile/" + owner.getId() + "/name",
+				"/api/company/profile/" + owner.getId() + "/users",
+				"/api/company/profile/" + owner.getId() + "/onboardingState",
+				"/api/company/companyCustomers/" + customer.getId(),
+				"/api/company/companyCustomers/list/" + owner.getId(),
+				"/api/company/associations/" + owner.getId(),
+				"/api/company/" + owner.getId() + "/connected-companies",
+				"/api/company/" + owner.getId() + "/product-types",
+				"/api/company/" + owner.getId() + "/value-chains"
+		);
+
+		for (String path : guarded) {
+			ResponseEntity<String> response = get(path, null);
+
+			assertEquals(HttpStatus.UNAUTHORIZED, response.getStatusCode(),
+					path + " answered an anonymous caller with " + response.getStatusCode());
+			assertDoesNotLeak(response, customer.getName(), customer.getEmail(), owner.getName());
+		}
+	}
+
+	@Test
+	@DisplayName("Company reads reject a user from another tenant")
+	void companyReadEndpointsRejectForeignTenant() {
+		User foreignUser = seedUser(UserRole.USER);
+		Company owner = seedCompany(CompanyStatus.ACTIVE, "Owner " + UUID.randomUUID());
+		Company foreignCompany = seedCompany(CompanyStatus.ACTIVE, "Foreign " + UUID.randomUUID());
+		enroll(foreignCompany, foreignUser, CompanyUserRole.COMPANY_USER);
+		CompanyCustomer customer = seedCompanyCustomer(owner, "Secret customer " + UUID.randomUUID());
+		String cookie = accessCookieFor(foreignUser);
+
+		List<String> guarded = List.of(
+				"/api/company/companyCustomers/" + customer.getId(),
+				"/api/company/companyCustomers/list/" + owner.getId(),
+				"/api/company/associations/" + owner.getId(),
+				"/api/company/profile/" + owner.getId() + "/onboardingState",
+				"/api/company/" + owner.getId() + "/connected-companies",
+				"/api/company/" + owner.getId() + "/product-types",
+				"/api/company/" + owner.getId() + "/value-chains"
+		);
+
+		for (String path : guarded) {
+			ResponseEntity<String> response = get(path, cookie);
+
+			assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode(),
+					path + " answered a foreign tenant with " + response.getStatusCode());
+			assertDoesNotLeak(response, customer.getName(), customer.getEmail(), owner.getName());
+		}
+	}
+
+	@Test
+	@DisplayName("Company customer writes reject a foreign tenant without changing rows")
+	void companyCustomerWritesRejectForeignTenantWithoutChanges() {
+		User foreignUser = seedUser(UserRole.USER);
+		Company owner = seedCompany(CompanyStatus.ACTIVE, "Owner " + UUID.randomUUID());
+		Company foreignCompany = seedCompany(CompanyStatus.ACTIVE, "Foreign " + UUID.randomUUID());
+		enroll(foreignCompany, foreignUser, CompanyUserRole.COMPANY_USER);
+		CompanyCustomer customer = seedCompanyCustomer(owner, "Original " + UUID.randomUUID());
+		String cookie = accessCookieFor(foreignUser);
+		long customersBefore = companyCustomerCount(owner.getId());
+
+		ResponseEntity<String> create = exchange(HttpMethod.POST, "/api/company/companyCustomers",
+				customerPayload(owner.getId(), "Injected " + UUID.randomUUID(), "injected@test.invalid"), cookie);
+		assertForbidden(create);
+		assertEquals(customersBefore, companyCustomerCount(owner.getId()),
+				"a refused create must not have written a customer");
+
+		String changedName = "Changed " + UUID.randomUUID();
+		ResponseEntity<String> update = exchange(HttpMethod.PUT, "/api/company/companyCustomers",
+				customerUpdatePayload(customer.getId(), changedName, "changed@test.invalid"), cookie);
+		assertForbidden(update);
+		assertEquals(customer.getName(), customerNameOf(customer.getId()),
+				"a refused update must not change the customer name");
+		assertEquals(customer.getEmail(), customerEmailOf(customer.getId()),
+				"a refused update must not change the customer email");
+	}
+
+	@Test
+	@DisplayName("Company customer writes refuse anonymous callers without changing rows")
+	void companyCustomerWritesRefuseAnonymousCallers() {
+		Company owner = seedCompany(CompanyStatus.ACTIVE, "Owner " + UUID.randomUUID());
+		CompanyCustomer customer = seedCompanyCustomer(owner, "Original " + UUID.randomUUID());
+		long customersBefore = companyCustomerCount(owner.getId());
+
+		ResponseEntity<String> create = exchange(HttpMethod.POST, "/api/company/companyCustomers",
+				customerPayload(owner.getId(), "Injected " + UUID.randomUUID(), "injected@test.invalid"), null);
+		assertEquals(HttpStatus.UNAUTHORIZED, create.getStatusCode(), create.getBody());
+		assertEquals(customersBefore, companyCustomerCount(owner.getId()),
+				"an anonymous create must not have written a customer");
+
+		ResponseEntity<String> update = exchange(HttpMethod.PUT, "/api/company/companyCustomers",
+				customerUpdatePayload(customer.getId(), "Changed " + UUID.randomUUID(), "changed@test.invalid"), null);
+		assertEquals(HttpStatus.UNAUTHORIZED, update.getStatusCode(), update.getBody());
+		assertEquals(customer.getName(), customerNameOf(customer.getId()),
+				"an anonymous update must not change the customer name");
+		assertEquals(customer.getEmail(), customerEmailOf(customer.getId()),
+				"an anonymous update must not change the customer email");
+	}
+
 	// ---------------------------------------------------------------------------- helpers
 
 	private TransactionTemplate tx() {
@@ -1015,6 +1125,28 @@ class CompanyApiTest extends AbstractMySqlIntegrationTest {
 				"name", name,
 				"email", email,
 				"location", Map.of("country", Map.of("id", countryId())));
+	}
+
+	private long companyCustomerCount(Long companyId) {
+		return tx().execute(s -> em.createQuery(
+				"select count(c) from CompanyCustomer c where c.company.id = :companyId", Long.class)
+				.setParameter("companyId", companyId)
+				.getSingleResult());
+	}
+
+	private void assertForbidden(ResponseEntity<String> response) {
+		assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode(), response.getBody());
+	}
+
+	private void assertDoesNotLeak(ResponseEntity<String> response, String... markers) {
+		String body = response.getBody();
+		if (body == null) {
+			return;
+		}
+		for (String marker : markers) {
+			assertFalse(body.contains(marker),
+					"the response disclosed " + marker + ": " + body);
+		}
 	}
 
 	private CompanyCustomer seedCompanyCustomer(Company company, String name) {
