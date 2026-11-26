@@ -341,6 +341,112 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 				"the plot should have been recorded against the farmer");
 	}
 
+	// ------------------------------------------------- coordinate validation
+
+	@Test
+	@DisplayName("A plot with an out-of-range latitude is rejected without creating anything")
+	void createPlotRejectsOutOfRangeCoordinates() throws Exception {
+
+		long before = plotCount(acmeFarmerId);
+		String payload = newPlotJson("Out of range")
+				.replace("\"latitude\":-1.9500000", "\"latitude\":200.0");
+
+		MvcResult result = mockMvc.perform(post("/api/company/userCustomers/" + acmeFarmerId + "/plots/add")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(payload)
+						.cookie(aliceSession))
+				.andReturn();
+
+		assertEquals(400, result.getResponse().getStatus(), body(result));
+		assertEquals(before, plotCount(acmeFarmerId), "a rejected plot must not be stored");
+	}
+
+	@Test
+	@DisplayName("A new farmer with an out-of-range plot coordinate is rejected without creating the farmer")
+	void createFarmerRejectsOutOfRangePlotCoordinates() throws Exception {
+
+		long before = farmersWithSurname("Badplot");
+		String payload = "{\"type\":\"FARMER\",\"name\":\"Bad\",\"surname\":\"Badplot\","
+				+ "\"plots\":[{\"plotName\":\"Bad boundary\",\"crop\":{\"id\":" + coffeeProductTypeId + "},"
+				+ "\"coordinates\":[{\"latitude\":200.0,\"longitude\":30.07}]}]}";
+
+		MvcResult result = mockMvc.perform(post("/api/company/userCustomers/add/" + acmeId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(payload)
+						.cookie(aliceSession))
+				.andReturn();
+
+		assertEquals(400, result.getResponse().getStatus(), body(result));
+		assertEquals(before, farmersWithSurname("Badplot"), "a rejected farmer must not be stored");
+	}
+
+	@Test
+	@DisplayName("An edit with an out-of-range plot coordinate is rejected and leaves the farmer unchanged")
+	void updateFarmerRejectsOutOfRangePlotCoordinates() throws Exception {
+
+		MvcResult current = mockMvc.perform(get("/api/company/userCustomers/" + acmeFarmerId)
+						.cookie(aliceSession))
+				.andReturn();
+		assertEquals(200, current.getResponse().getStatus(), body(current));
+		ObjectNode farmer = (ObjectNode) new ObjectMapper().readTree(body(current)).get("data");
+		farmer.put("name", "Renamed by invalid edit");
+		ObjectNode coordinate = (ObjectNode) farmer.get("plots").get(0).get("coordinates").get(0);
+		coordinate.put("latitude", 200.0);
+
+		MvcResult result = mockMvc.perform(put("/api/company/userCustomers/edit")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(farmer.toString())
+						.cookie(aliceSession))
+				.andReturn();
+
+		assertEquals(400, result.getResponse().getStatus(), body(result));
+		em.flush();
+		em.clear();
+		UserCustomer stored = em.find(UserCustomer.class, acmeFarmerId);
+		assertEquals(FARMER_NAME, stored.getName(), "a rejected edit must not rename the farmer");
+		assertTrue(stored.getPlots().stream().flatMap(plot -> plot.getCoordinates().stream())
+						.noneMatch(c -> c.getLatitude() != null && c.getLatitude() > 90),
+				"a rejected edit must not store an out-of-range latitude");
+	}
+
+	@Test
+	@DisplayName("A plot coordinate without latitude is rejected")
+	void createPlotRejectsMissingCoordinate() throws Exception {
+
+		long before = plotCount(acmeFarmerId);
+		String payload = newPlotJson("Missing latitude")
+				.replace("\"latitude\":-1.9500000", "\"latitude\":null");
+
+		MvcResult result = mockMvc.perform(post("/api/company/userCustomers/" + acmeFarmerId + "/plots/add")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(payload)
+						.cookie(aliceSession))
+				.andReturn();
+
+		assertEquals(400, result.getResponse().getStatus(), body(result));
+		assertEquals(before, plotCount(acmeFarmerId), "a rejected plot must not be stored");
+	}
+
+	@Test
+	@DisplayName("Zero and the valid coordinate limits are accepted")
+	void createPlotAcceptsZeroAndCoordinateLimits() throws Exception {
+
+		long before = plotCount(acmeFarmerId);
+		String payload = "{\"plotName\":\"Coordinate limits\",\"crop\":{\"id\":" + coffeeProductTypeId + "},"
+				+ "\"coordinates\":[{\"latitude\":0.0,\"longitude\":0.0},"
+				+ "{\"latitude\":90.0,\"longitude\":180.0}]}";
+
+		MvcResult result = mockMvc.perform(post("/api/company/userCustomers/" + acmeFarmerId + "/plots/add")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(payload)
+						.cookie(aliceSession))
+				.andReturn();
+
+		assertEquals(200, result.getResponse().getStatus(), body(result));
+		assertEquals(before + 1, plotCount(acmeFarmerId),
+				"a plot within the coordinate limits must be stored");
+	}
+
 	@Test
 	@DisplayName("Bob cannot add a plot to a farmer of another tenant")
 	void plotCannotBeAddedToForeignFarmer() throws Exception {
