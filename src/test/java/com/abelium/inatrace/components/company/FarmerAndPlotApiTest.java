@@ -220,6 +220,23 @@ class FarmerAndPlotApiTest extends AbstractMySqlIntegrationTest {
 	// ------------------------------------------------------------------ the farmer register
 
 	@Test
+	@DisplayName("A farmer search without searchBy matches the name or the surname instead of answering 500")
+	void farmerSearchWithoutSearchByMatchesNameOrSurname() throws Exception {
+
+		for (String query : new String[]{FARMER_NAME.substring(0, 5), FARMER_SURNAME.substring(0, 6)}) {
+			MvcResult result = mockMvc.perform(get("/api/company/userCustomers/" + acmeId + "/FARMER")
+							.queryParam("query", query)
+							.queryParam("limit", "50")
+							.cookie(aliceSession))
+					.andReturn();
+
+			assertEquals(200, result.getResponse().getStatus(), body(result));
+			assertTrue(body(result).contains(FARMER_SURNAME), "query " + query + ": " + body(result));
+			assertFalse(body(result).contains(RIVAL_FARMER_SURNAME), body(result));
+		}
+	}
+
+	@Test
 	@DisplayName("Alice can list her own company's farmers")
 	void ownCompanyFarmerListIsReadable() throws Exception {
 

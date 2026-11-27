@@ -2010,14 +2010,16 @@ public class CompanyService extends BaseService {
 
 		if (request.getQuery() != null && !request.getQuery().isEmpty()) {
 			OnGoingLogicalCondition queryCondition = Torpedo.condition();
-			switch (request.getSearchBy()) {
+			switch (request.getSearchBy() == null ? "" : request.getSearchBy()) {
 				case "BY_NAME":
 					queryCondition = Torpedo.condition(SearchTools.normalized(userCustomer.getName())).like().any(SearchTools.normalize(request.getQuery()));
 					break;
 				case "BY_SURNAME":
 					queryCondition = Torpedo.condition(SearchTools.normalized(userCustomer.getSurname())).like().any(SearchTools.normalize(request.getQuery()));
 					break;
-				case "BY_NAME_AND_SURNAME":
+				default:
+					// BY_NAME_AND_SURNAME, and also a query sent without searchBy (or with an unknown
+					// value): switching on a null String threw a NullPointerException (500).
 					queryCondition = Torpedo.condition(SearchTools.normalized(userCustomer.getName())).like().any(SearchTools.normalize(request.getQuery()))
 							.or(Torpedo.condition(SearchTools.normalized(userCustomer.getSurname())).like().any(SearchTools.normalize(request.getQuery())));
 					break;
