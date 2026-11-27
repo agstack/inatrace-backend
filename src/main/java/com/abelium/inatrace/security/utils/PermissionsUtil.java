@@ -59,10 +59,20 @@ public final class PermissionsUtil {
 	 */
 	public static void checkUserIfConnectedWithProducts(List<Product> products, CustomUserDetails userToCheck) throws ApiException {
 
-		boolean userIsAssociatedWithOneOfTheProducts = false;
+		if (!isUserConnectedWithProducts(products, userToCheck)) {
+			throw new ApiException(ApiStatus.UNAUTHORIZED, "User doesn't have required permission!");
+		}
+	}
+
+	/**
+	 * Returns whether the requesting user is part of at least one company connected
+	 * with one or more of the provided products.
+	 */
+	public static boolean isUserConnectedWithProducts(List<Product> products, CustomUserDetails userToCheck) {
+
 		for (Product companyProduct : products) {
 
-			userIsAssociatedWithOneOfTheProducts = companyProduct.getAssociatedCompanies()
+			boolean connected = companyProduct.getAssociatedCompanies()
 					.stream()
 					.map(ProductCompany::getCompany)
 					.distinct()
@@ -72,14 +82,12 @@ public final class PermissionsUtil {
 							.map(CompanyUser::getUser)
 							.anyMatch(u -> u.getId().equals(userToCheck.getUserId())));
 
-			if (userIsAssociatedWithOneOfTheProducts) {
-				break;
+			if (connected) {
+				return true;
 			}
 		}
 
-		if (!userIsAssociatedWithOneOfTheProducts) {
-			throw new ApiException(ApiStatus.UNAUTHORIZED, "User doesn't have required permission!");
-		}
+		return false;
 	}
 
 	/**

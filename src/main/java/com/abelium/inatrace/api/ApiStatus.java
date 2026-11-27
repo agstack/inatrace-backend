@@ -34,6 +34,11 @@ public enum ApiStatus {
     VALIDATION_ERROR(HttpStatus.BAD_REQUEST),
 
     /**
+     * The company has no product association required for this operation.
+     */
+    PRODUCT_ASSOCIATION_REQUIRED(HttpStatus.BAD_REQUEST),
+
+    /**
      * The request lost a concurrent write race and was safely rolled back.
      */
     CONFLICT(HttpStatus.CONFLICT),
