@@ -111,13 +111,31 @@ public class ProcessingOrderService extends BaseService {
                             "Input transaction source StockOrder ID is required");
                 }
                 StockOrder source = fetchEntity(input.getSourceStockOrder().getId(), StockOrder.class);
-                PermissionsUtil.checkUserIfConnectedWithProducts(
-                        companyQueries.fetchCompanyProducts(source.getCompany().getId()), user);
+
+                // Establish access to the source company before comparing the input
+                // company with the stock order owner. Otherwise, a caller who cannot
+                // access the lot could infer its owner from different error messages.
+                var sourceCompanyProducts = companyQueries.fetchCompanyProducts(source.getCompany().getId());
+                boolean userEnrolledInSourceCompany = source.getCompany().getUsers().stream()
+                        .anyMatch(companyUser -> companyUser.getUser().getId().equals(user.getUserId()));
+                boolean userConnectedToSourceProducts =
+                        PermissionsUtil.isUserConnectedWithProducts(sourceCompanyProducts, user);
+                if (!userEnrolledInSourceCompany && !userConnectedToSourceProducts) {
+                    throw new ApiException(ApiStatus.UNAUTHORIZED, "User doesn't have required permission!");
+                }
+
                 if (input.getCompany() == null || input.getCompany().getId() == null
                         || !source.getCompany().getId().equals(input.getCompany().getId())) {
                     throw new ApiException(ApiStatus.UNAUTHORIZED,
                             "Input transaction company does not own its source stock order");
                 }
+
+                if (sourceCompanyProducts.isEmpty() && userEnrolledInSourceCompany) {
+                    throw new ApiException(ApiStatus.PRODUCT_ASSOCIATION_REQUIRED,
+                            "The company has no product association. Add a product association before processing.",
+                            null, String.valueOf(source.getCompany().getId()));
+                }
+                PermissionsUtil.checkUserIfConnectedWithProducts(sourceCompanyProducts, user);
                 if (input.getId() != null) {
                     Transaction existingInput = fetchEntity(input.getId(), Transaction.class);
                     if (!existingInput.getSourceStockOrder().getId().equals(source.getId())
