@@ -232,6 +232,13 @@ public class ProcessingOrderService extends BaseService {
             throw new ApiException(ApiStatus.VALIDATION_ERROR, "At least one of the provided transactions is not valid!");
         }
 
+        // Validate the mandatory evidence configured on the processing action before
+        // any transaction or output is created, updated or deleted.
+        if (ProcessingEvidenceValidator.isProcessingEvidenceAction(processingAction)) {
+            ProcessingEvidenceValidator.validateProcessingOrder(em, processingAction,
+                    apiProcessingOrder.getTargetStockOrders());
+        }
+
         // Delete target StockOrder and input Transactions that are not present in the request
         // (applies only for existing ProcessingOrders)
         if (entity.getId() != null) {
