@@ -5,6 +5,8 @@ import com.abelium.inatrace.api.errors.ApiException;
 import com.abelium.inatrace.components.beycoorder.api.*;
 import com.abelium.inatrace.components.common.BaseService;
 import com.abelium.inatrace.components.company.CompanyQueries;
+import com.abelium.inatrace.db.entities.facility.FacilityLocation;
+import com.abelium.inatrace.db.entities.common.Address;
 import com.abelium.inatrace.components.stockorder.StockOrderService;
 import com.abelium.inatrace.db.entities.company.Company;
 import com.abelium.inatrace.db.entities.company.CompanyCertification;
@@ -170,20 +172,25 @@ public class BeycoOrderService extends BaseService {
         beycoOrderFields.setPortOfExport(new ApiBeycoPortOfExport());
         beycoOrderFields.setOfferCoffees(new ArrayList<>());
 
-        String cityAddress = Stream.of(
-                stockOrder.getFacility().getFacilityLocation().getAddress().getAddress(),
-                stockOrder.getFacility().getFacilityLocation().getAddress().getCity(),
-                stockOrder.getFacility().getFacilityLocation().getAddress().getZip()
+        // Facilities saved before the country was required can lack a location, an address or a country:
+        // the port of export is filled with what there is instead of answering 500.
+        FacilityLocation exportLocation = stockOrder.getFacility() != null ? stockOrder.getFacility().getFacilityLocation() : null;
+        Address exportAddress = exportLocation != null ? exportLocation.getAddress() : null;
+        String cityAddress = exportAddress == null ? "" : Stream.of(
+                exportAddress.getAddress(),
+                exportAddress.getCity(),
+                exportAddress.getZip()
         ).filter(s -> s != null && !s.isEmpty()).collect(Collectors.joining(", "));
-        String villageAddress = Stream.of(
-                stockOrder.getFacility().getFacilityLocation().getAddress().getCell(),
-                stockOrder.getFacility().getFacilityLocation().getAddress().getSector(),
-                stockOrder.getFacility().getFacilityLocation().getAddress().getVillage()
+        String villageAddress = exportAddress == null ? "" : Stream.of(
+                exportAddress.getCell(),
+                exportAddress.getSector(),
+                exportAddress.getVillage()
         ).filter(s -> s != null && !s.isEmpty()).collect(Collectors.joining(", "));
         beycoOrderFields.getPortOfExport().setAddress(!cityAddress.isEmpty() ? cityAddress : villageAddress);
-        beycoOrderFields.getPortOfExport().setCountry(stockOrder.getFacility().getFacilityLocation().getAddress().getCountry().getName());
-        beycoOrderFields.getPortOfExport().setLatitude(stockOrder.getFacility().getFacilityLocation().getLatitude());
-        beycoOrderFields.getPortOfExport().setLongitude(stockOrder.getFacility().getFacilityLocation().getLongitude());
+        beycoOrderFields.getPortOfExport().setCountry(exportAddress != null && exportAddress.getCountry() != null
+                ? exportAddress.getCountry().getName() : null);
+        beycoOrderFields.getPortOfExport().setLatitude(exportLocation != null ? exportLocation.getLatitude() : null);
+        beycoOrderFields.getPortOfExport().setLongitude(exportLocation != null ? exportLocation.getLongitude() : null);
 
         for(StockOrder selectedStockOrder : stockOrders) {
             stockOrder = selectedStockOrder;

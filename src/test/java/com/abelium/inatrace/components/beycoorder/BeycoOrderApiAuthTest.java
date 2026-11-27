@@ -112,6 +112,21 @@ class BeycoOrderApiAuthTest extends AbstractMySqlIntegrationTest {
     }
 
     @Test
+    void fieldsForAFacilityWithoutCountryLeaveTheCountryEmpty() throws Exception {
+        // Facilities saved before the country was required can have an address without a country.
+        User owner = em.createQuery("SELECT u FROM User u WHERE u.email = :email", User.class)
+                .setParameter("email", "beyco-owner@acme.test").getSingleResult();
+        Long stockId = stock(em.find(Company.class, acmeId), owner, null, "ACME-WITHOUT-COUNTRY").getId();
+        em.flush();
+        em.clear();
+
+        MvcResult result = mockMvc.perform(fields(stockId).cookie(ownerSession)).andReturn();
+        String body = result.getResponse().getContentAsString();
+        assertEquals(200, result.getResponse().getStatus(), body);
+        assertTrue(body.contains("Beyco test street"), body);
+    }
+
+    @Test
     void strangerCannotReadBeycoFieldsOfOtherCompany() throws Exception {
         MvcResult refused = mockMvc.perform(fields(acmeStockId).cookie(strangerSession)).andReturn();
         String body = refused.getResponse().getContentAsString();

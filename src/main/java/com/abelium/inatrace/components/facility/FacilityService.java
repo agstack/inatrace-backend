@@ -135,6 +135,17 @@ public class FacilityService extends BaseService {
 				}
 			}
 		}
+		// The rest of this method reads the location, address, country and type unconditionally (and the
+		// stock and Beyco flows read the country later), so a facility without them answered 500.
+		if (apiFacility.getFacilityLocation() == null || apiFacility.getFacilityLocation().getAddress() == null
+				|| apiFacility.getFacilityLocation().getAddress().getCountry() == null
+				|| apiFacility.getFacilityLocation().getAddress().getCountry().getId() == null) {
+			throw new ApiException(ApiStatus.INVALID_REQUEST, "Facility country is required");
+		}
+		if (apiFacility.getFacilityType() == null || apiFacility.getFacilityType().getId() == null) {
+			throw new ApiException(ApiStatus.INVALID_REQUEST, "Facility type is required");
+		}
+
 		if (facilityLocation == null) {
 			facilityLocation = new FacilityLocation();
 		}
