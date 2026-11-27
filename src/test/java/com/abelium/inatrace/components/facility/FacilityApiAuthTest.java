@@ -575,6 +575,29 @@ class FacilityApiAuthTest extends AbstractMySqlIntegrationTest {
         assertFalse(anonymous.getResponse().getContentAsString().contains(MARKER));
     }
 
+    @Test
+    void facilityWithoutCountryOrTypeIsRejectedWithoutWriting() throws Exception {
+        long before = facilityCount();
+
+        String withoutCountry = facilityBody(null, "ACME-WITHOUT-COUNTRY")
+                .replace(",\"country\":{\"id\":" + countryId + "}", "");
+        MvcResult noCountry = mockMvc.perform(put("/api/chain/facility").cookie(ownerSession)
+                .contentType(MediaType.APPLICATION_JSON).content(withoutCountry)).andReturn();
+        assertEquals(400, noCountry.getResponse().getStatus(), noCountry.getResponse().getContentAsString());
+        assertTrue(noCountry.getResponse().getContentAsString().contains("Facility country is required"),
+                noCountry.getResponse().getContentAsString());
+
+        String withoutType = facilityBody(null, "ACME-WITHOUT-TYPE")
+                .replace("\"facilityType\":{\"id\":" + facilityTypeId + "},", "");
+        MvcResult noType = mockMvc.perform(put("/api/chain/facility").cookie(ownerSession)
+                .contentType(MediaType.APPLICATION_JSON).content(withoutType)).andReturn();
+        assertEquals(400, noType.getResponse().getStatus(), noType.getResponse().getContentAsString());
+        assertTrue(noType.getResponse().getContentAsString().contains("Facility type is required"),
+                noType.getResponse().getContentAsString());
+
+        assertEquals(before, facilityCount(), "a rejected facility must not be written");
+    }
+
     private String facilityBody(Long id, String name) {
         return facilityBody(id, name, true);
     }
